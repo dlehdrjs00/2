@@ -281,6 +281,10 @@
     scale: 1.015;
   }
 }
+/* 시스템 시트가 맨 위면 그 아래 오버레이(메뉴)는 그리지 않는다(유리 너머로 비쳐 얼룩지지 않게). 닫으면 다시 보인다 */
+.overlay-root > .overlay:has(~ .overlay.sys) {
+  visibility: hidden;
+}
 /* 시스템 시트: 화면 전체를 밝은 유리로(햇빛 오른쪽 위, 분홍 번짐 왼쪽 아래) */
 .overlay.sys {
   display: block;
@@ -500,6 +504,7 @@
   padding-top: clamp(6px, 1.2vh, 10px);
   color: var(--ink-3);
   font: 500 16px/1.4 var(--font-ui);
+  word-break: keep-all;
 }
 .panel-hint .ico {
   --i: var(--i-star);

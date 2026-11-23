@@ -379,6 +379,15 @@ export class StageView {
     if (layer.nextElementSibling !== this.charsEl) this.el.insertBefore(layer, this.charsEl);
   }
 
+  /**
+   * 숨기기 안내 알약을 둘 곳. null 이면 무대 안(기본). 세로 배치(below)는 무대가 낮아 알약이 인물을 가리므로
+   * 게임 루트(#vn)로 옮겨 비어 있는 대사창 자리에 띄운다(무대는 contain: paint 라 무대 밖으로는 못 나간다).
+   */
+  placeHintIn(host: HTMLElement | null): void {
+    const target = host ?? this.el;
+    if (this.hideHint.parentElement !== target) target.append(this.hideHint);
+  }
+
   currentBg(): string | undefined {
     return this.bgId;
   }
@@ -643,6 +652,8 @@ export class StageView {
   showPlace(text: string): void {
     const ico = el('span', 'ico');
     ico.setAttribute('aria-hidden', 'true');
+    // 비 오는 배경이면 날짜 카드와 같은 비 아이콘(해·달은 톤 CSS 가 고른다)
+    if (this.bgId && weatherOf(this.bgId, toneOfBg(this.bgId)) === 'rain') ico.dataset.wx = 'rain';
     const cut = text.indexOf(' · ');
     if (cut > 0) {
       // 구분선은 1px 막대로 그리고, 글자로 읽을 때는 ' · ' 가 그대로 남게 숨긴 글자를 넣는다

@@ -25,7 +25,7 @@ import type { KeyValueStore } from '../engine/storage';
 import { AudioManager } from '../engine/audio';
 import { resolveText } from '../engine/text';
 import { applyLayout, computeLayout, isPhonePortrait, measureSafeArea } from './layout';
-import { StageView } from './stage';
+import { StageView, bgAfterCard, toneOfBg } from './stage';
 import { TextBox } from './textbox';
 import { createQuickBar, type QuickBar } from './qbar';
 import { button, cssUrl, el, withJosa } from './dom';
@@ -58,7 +58,8 @@ export interface GameContent {
   hasBgm(id: string): boolean;
   allImageUrls(): string[];
   titleSprites: Array<{ char: CharId; outfit: string; hair: string; expr: string }>;
-  usesPlaceholders: boolean;
+  /** 아직 임시 에셋인 분류를 알리는 짧은 문구(예: '임시 배경·음악'). 모두 최종이면 null */
+  placeholderNote: string | null;
   /** 이벤트 CG 원본·작은 그림(저장 썸네일) 주소 */
   cgUrl?(id: string): string | null;
   cgThumbUrl?(id: string): string | null;
@@ -575,7 +576,13 @@ export class Game {
         const sub = step.sub ? this.t(step.sub) : undefined;
         pushLog(state, { id: step.id, name: null, text: sub ? `${main} · ${sub}` : main, kind: 'card' });
         this.autosave();
-        this.stage.showCard(main, sub, !instant);
+        // 카드는 '다음 장면 배경'을 흐려 그린다(대본은 카드 앞에서 암전하고 카드 뒤에서 새 배경을 깐다)
+        const nextBg = bgAfterCard(this.story.scenes[state.sceneId]?.steps, step.id);
+        this.stage.showCard(main, sub, !instant, nextBg);
+        // 지금 배경이 그림 없는 암전이면 레터박스도 다음 배경으로 미리 칠한다(실제 배경이 깔리면 onBackdrop 이 덮어씀)
+        if (nextBg && !this.c.bgUrl(state.stage.bg)) {
+          this.paintBackdrop(this.c.bgUrl(nextBg), this.c.bgColor(nextBg), toneOfBg(nextBg));
+        }
         this.onTypingDone();
         break;
       }
@@ -1059,7 +1066,7 @@ export class Game {
     if (this.mode !== 'title') return;
     const reached = new Set(this.saves.endingsReached());
     const hasAuto = this.saves.exists('auto');
-    const version = `${this.c.buildLabel.replace(/\s*·\s*임시 에셋\s*$/, '')}${this.c.usesPlaceholders ? ' · 임시 그림' : ''}`;
+    const version = `${this.c.buildLabel}${this.c.placeholderNote ? ` · ${this.c.placeholderNote}` : ''}`;
     const kv = this.c.titleVisual ?? null;
     const scr = buildTitle({
       title: this.c.title,
@@ -1665,6 +1672,7 @@ export class Game {
       this.lastLayoutSize = { vw, vh };
       const L = computeLayout(vw, vh, measureSafeArea(this.safeProbe), { textScale: textScaleFactor(this.settings.textScale) });
       applyLayout(this.root, L);
+      this.stage.placeHintIn(L.mode === 'below' ? this.root : null);
       this.placeToast();
     }
     const showRotate = isPhonePortrait(vw, vh) && !this.rotateDismissed;

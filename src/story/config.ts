@@ -9,7 +9,7 @@ import type { SpeakerId } from '../engine/types';
 
 export const GAME_TITLE = '내일도 같이 갈래?';
 export const GAME_SUBTITLE = '— 여름이 오기 전, 우리 셋의 2주 —';
-export const BUILD_LABEL = 'v0.1 첫 플레이 버전 · 임시 에셋';
+export const BUILD_LABEL = 'v0.1 첫 플레이 버전';
 
 /** 임시 이름 (모두 미정 → 변경 가능) */
 export const NAMES = {

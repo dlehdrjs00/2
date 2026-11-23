@@ -352,6 +352,10 @@
   --i: var(--i-moon);
   color: var(--sun);
 }
+.place-chip .ico[data-wx='rain'] {
+  --i: var(--i-rain);
+  color: var(--sky-600);
+}
 .stage[data-tone='night'] .place-chip .sep {
   background: rgba(170, 205, 255, 0.45);
 }
@@ -827,6 +831,13 @@
 }
 .vn[data-hidewin='1'] .hide-hint {
   display: inline-flex;
+}
+/* 세로 배치: 무대가 낮아 알약이 인물을 가리므로 #vn 으로 옮겨(stage.placeHintIn) 비어 있는 대사창 자리 가운데에 띄운다 */
+.vn[data-layout='below'] > .hide-hint {
+  z-index: 6;
+  bottom: auto;
+  top: calc(var(--ty) + var(--th) / 2);
+  translate: -50% -50%;
 }
 .hide-hint .ico {
   --i: var(--i-eye);

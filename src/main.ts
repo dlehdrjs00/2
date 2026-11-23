@@ -64,11 +64,18 @@ const content: GameContent = {
     { char: 'osana', outfit: 'uniform', hair: 'default', expr: 'smile' },
     { char: 'tenko', outfit: 'uniform', hair: 'default', expr: 'smile' },
   ],
-  usesPlaceholders:
-    Object.values(SPRITE_SETS).some((s) => s.placeholder) ||
-    Object.values(BACKGROUNDS).some((b) => b.placeholder) ||
-    Object.values(BGM).some((b) => b.placeholder),
+  placeholderNote: placeholderNote(),
 };
+
+/** 타이틀 버전 알약에 붙일 '아직 임시인 것' 안내. 최종 에셋으로 바꾸면(placeholder: false) 자동으로 빠진다 */
+function placeholderNote(): string | null {
+  const parts: string[] = [];
+  if (Object.values(SPRITE_SETS).some((s) => s.placeholder)) parts.push('인물');
+  if (Object.values(CGS).some((c) => c.placeholder)) parts.push('CG');
+  if (Object.values(BACKGROUNDS).some((b) => b.placeholder)) parts.push('배경');
+  if ([...Object.values(BGM), ...Object.values(SFX)].some((a) => a.placeholder)) parts.push('음악');
+  return parts.length ? `임시 ${parts.join('·')}` : null;
+}
 
 const mount = document.getElementById('app')!;
 const game = new Game(mount, content, openStore());
