@@ -2073,7 +2073,7 @@ function sceneCourtyard(id, t) {
 function sceneShotengai(id, t) {
   const d = new Doc(id, t, 5506);
   const r = d.r;
-  const cam = camera({ hy: 440, f: 700, eye: 1.5, x0: 0.3 });
+  const cam = camera({ hy: 440, f: 680, eye: 1.5, x0: 0.3, z0: -3.5 });
   const XS = 3.2;
   const ZE = 74;
   const roofY = (X) => 7.6 + 1.0 * (1 - (X / XS) ** 2);
@@ -2090,10 +2090,10 @@ function sceneShotengai(id, t) {
     }
   });
   // 바닥
-  face(d, cam, [[-XS, 0, 0.5], [XS, 0, 0.5], [XS, 0, ZE], [-XS, 0, ZE]], d.lin([[0, d.G('#efe0c2', 50, 0.8)], [1, d.G('#c4b49a', 0, 0.6)]], 0, 440, 0, 900));
+  face(d, cam, [[-XS, 0, -6], [XS, 0, -6], [XS, 0, ZE], [-XS, 0, ZE]], d.lin([[0, d.G('#efe0c2', 50, 0.8)], [1, d.G('#c4b49a', 0, 0.6)]], 0, 440, 0, 900));
   const tl = new Lines(d, d.G('#a8977c', 6, 0.5), { opacity: 0.5 });
-  for (let x = -XS; x <= XS + 0.01; x += 0.8) tl.add3(cam, [x, 0.003, 0.5], [x, 0.003, ZE], 0.012);
-  for (let z = 1.3; z < 30; z += 0.8) tl.add3(cam, [-XS, 0.003, z], [XS, 0.003, z], 0.012);
+  for (let x = -XS; x <= XS + 0.01; x += 0.8) tl.add3(cam, [x, 0.003, -6], [x, 0.003, ZE], 0.012);
+  for (let z = -5.5; z < 30; z += 0.8) tl.add3(cam, [-XS, 0.003, z], [XS, 0.003, z], 0.012);
   tl.flush();
   // 바닥에 비친 빛
   d.g({ opacity: 0.35, filter: d.blur(6) }, () => face(d, cam, [[-1.6, 0.004, ZE], [1.8, 0.004, ZE], [1.6, 0.004, 8], [-0.8, 0.004, 8]], d.lin([[0, '#fff0c8'], [1, '#fff0c8', 0]], 0, 440, 0, 700)));
@@ -2103,28 +2103,32 @@ function sceneShotengai(id, t) {
   for (let i = 0; i < xsR.length - 1; i++) {
     const a = xsR[i];
     const b = xsR[i + 1];
-    face(d, cam, [[a, roofY(a), 0.5], [b, roofY(b), 0.5], [b, roofY(b), ZE], [a, roofY(a), ZE]], d.lin([[0, '#fff2d6'], [0.6, d.G('#f2e2c2', 0, 0.9)], [1, d.G('#d9c6a2', 0, 0.7)]], 0, 430, 0, -200));
+    face(d, cam, [[a, roofY(a), -6], [b, roofY(b), -6], [b, roofY(b), ZE], [a, roofY(a), ZE]], d.lin([[0, '#fff2d6'], [0.6, d.G('#f2e2c2', 0, 0.9)], [1, d.G('#d9c6a2', 0, 0.7)]], 0, 430, 0, -200));
   }
   const frame = new Lines(d, d.G('#6f6a62', 10, 0.4));
-  for (let z = 2; z < ZE; z += 4) {
+  for (let z = -6; z < ZE; z += 4) {
     for (let i = 0; i < xsR.length - 1; i++) frame.add3(cam, [xsR[i], roofY(xsR[i]) - 0.05, z], [xsR[i + 1], roofY(xsR[i + 1]) - 0.05, z], 0.1);
   }
-  for (const x of xsR) frame.add3(cam, [x, roofY(x) - 0.05, 0.5], [x, roofY(x) - 0.05, ZE], 0.05);
+  for (const x of xsR) frame.add3(cam, [x, roofY(x) - 0.05, -6], [x, roofY(x) - 0.05, ZE], 0.05);
   frame.flush();
 
   // 가게들(양쪽, 먼 곳부터)
   const shops = [];
   for (const side of [-1, 1]) {
-    let z = side < 0 ? 8.2 : 7.6;
+    let z = side < 0 ? 6.8 : 5.0;
     while (z < ZE - 2) {
       const len = r.range(3.6, 5.4);
       shops.push({ side, z0: z, z1: z + len, wall: r.pick(['#e9e0cc', '#d9cdb4', '#e6e6e0', '#d6c2a4', '#cfd6d8']), aw: r.pick([['#d8443c', '#f4f0e8'], ['#2f6db0', '#f4f0e8'], ['#3f8a5a', '#f4f0e8'], ['#e0a030', '#f4f0e8'], ['#8a4a8a', '#f4e8f0']]), sign: r.pick(['#2a4a7a', '#7a2a2a', '#f2e6c8', '#2a6a4a', '#5a3a2a']), shutter: r.chance(0.18) });
       z += len + 0.15;
     }
   }
-  // 오른쪽 앞 가게(과일가게)
-  shops.push({ side: 1, z0: 1.2, z1: 7.4, wall: '#e9e0cc', aw: ['#2f6db0', '#f4f0e8'], sign: '#2a4a7a', fruit: true });
+  // 앞쪽 가게들(오른쪽 과일가게, 왼쪽 막과자 가게 앞집)
+  shops.push({ side: 1, z0: -1.2, z1: 4.85, wall: '#e9e0cc', aw: ['#2f6db0', '#f4f0e8'], sign: '#2a4a7a', fruit: true });
+  shops.push({ side: 1, z0: -6, z1: -1.35, wall: '#d6c2a4', aw: ['#e0a030', '#f4f0e8'], sign: '#5a3a2a', shutter: true });
+  shops.push({ side: -1, z0: -6, z1: 0, wall: '#cfd6d8', aw: ['#3f8a5a', '#f4f0e8'], sign: '#2a6a4a', shutter: true });
   shops.sort((a, b) => b.z0 - a.z0);
+  // 가게 사이 틈이 비지 않도록 바탕 벽
+  for (const sd of [-1, 1]) face(d, cam, [[sd * XS * 1.02, 0, -6], [sd * XS * 1.02, roofY(XS), -6], [sd * XS * 1.02, roofY(XS), ZE], [sd * XS * 1.02, 0, ZE]], d.G('#5a4a40', 10, 0.3));
   const goodsC = ['#e2524a', '#f0c33c', '#4bb06a', '#f08a3a', '#3f86d6', '#f4f0e8', '#c86ab0'];
   for (const sh of shops) {
     const s = sh.side;
@@ -2170,12 +2174,16 @@ function sceneShotengai(id, t) {
       face(d, cam, [[ax, 2.55, z0], [ax, 2.3, z0], [ax, 2.3, z1], [ax, 2.55, z1]], d.shade(c, nm, dist));
     }
     if (sh.fruit) {
+      const fc = ['#e2524a', '#f0a030', '#8ac040', '#f6d24a', '#c84060'];
+      box(d, cam, { x: [XS - 1.15, XS - 0.2], y: [0, 0.62], z: [-0.8, 4.4], col: '#8a6a4a' });
       for (let k = 0; k < 5; k++) {
-        const z0 = 1.6 + k * 1.1;
-        box(d, cam, { x: [XS - 1.1, XS - 0.3], y: [0, 0.7], z: [z0, z0 + 0.9], col: '#b48a5e' });
-        const c = cam.P([XS - 0.7, 0.72, z0 + 0.45]);
-        const ps = cam.px([XS - 0.7, 0.72, z0 + 0.45]);
-        d.ellipse(c[0], c[1], ps * 0.4, ps * 0.12, d.G(['#e2524a', '#f0a030', '#8ac040', '#f6d24a', '#c84060'][k], 3, 0.9));
+        const z0 = -0.7 + k * 1.02;
+        face(d, cam, [[XS - 1.15, 0.64, z0], [XS - 0.25, 0.9, z0], [XS - 0.25, 0.9, z0 + 0.95], [XS - 1.15, 0.64, z0 + 0.95]], d.G('#c8a070', 3, 0.8));
+        const ps = cam.px([XS - 0.7, 0.75, z0 + 0.45]);
+        for (let i = 0; i < 9; i++) {
+          const c = cam.P([XS - 1.05 + (i % 3) * 0.3, 0.72 + (i % 3) * 0.08, z0 + 0.18 + Math.floor(i / 3) * 0.3]);
+          d.circle(c[0], c[1], ps * 0.1, d.G(fc[k], 3, 0.9));
+        }
       }
     }
   }
@@ -2184,18 +2192,18 @@ function sceneShotengai(id, t) {
   {
     const X = -XS;
     const nm = [1, 0, 0];
-    const z0 = 1.6;
-    const z1 = 8.0;
+    const z0 = 0.0;
+    const z1 = 6.6;
     const Q = (x, y0, y1, a, b) => [[x, y0, a], [x, y1, a], [x, y1, b], [x, y0, b]];
-    const dist = 4;
+    const dist = 6;
     face(d, cam, Q(X, 0, roofY(X), z0, z1), d.shade('#6e5038', nm, dist));
     const bd = new Lines(d, d.shade('#4e3826', nm, dist), { opacity: 0.8 });
     for (let y = 3.9; y < 7.5; y += 0.22) bd.add3(cam, [X + 0.01, y, z0], [X + 0.01, y, z1], 0.015);
     bd.flush();
-    face(d, cam, Q(X + 0.02, 4.6, 6.0, 4.4, 6.6), d.shade('#d9c9a4', nm, dist));
+    face(d, cam, Q(X + 0.02, 4.6, 6.0, 3.6, 5.8), d.shade('#d9c9a4', nm, dist));
     const lat = new Lines(d, d.shade('#5a4030', nm, dist));
-    for (let z = 4.4; z <= 6.6; z += 0.22) lat.add3(cam, [X + 0.03, 4.6, z], [X + 0.03, 6.0, z], 0.025);
-    for (let y = 4.6; y <= 6.0; y += 0.35) lat.add3(cam, [X + 0.03, y, 4.4], [X + 0.03, y, 6.6], 0.025);
+    for (let z = 3.6; z <= 5.8; z += 0.22) lat.add3(cam, [X + 0.03, 4.6, z], [X + 0.03, 6.0, z], 0.025);
+    for (let y = 4.6; y <= 6.0; y += 0.35) lat.add3(cam, [X + 0.03, y, 3.6], [X + 0.03, y, 5.8], 0.025);
     lat.flush();
     // 나무 간판(무늬)
     face(d, cam, Q(X + 0.03, 3.0, 3.85, z0 + 0.3, z1 - 0.3), d.shade('#3e2a1c', nm, dist));
@@ -2205,15 +2213,17 @@ function sceneShotengai(id, t) {
       d.ellipse(c[0], c[1], rr * 0.6, rr, d.shade(['#f2c84a', '#f26a5a', '#f2c84a', '#7ac0e0'][k], nm, dist));
     }
     // 유리 미닫이문 + 안쪽 진열
-    face(d, cam, Q(X + 0.02, 0, 2.6, z0 + 0.2, z1 - 0.2), d.shade('#4a3a2e', nm, dist));
-    d.g({ opacity: 0.9 }, () => {
-      for (let i = 0; i < 46; i++) {
-        const z = r.range(z0 + 0.4, z1 - 0.4);
-        const y = r.range(0.7, 2.2);
-        const c = cam.P([X + 0.03, y, z]);
-        d.circle(c[0], c[1], cam.px([X, y, z]) * 0.06, d.shade(r.pick(goodsC), nm, dist));
+    face(d, cam, Q(X + 0.02, 0, 2.6, z0 + 0.2, z1 - 0.2), d.shade('#5a4636', nm, dist));
+    face(d, cam, Q(X + 0.025, 0.3, 2.5, z0 + 0.3, z1 - 0.3), d.G('#ffe2b0', dist, 0.9), { opacity: 0.22 });
+    // 가게 안 선반(작은 과자 봉지·병이 줄지어)
+    const shelf = new Lines(d, d.shade('#8a6a4a', nm, dist));
+    for (const y of [0.7, 1.25, 1.8]) {
+      shelf.add3(cam, [X + 0.03, y, z0 + 0.3], [X + 0.03, y, z1 - 0.3], 0.04);
+      for (let z = z0 + 0.35; z < z1 - 0.4; z += r.range(0.12, 0.2)) {
+        const h = r.range(0.14, 0.3);
+        face(d, cam, Q(X + 0.035, y + 0.01, y + h, z, z + 0.1), d.shade(r.pick(goodsC), nm, dist));
       }
-    });
+    }
     face(d, cam, Q(X + 0.04, 0, 2.6, z0 + 0.2, z1 - 0.2), '#ffffff', { opacity: 0.12 });
     const df = new Lines(d, d.shade('#8a6a4a', nm, dist));
     for (let k = 0; k <= 4; k++) df.add3(cam, [X + 0.05, 0, lerp(z0 + 0.2, z1 - 0.2, k / 4)], [X + 0.05, 2.6, lerp(z0 + 0.2, z1 - 0.2, k / 4)], 0.06);
@@ -2229,28 +2239,34 @@ function sceneShotengai(id, t) {
       face(d, cam, [[X, 2.9, a], [ax, 2.45, a], [ax, 2.45, b], [X, 2.9, b]], d.shade(c, norm([0.4, -1, 0]), dist));
       face(d, cam, [[ax, 2.45, a], [ax, 2.15, a], [ax, 2.15, b], [ax, 2.45, b]], d.shade(c, nm, dist));
     }
-    // 진열대
-    box(d, cam, { x: [X + 0.1, X + 1.0], y: [0, 0.75], z: [2.2, 4.4], col: '#9a7450' });
-    for (let i = 0; i < 30; i++) {
-      const z = r.range(2.3, 4.3);
-      const x = r.range(X + 0.15, X + 0.95);
-      const c = cam.P([x, 0.78, z]);
-      d.rect(c[0] - 4, c[1] - 6, r.range(6, 14), r.range(6, 12), d.G(r.pick(goodsC), 3, 0.9));
+    // 진열대(기울어진 판 위에 과자 봉지)
+    box(d, cam, { x: [X + 0.1, X + 0.95], y: [0, 0.62], z: [0.5, 2.6], col: '#8a6646' });
+    face(d, cam, [[X + 0.1, 0.95, 0.5], [X + 0.95, 0.66, 0.5], [X + 0.95, 0.66, 2.6], [X + 0.1, 0.95, 2.6]], d.G('#b08a60', 4, 0.8));
+    for (let row = 0; row < 3; row++) {
+      for (let z = 0.58; z < 2.5; z += 0.16) {
+        const x0 = X + 0.16 + row * 0.27;
+        const y0 = 0.93 - row * 0.095;
+        face(d, cam, [[x0, y0 + 0.012, z], [x0 + 0.2, y0 - 0.06, z], [x0 + 0.2, y0 - 0.06, z + 0.12], [x0, y0 + 0.012, z + 0.12]], d.G(r.pick(goodsC), 4, 0.9));
+      }
     }
-    // 가챠 기계 2대
-    for (const gz of [4.8, 5.45]) {
-      box(d, cam, { x: [X + 0.25, X + 0.8], y: [0, 0.8], z: [gz, gz + 0.55], col: '#d8403a' });
-      box(d, cam, { x: [X + 0.27, X + 0.78], y: [0.8, 1.35], z: [gz + 0.02, gz + 0.53], col: '#e9f2f6' });
-      const c = cam.P([X + 0.78, 1.05, gz + 0.27]);
-      const ps = cam.px([X + 0.78, 1.05, gz + 0.27]);
-      for (let i = 0; i < 9; i++) d.circle(c[0] + r.range(-0.18, 0.18) * ps, c[1] + r.range(-0.2, 0.2) * ps, ps * 0.07, r.pick(goodsC));
+    // 가챠 기계 2대(빨간 받침 + 투명 캡슐 통)
+    for (const gz of [3.0, 3.62]) {
+      box(d, cam, { x: [X + 0.3, X + 0.82], y: [0, 0.78], z: [gz, gz + 0.55], col: '#d8403a' });
+      box(d, cam, { x: [X + 0.32, X + 0.8], y: [0.78, 1.3], z: [gz + 0.03, gz + 0.52], col: { side: '#dfeaf0', top: '#eef4f8', front: '#d6e2ea' } });
+      const ps = cam.px([X + 0.82, 1.0, gz + 0.27]);
+      for (let i = 0; i < 12; i++) {
+        const c = cam.P([X + 0.81, 0.85 + (i % 4) * 0.11, gz + 0.1 + Math.floor(i / 4) * 0.15]);
+        d.circle(c[0], c[1], ps * 0.055, r.pick(goodsC));
+      }
+      const knob = cam.P([X + 0.83, 0.5, gz + 0.27]);
+      d.circle(knob[0], knob[1], ps * 0.08, '#e8e8e8');
     }
     // 아이스 냉동고
-    box(d, cam, { x: [X + 0.15, X + 0.95], y: [0, 0.85], z: [6.3, 7.6], col: '#eef0f2' });
+    box(d, cam, { x: [X + 0.15, X + 0.95], y: [0, 0.85], z: [4.6, 6.0], col: { side: '#eef0f2', top: '#cfe4f0' } });
     // 매달린 장난감
     const hang = new Lines(d, '#6a5a4a');
     for (let k = 0; k < 7; k++) {
-      const z = lerp(2.0, 7.6, k / 6);
+      const z = lerp(0.4, 6.2, k / 6);
       const a = cam.P([X + 0.9, 2.45, z]);
       const b = cam.P([X + 0.9, 1.95, z]);
       hang.add(a[0], a[1], b[0], b[1], 1);
@@ -2335,7 +2351,12 @@ function sceneRiverbank(id, t) {
     const col = night ? mix('#2a2c58', '#3a3a6e', r()) : d.G(r.pick([MAT.cream, MAT.gray, MAT.paleBlue, MAT.beige]), b.Z, 0.35);
     d.rect(c[0], top, b.w * s, c[1] - top + 2, col);
     if (night && s * b.w > 6) {
-      for (let k = 0; k < 4; k++) if (r.chance(0.6)) winB.add(c[0] + r.range(0.1, 0.9) * b.w * s, lerp(top, c[1], r.range(0.1, 0.8)), c[0] + r.range(0.1, 0.9) * b.w * s + 2, lerp(top, c[1], r.range(0.1, 0.8)), 1.5);
+      for (let k = 0; k < 4; k++) {
+        if (!r.chance(0.6)) continue;
+        const wx = c[0] + r.range(0.1, 0.85) * b.w * s;
+        const wy = lerp(top, c[1], r.range(0.1, 0.8));
+        winB.add(wx, wy, wx + 2.5, wy, 1.6);
+      }
     }
   }
   if (winB) winB.flush();
@@ -2353,7 +2374,7 @@ function sceneRiverbank(id, t) {
     tw.flush();
   }
   // 건너편 둑
-  const gFar = night ? '#2a3a4e' : d.G('#8aa868', 180, 0.6);
+  const gFar = night ? '#36466c' : d.G('#8aa868', 180, 0.6);
   face(d, cam, [[-3000, 0, 172], [3000, 0, 172], [3000, 6.2, 186], [-3000, 6.2, 186]], gFar);
   face(d, cam, [[-3000, 6.2, 186], [3000, 6.2, 186], [3000, 6.2, 194], [-3000, 6.2, 194]], night ? '#3a3a5e' : d.G('#b8a890', 190, 0.6));
   for (let i = 0; i < 26; i++) {
@@ -2363,7 +2384,7 @@ function sceneRiverbank(id, t) {
     foliage(d, c[0], c[1], s * 4, s * 2.6, night ? { dark: '#1a2040', mid: '#242a52' } : leaves(d, 196), { count: 6, r });
   }
   // 강물
-  const water = night ? [[0, '#5a4a80'], [0.5, '#2e3466'], [1, '#1c2048']] : [[0, '#ffd2a0'], [0.35, '#e89a8a'], [1, '#6a5a96']];
+  const water = night ? [[0, '#6e5c98'], [0.5, '#3c447c'], [1, '#283060']] : [[0, '#ffd2a0'], [0.35, '#e89a8a'], [1, '#6a5a96']];
   face(d, cam, [[-3000, 0, 30], [3000, 0, 30], [3000, 0, 172], [-3000, 0, 172]], d.lin(water, 0, cam.P([0, 0, 172])[1], 0, cam.P([0, 0, 30])[1]));
   const yFar = cam.P([0, 0, 172])[1];
   const yNear = cam.P([0, 0, 30])[1];
@@ -2431,16 +2452,19 @@ function sceneRiverbank(id, t) {
       if (z < 172) d.rect(m[0] - 2, yFar + (m[1] - yFar) * 0.4, 4, (m[1] - yFar) * 0.9, '#ffd88a', { opacity: 0.35 });
     }
     // 건너편 둑 위 노점 불빛
-    for (let i = 0; i < 46; i++) {
-      const X = r.range(-160, 120);
-      const c = cam.P([X, 6.6, 188]);
-      glow(d, c[0], c[1], r.range(6, 12), r.pick(['#ffcf7a', '#ffb070', '#ff9a8a']), 0.8);
+    glow(d, 640, cam.P([0, 7, 188])[1], 520, '#ff9a6a', 0.35, 40);
+    for (let i = 0; i < 70; i++) {
+      const X = r.range(-170, 130);
+      const c = cam.P([X, 6.8, 188]);
+      glow(d, c[0], c[1], r.range(6, 14), r.pick(['#ffcf7a', '#ffb070', '#ff9a8a']), 0.9);
     }
+    // 강물에 비친 노점 불빛
+    d.g({ filter: d.blur(3), opacity: 0.45 }, () => d.rect(220, yFar, 860, (yNear - yFar) * 0.35, d.lin([[0, '#ff9a6a'], [1, '#ff9a6a', 0]], 0, yFar, 0, yFar + (yNear - yFar) * 0.35)));
   }
 
   // 가까운 둔치(풀밭 + 자갈길 + 갈대)
-  const gNear = night ? '#26364a' : d.G('#7aa258', 25, 0.6);
-  face(d, cam, [[-3000, 0.4, 14], [3000, 0.4, 14], [3000, 0, 30], [-3000, 0, 30]], d.lin([[0, night ? '#34465e' : d.G('#94b868', 30, 0.6)], [1, gNear]], 0, yNear, 0, 900));
+  const gNear = night ? '#2e3e5a' : d.G('#7aa258', 25, 0.6);
+  face(d, cam, [[-3000, 0.4, 14], [3000, 0.4, 14], [3000, 0, 30], [-3000, 0, 30]], d.lin([[0, night ? '#3e5070' : d.G('#94b868', 30, 0.6)], [1, gNear]], 0, yNear, 0, 900));
   face(d, cam, [[-3000, 0.41, 20], [3000, 0.41, 20], [3000, 0.41, 21.8], [-3000, 0.41, 21.8]], night ? '#3e4462' : d.G('#d8c8a6', 20, 0.7));
   for (let i = 0; i < 60; i++) {
     const X = r.range(-60, 60);
@@ -2451,12 +2475,6 @@ function sceneRiverbank(id, t) {
   }
   // 둑 경사면(아래, 대사창 영역)
   face(d, cam, [[-3000, 5.6, 5], [3000, 5.6, 5], [3000, 0.4, 14], [-3000, 0.4, 14]], night ? '#22304a' : d.G('#6f9a4e', 8, 0.7));
-  if (night) {
-    // 둑에 앉은 구경꾼(가장자리, 흐리게)
-    d.g({ filter: d.blur(2), opacity: 0.85 }, () => {
-      for (const [x, y, h] of [[150, 700, 130], [230, 715, 118], [300, 705, 120], [1340, 708, 125], [1430, 700, 135], [1500, 718, 110]]) person(d, x, y, h, '#191c38', r);
-    });
-  }
   // 전경 풀(초점 밖)
   d.g({ filter: d.blur(4) }, () => {
     for (let i = 0; i < 26; i++) {
@@ -2466,7 +2484,7 @@ function sceneRiverbank(id, t) {
     }
   });
   if (!night) d.rect(0, 0, W, H, d.lin([[0, '#5a3a8a', 0.12], [0.5, '#ffb070', 0.05], [1, '#3a2050', 0.25]], 0, 0, 0, H));
-  else d.rect(0, 0, W, H, d.lin([[0, '#000018', 0], [1, '#0a0820', 0.3]], 0, 0, 0, H));
+  else d.rect(0, 0, W, H, d.lin([[0, '#000018', 0], [1, '#0a0820', 0.18]], 0, 0, 0, H));
   return d;
 }
 
@@ -2498,15 +2516,14 @@ function sceneStation(id, t) {
     }
   });
   // 바닥(광장 포장 + 도로 + 횡단보도)
-  face(d, cam, [[-60, 0, 1], [60, 0, 1], [60, 0, 60], [-60, 0, 60]], d.lin([[0, d.G('#c9c3b8', 40, 0.7)], [1, d.G('#aaa398', 0, 0.7)]], 0, 430, 0, 900));
+  face(d, cam, [[-60, 0, 1], [60, 0, 1], [60, 0, 60], [-60, 0, 60]], d.lin([[0, d.G('#dccdb0', 40, 0.9)], [1, d.G('#b09a7c', 0, 0.9)]], 0, 430, 0, 900));
+  // 두 톤 보도블록(체크)
+  d.g({ opacity: 0.35 }, () => {
+    for (let z = 2; z < 12; z += 2) for (let x = -12; x < 22; x += 2) if (((x + z) / 2) % 2 === 0) face(d, cam, [[x, 0.002, z], [x + 1, 0.002, z], [x + 1, 0.002, z + 1], [x, 0.002, z + 1]], d.G('#c4a88a', z, 0.8));
+  });
   face(d, cam, [[-60, 0.002, 12], [60, 0.002, 12], [60, 0.002, 17.5], [-60, 0.002, 17.5]], d.G('#7a7d86', 15, 0.6));
-  const cw = new Lines(d, d.G('#f2f2ee', 15, 0.8), { opacity: 0.9 });
-  for (let x = -4.2; x <= 2.4; x += 0.9) {
-    const c1 = cam.P([x, 0.004, 12.3]);
-    const c2 = cam.P([x, 0.004, 17.2]);
-    cw.add(c1[0], c1[1], c2[0], c2[1], cam.px([x, 0, 14.5]) * 0.45);
-  }
-  cw.flush();
+  const zebra = d.G('#f2f2ee', 15, 0.8);
+  for (let x = -4.4; x <= 2.4; x += 0.9) face(d, cam, [[x, 0.004, 12.4], [x + 0.45, 0.004, 12.4], [x + 0.45, 0.004, 17.1], [x, 0.004, 17.1]], zebra, { opacity: 0.92 });
   const pv = new Lines(d, d.G('#8e887c', 8, 0.5), { opacity: 0.45 });
   for (let z = 2; z < 12; z += 1) pv.add3(cam, [-12, 0.003, z], [22, 0.003, z], 0.012);
   for (let x = -12; x < 22; x += 1) pv.add3(cam, [x, 0.003, 1], [x, 0.003, 12], 0.012);
@@ -2612,9 +2629,21 @@ function sceneStation(id, t) {
     }
   }
   // 광장 그림자(왼쪽 맨션)
-  d.g({ opacity: 0.22, filter: d.blur(3) }, () => face(d, cam, [[-12, 0.006, 4], [-12, 0.006, 32], [-2, 0.006, 60], [6, 0.006, 4]], '#3a4a8a'));
+  d.g({ opacity: 0.28, filter: d.blur(3) }, () => face(d, cam, [[-12, 0.006, 1], [-12, 0.006, 32], [-3, 0.006, 60], [3, 0.006, 1]], '#3a4a8a'));
+  // 점자블록(노란 유도 블록) — 역 입구까지
+  face(d, cam, [[-1.3, 0.004, 1], [-0.9, 0.004, 1], [-0.9, 0.004, 12], [-1.3, 0.004, 12]], d.G('#dcbc58', 6, 0.9));
+  face(d, cam, [[-1.3, 0.004, 17.5], [-0.9, 0.004, 17.5], [-0.9, 0.004, 19.5], [-1.3, 0.004, 19.5]], d.G('#dcbc58', 18, 0.9));
+  face(d, cam, [[-1.3, 0.004, 19.5], [10.8, 0.004, 19.5], [10.8, 0.004, 19.9], [-1.3, 0.004, 19.9]], d.G('#dcbc58', 18, 0.9));
+  // 볼라드(도로 경계)
+  for (let x = -11; x < 21; x += 2.2) {
+    const b = cam.P([x, 0, 11.6]);
+    const tp = cam.P([x, 0.8, 11.6]);
+    const sp = cam.px([x, 0, 11.6]);
+    d.rect(b[0] - sp * 0.07, tp[1], sp * 0.14, b[1] - tp[1], d.G('#9aa0a6', 11, 0.7));
+    d.rect(b[0] - sp * 0.07, tp[1] + sp * 0.1, sp * 0.14, sp * 0.08, d.G('#f0c430', 11, 0.8));
+  }
   // 화단·가로수
-  for (const [X, Z] of [[-9.0, 22], [-9.0, 11], [2.6, 24.5]]) {
+  for (const [X, Z] of [[-9.0, 22], [-9.0, 11], [2.6, 24.5], [12.5, 8.5]]) {
     const b = cam.P([X, 0, Z]);
     const tp = cam.P([X, 3.0, Z]);
     const s = cam.px([X, 0, Z]);
@@ -2907,8 +2936,6 @@ function sceneShrineNight(id, t) {
   const hy = 600;
   skyRect(d, t.sky, 0, hy + 40);
   stars(d, 170, hy - 60, '#ffffff', 21);
-  // 은은한 은하수(넓게 번진 띠)
-  d.g({ filter: d.blur(40), opacity: 0.16 }, () => d.ellipse(980, 230, 520, 70, '#c8c0f0', { transform: 'rotate(-28 980 230)' }));
   glow(d, 800, hy, 1000, '#9a6aa0', 0.5, 180);
   streakCloud(d, 1100, 200, 600, 30, t.cloud.lit, 0.35, 6);
   // 먼 산
@@ -3104,6 +3131,7 @@ function sceneTitle(id, t) {
   const r = d.r;
   const cl = t.cloud;
   skyRect(d, [[0, '#1c64c8'], [0.4, '#3f8ee0'], [0.75, '#94c8f2'], [1, '#e4f4fc']], 0, 640);
+  d.rect(0, 600, W, 300, '#cfe4f2');
   glow(d, 110, 70, 700, '#ffffff', 0.6);
   glow(d, 110, 70, 90, '#ffffff', 0.95);
   // 렌즈 플레어
@@ -3115,16 +3143,8 @@ function sceneTitle(id, t) {
   cumulus(d, { x: 230, y: 430, w: 380, h: 110, c: cl, lx: -0.7, blur: 2.4 });
   streakCloud(d, 560, 160, 520, 26, '#ffffff', 0.5, 5);
   // 먼 산과 마을
-  ridge(d, 560, 44, 0.004, '#8fb2d2', 13, 640);
-  d.g({ filter: d.blur(1.2), opacity: 0.75 }, () => {
-    for (let i = 0; i < 40; i++) {
-      const x = r.range(0, 880);
-      const y = r.range(566, 600) + x * 0.02;
-      const w = r.range(8, 18);
-      d.rect(x, y, w, 40, r.pick(['#c6d6e4', '#b6c8d8', '#d2dae2']));
-      d.rect(x - 1, y - 2, w + 2, 3, r.pick(['#7f94ac', '#8a8aa0']));
-    }
-  });
+  ridge(d, 560, 44, 0.004, '#8fb2d2', 13, 760);
+  ridge(d, 600, 18, 0.006, '#a7c4b0', 17, 760);
   // 언덕
   d.path('M-20 900L-20 700C300 650 700 560 1000 525S1400 500 1620 505L1620 900Z', { fill: d.lin([[0, '#9fd068'], [0.35, '#6eaa48'], [1, '#3f7a34']], 0, 500, 0, 900) });
   // 바람에 눕는 풀 결

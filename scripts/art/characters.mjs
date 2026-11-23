@@ -209,25 +209,28 @@ const CHARS = {
   osana: {
     id: 'o',
     scale: 0.975, // 아카네가 조금 작다
-    hair: { line: '#4a1a13', dark: '#6b2a20', base: '#8e3f30', mid: '#9c4838', light: '#b8604a', hi: '#e89a80', inner: '#4a1b16' },
-    eye: { lash: '#2a100d', top: '#3a100c', mid: '#9b3328', bot: '#e3805e', pupil: '#220705', glow: '#ff9e7c' },
+    // 디자인 시트 B: 장밋빛이 도는 밤갈색(채도를 낮춘 붉은 갈색), 장밋빛 적색 눈
+    hair: { line: '#66332f', dark: '#78433d', base: '#94564c', mid: '#a0625a', light: '#bb7c6e', hi: '#f0b9a8', inner: '#4d2628' },
+    eye: { lash: '#2c1014', top: '#3d1119', mid: '#a8323f', bot: '#ea8a8f', pupil: '#24060b', glow: '#ffa3ab' },
+    // 살짝 치켜올라간 눈꼬리는 유지하되 안쪽 눈꺼풀 경사를 완만하게(노려보는 인상 방지)
     eyeShape: {
-      up: [[-28, -1], [-16, -19], [12, -27], [32, -17]],
-      wing: [40, -21],
-      outer: [[34, -8], [32, 6]],
-      low: [[26, 15], [14, 26], [-8, 27], [-21, 20]],
-      inner: [[-26, 13], [-29, 5]],
+      up: [[-29, -6], [-17, -22], [12, -27], [32, -17]],
+      wing: [39, -18],
+      outer: [[34, -7], [32, 7]],
+      low: [[26, 16], [14, 26], [-8, 27], [-21, 20]],
+      inner: [[-26, 13], [-29, 4]],
       iris: [2, 4, 20.5, 25.5],
     },
-    brow: [[422, 196], [452, 186], [486, 188]],
+    brow: [[422, 189], [452, 180], [486, 185]],
     knit: { base: '#d8c2a6', light: '#e9dac7', shade: '#bda386', dark: '#9e8264', line: '#76593f' },
-    yukata: { base: '#252c55', light: '#343d70', dark: '#161a36', line: '#0e1128', collar: '#171b3a', edge: '#eef0ff', obi: '#c4313d', obiL: '#e2525c', obiD: '#86202b', cord: '#f0c35a', cordD: '#b98a2a' },
+    // rim: 밤 장면(남색 하늘)에서 실루엣이 묻히지 않도록 어깨·소매 바깥쪽에 넣는 림라이트 색
+    yukata: { base: '#29316a', light: '#3a4585', dark: '#181e40', line: '#0e1128', collar: '#1a1f42', edge: '#eef0ff', obi: '#c4313d', obiL: '#e2525c', obiD: '#86202b', cord: '#f0c35a', cordD: '#b98a2a', rim: '#aab6f6' },
   },
   tenko: {
     id: 't',
     scale: 1,
     hair: { line: '#b04a72', dark: '#d87595', base: '#f29fb7', mid: '#f5aec2', light: '#f9c8d5', hi: '#fff4f8', inner: '#c7678a' },
-    eye: { lash: '#33203f', top: '#271c62', mid: '#7d6fd8', bot: '#c9c1ff', pupil: '#17114a', glow: '#e1dbff' },
+    eye: { lash: '#33203f', top: '#2d1c62', mid: '#8a6ed6', bot: '#d2c2ff', pupil: '#1b114a', glow: '#e6dbff' },
     eyeShape: {
       up: [[-28, -6], [-16, -24], [12, -29], [31, -12]],
       wing: [36, -4],
@@ -256,8 +259,8 @@ const EXPR = {
 // 아카네: 새침한 기본(살짝 내리깐 눈 + 한쪽 입꼬리), 웃을 때는 눈웃음 + 벌린 입
 const EXPR_OVERRIDE = {
   osana: {
-    neutral: { eye: { drop: 4 }, mouth: 'smirk', brow: [1, 0, -1] },
-    smile: { eye: { mode: 'open', drop: 5, lowRaise: 10 }, brow: [-4, -6, -3] },
+    neutral: { eye: { drop: 3, lowRaise: 3 }, mouth: 'smirk', brow: [-1, -1, 0] },
+    smile: { eye: { mode: 'open', drop: 4, lowRaise: 11 }, brow: [-5, -6, -2] },
   },
 };
 
@@ -866,6 +869,20 @@ function yukata(C) {
     s += path(f('M234 504C226 620 216 760 214 850C214 880 226 890 250 892L258 892C240 876 234 856 236 816C238 718 242 600 250 500Z'), { fill: '#000', opacity: 0.14 });
     s += path(f('M270 470C262 540 258 610 262 680M292 700C286 760 284 820 290 884'), { fill: 'none', stroke: y.dark, 'stroke-width': 1.8, opacity: 0.55, 'stroke-linecap': 'round' });
     s += path(f('M262 680C272 700 290 712 312 716'), { fill: 'none', stroke: y.dark, 'stroke-width': 1.6, opacity: 0.45, 'stroke-linecap': 'round' });
+  }
+  if (y.rim) {
+    // 림라이트: 바깥 윤곽선을 따라 굵은 선을 그리고 도형 안쪽만 남긴다(윤곽선 바로 안쪽이 밝아짐)
+    const rimSt = { fill: 'none', stroke: y.rim, 'stroke-width': 10, 'stroke-linecap': 'round', opacity: 0.5 };
+    const sleeveOuter = 'M282 428C254 440 236 474 230 520C222 600 210 720 206 830C204 870 218 894 250 898';
+    const shoulder = 'M366 386C342 396 304 410 282 428';
+    s += el('clipPath', { id: `${i}rb` }, path(body));
+    s += el('g', { 'clip-path': `url(#${i}rb)` }, path(shoulder + mirrorD(shoulder), rimSt));
+    for (const flip of [false, true]) {
+      const f = (d) => (flip ? mirrorD(d) : d);
+      const id = `${i}rs${flip ? 1 : 0}`;
+      s += el('clipPath', { id }, path(f(sleeve)));
+      s += el('g', { 'clip-path': `url(#${id})` }, path(f(sleeveOuter), rimSt));
+    }
   }
   return s;
 }
