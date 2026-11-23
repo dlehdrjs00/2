@@ -55,6 +55,8 @@ export interface GlobalRecord {
   schema: number;
   read: string[];
   endings: EndingId[];
+  /** 한 번이라도 본 이벤트 CG (추억 앨범용). 예전 기록에는 없을 수 있다 */
+  cgs?: string[];
 }
 
 /** 무대 상태 검증용(에셋 매니페스트 기반) */
@@ -62,6 +64,8 @@ export interface StageValidator {
   hasBg(bg: string): boolean;
   hasSprite(char: string, outfit: string, hair: string, expr: string): boolean;
   hasBgm(id: string): boolean;
+  /** 이벤트 CG id 확인(없으면 CG 는 그대로 믿는다) */
+  hasCg?(id: string): boolean;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -118,6 +122,7 @@ function cloneStage(s: StageState): StageState {
 export class SaveManager {
   private readSet: Set<string>;
   private endings: Set<EndingId>;
+  private cgsSeen: Set<string>;
   private globalDirty = false;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -129,6 +134,7 @@ export class SaveManager {
     const g = this.readGlobal();
     this.readSet = new Set(g.read);
     this.endings = new Set(g.endings);
+    this.cgsSeen = new Set(g.cgs ?? []);
     // 다른 탭이 읽은 대사·엔딩을 기록하면 바로 합쳐 둔다(건너뛰기 판정·엔딩 배지가 탭마다 어긋나지 않게)
     store.watch?.((key) => {
       if (key === null || key === GLOBAL_KEY) this.syncFromStore();
@@ -155,7 +161,8 @@ export class SaveManager {
       const endings = Array.isArray(v.endings)
         ? v.endings.filter((x): x is EndingId => typeof x === 'string' && x in this.story.endings)
         : [];
-      return { schema: GLOBAL_SCHEMA, read, endings };
+      const cgs = Array.isArray(v.cgs) ? v.cgs.filter((x): x is string => typeof x === 'string') : [];
+      return { schema: GLOBAL_SCHEMA, read, endings, cgs };
     } catch {
       // 전역 기록이 손상되면 읽음 기록만 잃고 계속한다
       return { schema: GLOBAL_SCHEMA, read: [], endings: [] };
@@ -168,10 +175,11 @@ export class SaveManager {
    */
   syncFromStore(): boolean {
     const g = this.readGlobal();
-    const before = this.readSet.size + this.endings.size;
+    const before = this.readSet.size + this.endings.size + this.cgsSeen.size;
     for (const id of g.read) this.readSet.add(id);
     for (const e of g.endings) this.endings.add(e);
-    return this.readSet.size + this.endings.size !== before;
+    for (const c of g.cgs ?? []) this.cgsSeen.add(c);
+    return this.readSet.size + this.endings.size + this.cgsSeen.size !== before;
   }
 
   isRead(stepId: string): boolean {
@@ -197,6 +205,21 @@ export class SaveManager {
     this.flushGlobal();
   }
 
+  /** 이벤트 CG 를 본 것으로 기록(추억 앨범 해금) */
+  markCg(id: string): void {
+    if (this.cgsSeen.has(id)) return;
+    this.cgsSeen.add(id);
+    this.flushGlobal();
+  }
+
+  hasSeenCg(id: string): boolean {
+    return this.cgsSeen.has(id);
+  }
+
+  cgsSeenList(): string[] {
+    return [...this.cgsSeen];
+  }
+
   private scheduleFlush() {
     this.globalDirty = true;
     if (this.flushTimer) return;
@@ -210,7 +233,7 @@ export class SaveManager {
     }
     // 다른 탭이 그사이 기록한 내용을 먼저 합친 뒤 쓴다(이 탭의 메모리로 통째로 덮어써 기록을 잃지 않게)
     this.syncFromStore();
-    const rec: GlobalRecord = { schema: GLOBAL_SCHEMA, read: [...this.readSet], endings: [...this.endings] };
+    const rec: GlobalRecord = { schema: GLOBAL_SCHEMA, read: [...this.readSet], endings: [...this.endings], cgs: [...this.cgsSeen] };
     this.store.set(GLOBAL_KEY, JSON.stringify(rec));
     this.globalDirty = false;
   }
@@ -382,7 +405,7 @@ export class SaveManager {
         route,
         choices,
         flags: { ...state.flags },
-        stage: { bg: cur.stage.bg, bgm: cur.stage.bgm, chars: {}, order: [] },
+        stage: { bg: cur.stage.bg, bgm: cur.stage.bgm, chars: {}, order: [], cg: null },
         log: state.log.slice(0, this.sceneLogStart(state.log, scene)),
         endedWith: null,
       };
@@ -516,6 +539,10 @@ export class SaveManager {
     if (typeof v.bg === 'string' && this.stageValidator.hasBg(v.bg)) stage.bg = v.bg as StageState['bg'];
     else if (v.bg !== undefined) check.droppedBg = true;
     if (typeof v.bgm === 'string' && this.stageValidator.hasBgm(v.bgm)) stage.bgm = v.bgm as StageState['bgm'];
+    // 이벤트 CG 는 화면 연출일 뿐이라 알 수 없으면 조용히 버린다(진행에는 영향 없음)
+    if (typeof v.cg === 'string' && (this.stageValidator.hasCg ? this.stageValidator.hasCg(v.cg) : true)) {
+      stage.cg = v.cg as StageState['cg'];
+    }
     if (isObj(v.chars)) {
       for (const c of HEROINES) {
         const cs = v.chars[c];

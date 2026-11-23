@@ -11,6 +11,7 @@ import { resolveText } from '../src/engine/text';
 import { validateStory } from '../src/engine/validate';
 import { STORY, SCENE_ORDER } from '../src/story';
 import { BACKGROUNDS, BGM, SFX } from '../src/story/assets';
+import { CGS } from '../src/story/cg';
 import { manifestChecker } from '../src/story/checker';
 import { NAMES, SETTING, SPEAKER_NAMES, TEXT_VARS, DATES, ENDING_TITLES, GAME_TITLE } from '../src/story/config';
 
@@ -178,6 +179,8 @@ function fmt(st: Step): string | null {
       return `- 〔음악: ${st.track ? BGM[st.track].desc : '정지'}〕`;
     case 'sfx':
       return `- 〔효과음: ${SFX[st.sound].desc}〕`;
+    case 'cg':
+      return st.cg ? `- 🖼 **[이벤트 CG: ${CGS[st.cg].title}]** ${CGS[st.cg].desc}` : '- 〔이벤트 CG 걷기〕';
     case 'fx':
       return `- 〔화면 효과: ${st.fx === 'shake' ? '흔들림' : '번쩍임'}〕`;
     case 'place':

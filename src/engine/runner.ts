@@ -6,6 +6,7 @@
  */
 import type {
   BlockingStep,
+  CgId,
   CharState,
   ChoiceStep,
   Cond,
@@ -31,6 +32,7 @@ export type StageEvent =
   | { kind: 'bgm'; track: StageState['bgm'] }
   | { kind: 'sfx'; sound: string }
   | { kind: 'fx'; fx: 'shake' | 'flash' }
+  | { kind: 'cg'; cg: CgId | null }
   | { kind: 'place'; text: string }
   | { kind: 'route'; route: HeroineId };
 
@@ -43,7 +45,7 @@ export interface StepResult {
 export class StoryError extends Error {}
 
 export function initialStage(): StageState {
-  return { bg: 'black', chars: {}, order: [], bgm: null };
+  return { bg: 'black', chars: {}, order: [], bgm: null, cg: null };
 }
 
 export function newGameState(story: Story): GameState {
@@ -212,8 +214,19 @@ export function settle(story: Story, state: GameState): StepResult {
 
     switch (step.t) {
       case 'bg':
+        // 장소가 바뀌면 이벤트 CG 는 걷힌다(배경 전환 연출과 함께 사라지도록 bg 이벤트보다 먼저 알린다)
+        if (state.stage.cg) {
+          state.stage.cg = null;
+          events.push({ kind: 'cg', cg: null });
+        }
         state.stage.bg = step.bg;
         events.push({ kind: 'bg', bg: step.bg, fx: step.fx ?? 'fade' });
+        break;
+      case 'cg':
+        if ((state.stage.cg ?? null) !== step.cg) {
+          state.stage.cg = step.cg;
+          events.push({ kind: 'cg', cg: step.cg });
+        }
         break;
       case 'show': {
         const prev = state.stage.chars[step.char];

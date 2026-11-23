@@ -7,28 +7,7 @@
  * 주인공의 착각: 소꿉친구의 배려는 '습관'(c1.110·c6.030), 전학생의 직진은 '친화력'(c6.j45)으로 받아들인다.
  */
 import type { Scene } from '../../engine/types';
-import {
-  bg,
-  bgm,
-  card,
-  choice,
-  chose,
-  decideRoute,
-  goto,
-  hide,
-  jump,
-  label,
-  me,
-  mono,
-  opt,
-  place,
-  routeBranch,
-  say,
-  scene,
-  sfx,
-  show,
-  when,
-} from '../../engine/dsl';
+import { bg, bgm, card, cg, choice, chose, decideRoute, goto, hide, jump, label, me, mono, opt, place, routeBranch, say, scene, sfx, show, when } from '../../engine/dsl';
 
 export const COMMON_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -219,6 +198,7 @@ export const COMMON_SCENES: Scene[] = [
     bgm('heart'),
     show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     show('tenko', { pos: 'right', expr: 'smile', outfit: 'uniform', hair: 'ponytail' }),
+    cg('rain_osana'),
     mono('c6.a20', '{osana}의 우산은 둘이 쓰기엔 작았다. 걸을수록 우산이 슬그머니 내 쪽으로 기울었다.'),
     me('c6.a30', '너 어깨 젖는다. 내 쪽으로 기울이지 마.'),
     say('c6.a40', 'osana', '…네가 감기 걸리면 아침에 기다리는 내가 곤란하거든.', 'shy'),
@@ -232,11 +212,13 @@ export const COMMON_SCENES: Scene[] = [
     bgm('heart'),
     show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     show('tenko', { pos: 'right', expr: 'neutral', outfit: 'uniform', hair: 'ponytail' }),
+    cg('rain_tenko'),
     say('c6.b30', 'tenko', '{me} 군, 어깨 다 젖었어. 우산이 너무 내 쪽이야.', 'fluster'),
     me('c6.b40', '묶은 머리가 젖으면 말리기 번거로울 테니까. 나는 금방 말라.'),
     say('c6.b50', 'tenko', '그런 것까지 보고 있었어?', 'shy'),
 
     label('c6.join'),
+    cg(null),
     mono('c6.j10', '편의점 앞 갈림길에 닿을 즈음, 빗줄기가 조금 가늘어졌다.'),
     when(chose('c6.ch', 'b'), 'c6.jb'),
     say('c6.j20', 'tenko', '우산은 내일 아침에 돌려줄게. {osana}짱이 챙겨 준 거잖아.', 'smile'),

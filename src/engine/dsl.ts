@@ -11,6 +11,7 @@ import type {
   BgFx,
   BgId,
   BgmId,
+  CgId,
   CardStep,
   CharId,
   ChoiceOption,
@@ -112,6 +113,8 @@ export const show = (
 export const hide = (char: CharId | 'all'): StepDraft => ({ t: 'hide', char });
 export const bgm = (track: BgmId | null): StepDraft => ({ t: 'bgm', track });
 export const sfx = (sound: SfxId): StepDraft => ({ t: 'sfx', sound });
+/** 이벤트 CG 표시. cg(null) 로 걷는다(다음 bg 명령에서도 자동으로 걷힘) */
+export const cg = (id: CgId | null): StepDraft => ({ t: 'cg', cg: id });
 export const shake = (): StepDraft => ({ t: 'fx', fx: 'shake' });
 export const flash = (): StepDraft => ({ t: 'fx', fx: 'flash' });
 export const place = (text: string): StepDraft => ({ t: 'place', text });

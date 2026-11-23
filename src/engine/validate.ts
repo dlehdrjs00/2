@@ -15,6 +15,8 @@ export interface AssetChecker {
   hasSprite(char: string, outfit: string, hair: string, expr: string): boolean;
   hasBgm(id: string): boolean;
   hasSfx(id: string): boolean;
+  /** 이벤트 CG 존재 여부(없으면 CG 검사 생략) */
+  hasCg?(id: string): boolean;
   speakers: readonly string[];
 }
 
@@ -135,6 +137,9 @@ export function validateStory(story: Story, assets: AssetChecker, vars: Readonly
           break;
         case 'bg':
           if (!assets.hasBg(step.bg)) errors.push(`${step.id}: 배경 에셋 '${step.bg}' 없음`);
+          break;
+        case 'cg':
+          if (step.cg && assets.hasCg && !assets.hasCg(step.cg)) errors.push(`${step.id}: 이벤트 CG 에셋 '${step.cg}' 없음`);
           break;
         case 'bgm':
           if (step.track && !assets.hasBgm(step.track)) errors.push(`${step.id}: 음악 에셋 '${step.track}' 없음`);

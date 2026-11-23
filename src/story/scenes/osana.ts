@@ -7,26 +7,7 @@
  *  - o5 축제 → o6 불꽃 전의 고백과 분명한 승낙 → o7 연인이 된 첫 귀갓길
  */
 import type { Scene } from '../../engine/types';
-import {
-  bg,
-  bgm,
-  card,
-  chose,
-  ending,
-  flash,
-  goto,
-  hide,
-  jump,
-  label,
-  me,
-  mono,
-  place,
-  say,
-  scene,
-  sfx,
-  show,
-  when,
-} from '../../engine/dsl';
+import { bg, bgm, card, cg, chose, ending, flash, goto, hide, jump, label, me, mono, place, say, scene, sfx, show, when } from '../../engine/dsl';
 
 export const OSANA_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -111,6 +92,7 @@ export const OSANA_SCENES: Scene[] = [
     bg('apartment_door'),
     place('역 앞 · 맨션 복도'),
     sfx('door'),
+    cg('door_osana'),
     mono('o2.130', '초인종을 누르자 문이 체인 길이만큼 열렸다. 틈으로 마스크에 카디건을 걸친 {osana:가} 보였다.'),
     say('o2.140', 'osana', '진짜 왔네. 노트만 주고 얼른 가. 옮으면 어쩌려고.'),
     me('o2.150', '하나만 묻자. 너, 매일 아침 이 길 걸어왔어?'),
@@ -211,8 +193,10 @@ export const OSANA_SCENES: Scene[] = [
     say('o4.140', 'osana', '두, 둘이서?', 'fluster'),
     me('o4.150', '그리고 하나 더. 내일도 같이 갈래? 앞으로도 계속, 내가 데리러 갈게.'),
     say('o4.160', 'osana', '…내일 토요일이거든.', 'neutral'),
+    cg('ramune_osana'),
     mono('o4.170', '아, 하는 소리가 먼저 나왔다. 서로 쳐다보다가 동시에 웃음이 터졌다.'),
     say('o4.180', 'osana', '월요일. 월요일에 데리러 와. 늦으면 3분마다 음료 하나야.', 'smile'),
+    cg(null),
     me('o4.190', '축제는?'),
     say('o4.200', 'osana', '…응.', 'shy'),
     mono('o4.210', '노을에 묻힐 만큼 작은 대답이었지만, 분명히 들었다.'),
@@ -283,6 +267,7 @@ export const OSANA_SCENES: Scene[] = [
     say('o6.170', 'osana', '아니, 그게 아니라. 나도 너랑 사귀고 싶어.', 'shy'),
     sfx('firework'),
     flash(),
+    cg('fireworks_osana'),
     mono('o6.180', '그 대답이 끝나기를 기다렸다는 듯, 첫 불꽃이 터졌다.'),
     say('o6.190', 'osana', '아까 금붕어 아저씨한테 한 말, 취소할게. 이제 그런 거 맞으니까.', 'smile'),
     sfx('firework'),
@@ -303,12 +288,14 @@ export const OSANA_SCENES: Scene[] = [
     say('o7.030', 'osana', '미아 될까 봐?'),
     me('o7.040', '아니. 이제는 이유 없이 잡아도 되니까.'),
     say('o7.050', 'osana', '바보. …그럼 놓지 마.', 'fluster'),
+    cg('homeward_osana'),
     mono('o7.060', '{osana:는} 잡히지 않은 쪽 손으로 수첩을 꺼내더니, 새 페이지를 펼쳤다.'),
     say('o7.070', 'osana', '오늘 건 네 승으로 적어 둘게. 먼저 말한 사람이 이긴 거니까.', 'smile'),
     mono('o7.080', '가로등 아래, 새 페이지 첫 줄에 삐뚤빼뚤한 글씨가 적혔다. 『{me}, 1승.』'),
     say('o7.090', 'osana', '{tenko:는} 이미 다 알고 있었겠지. 내일 단체방, 엄청 시끄럽겠다.'),
     say('o7.100', 'osana', '할머니한테도 엽서 쓰자. 우리 사귄다고 하면 “이제야?” 하실걸.'),
     me('o7.110', '가게는 닫았어도, 답장엔 덤이 붙어 올 것 같은데.'),
+    cg(null),
     mono('o7.120', '역 앞 맨션의 불빛이 보였다. {osana:가} 매일 아침 나를 데리러 나서던 곳. 오늘 내 산책길은 여기까지다.'),
     me('o7.130', '{osana}. 내일도 같이 갈래?'),
     say('o7.140', 'osana', '…내일은 일요일이거든. 방학이기도 하고.', 'neutral'),

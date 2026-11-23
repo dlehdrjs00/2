@@ -59,6 +59,20 @@ export type SfxId =
 
 export type EndingId = 'osana' | 'tenko';
 
+/** 이벤트 CG(한 장 그림). 무대 위(캐릭터보다 앞, 대사창 뒤)에 화면 가득 표시된다. */
+export type CgId =
+  | 'rain_osana'
+  | 'rain_tenko'
+  | 'door_osana'
+  | 'ramune_osana'
+  | 'fireworks_osana'
+  | 'homeward_osana'
+  | 'cats_tenko'
+  | 'bench_tenko'
+  | 'selfie_tenko'
+  | 'shutter_tenko'
+  | 'polaroid_tenko';
+
 /** 배경 전환 방식. */
 export type BgFx = 'fade' | 'black' | 'white' | 'cut';
 
@@ -167,6 +181,15 @@ export interface SfxStep extends StepBase {
   sound: SfxId;
 }
 
+/**
+ * 이벤트 CG 표시/해제. 비블로킹. cg: null 이면 CG 를 걷어 낸다.
+ * 배경(bg) 명령이 실행되면 CG 는 자동으로 걷힌다.
+ */
+export interface CgStep extends StepBase {
+  t: 'cg';
+  cg: CgId | null;
+}
+
 /** 화면 효과(흔들림, 플래시). 비블로킹. */
 export interface FxStep extends StepBase {
   t: 'fx';
@@ -234,6 +257,7 @@ export type Step =
   | HideStep
   | BgmStep
   | SfxStep
+  | CgStep
   | FxStep
   | PlaceStep
   | SetStep
@@ -287,6 +311,8 @@ export interface StageState {
   /** 등장 순서(겹침 순서) */
   order: CharId[];
   bgm: BgmId | null;
+  /** 표시 중인 이벤트 CG (없으면 null). 예전 저장 데이터에는 없을 수 있다 */
+  cg?: CgId | null;
 }
 
 export interface LogEntry {
