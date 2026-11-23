@@ -78,7 +78,7 @@ function sym(start, segs) {
   return d + 'Z';
 }
 /** 중심선 점 + 폭 → 리본. fill: 닫힌 외곽, line: 시작 단면을 뺀 외곽선 */
-function ribbon(pts, ws) {
+function ribbon(pts, ws, from = 0) {
   const n = pts.length;
   const L = [], R = [];
   for (let i = 0; i < n; i++) {
@@ -92,7 +92,9 @@ function ribbon(pts, ws) {
   }
   const Rr = R.slice().reverse();
   const line = `M${P(L[0])}${cr(L)}L${P(Rr[0])}${cr(Rr)}`;
-  return { fill: line + 'Z', line };
+  const Lp = L.slice(from), Rp = R.slice(from).reverse();
+  const part = from ? `M${P(Lp[0])}${cr(Lp)}L${P(Rp[0])}${cr(Rp)}` : line;
+  return { fill: line + 'Z', line: part };
 }
 /** Catmull-Rom 중심선 평가 */
 function crAt(pts, t) {
@@ -126,36 +128,59 @@ const el = (tag, attrs, inner) => {
   const a = Object.entries(attrs).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => ` ${k}="${v}"`).join('');
   return inner === undefined ? `<${tag}${a}/>` : `<${tag}${a}>${inner}</${tag}>`;
 };
-const path = (d, attrs = {}) => el('path', { d, ...attrs });
+/** 절대좌표 경로(M/L/C/Q/T/Z)를 상대좌표로 직렬화해 크기를 줄인다 */
+function relD(d) {
+  const toks = d.match(/[MLCQTZ]|-?\d*\.?\d+/g);
+  if (!toks || /[^MLCQTZ0-9.\s,-]/.test(d)) return d;
+  const AR = { M: 2, L: 2, T: 2, Q: 4, C: 6 };
+  const num = (v) => String(Math.round(v * 10) / 10);
+  let out = '', cx = 0, cy = 0, sx = 0, sy = 0, cmd = '', last = '', i = 0;
+  while (i < toks.length) {
+    const t = toks[i];
+    if (/[A-Z]/.test(t)) { cmd = t; i++; if (t === 'Z') { out += 'z'; cx = sx; cy = sy; last = 'z'; } continue; }
+    const n = AR[cmd];
+    const v = toks.slice(i, i + n).map(Number);
+    i += n;
+    if (cmd === 'M') { out += 'M' + num(v[0]) + (v[1] < 0 ? '' : ' ') + num(v[1]); cx = sx = v[0]; cy = sy = v[1]; last = 'M'; cmd = 'L'; continue; }
+    const rel = v.map((a, k) => a - (k % 2 ? cy : cx));
+    const lc = cmd.toLowerCase();
+    let body = rel.map((a, k) => { const q = num(a); return k === 0 || q[0] === '-' ? q : ' ' + q; }).join('');
+    if (lc === last) out += body[0] === '-' ? body : ' ' + body; else out += lc + body;
+    last = lc;
+    cx = v[n - 2]; cy = v[n - 1];
+  }
+  return out;
+}
+const path = (d, attrs = {}) => el('path', { d: relD(d), ...attrs });
 
 /* ------------------------------------------------------------------ */
 /* 머리 가닥 시스템                                                      */
 /* ------------------------------------------------------------------ */
 const PROF = {
-  bang: [0.2, 0.68, 0.94, 1, 0.96, 0.84, 0.62, 0.34, 0],
-  lock: [0.5, 0.88, 1, 1, 0.96, 0.86, 0.7, 0.44, 0],
-  back: [0.75, 0.92, 1, 1, 1, 0.95, 0.84, 0.58, 0],
-  wisp: [0.3, 0.9, 1, 0.92, 0.75, 0.55, 0.3, 0],
+  bang: [0.2, 0.8, 1, 0.94, 0.72, 0.4, 0],
+  lock: [0.5, 0.95, 1, 0.94, 0.8, 0.5, 0],
+  back: [0.75, 0.96, 1, 1, 0.92, 0.66, 0],
+  wisp: [0.3, 1, 0.92, 0.7, 0.45, 0.2, 0],
 };
 /** 중심선 함수 fn(t) + 최대 폭 w + 폭 프로필 → 가닥. opt.sh=[t0,t1,폭비,옆오프셋] 하이라이트, opt.fl=[[t0,t1,오프셋]] 결선 */
 function strand(fn, w, prof = PROF.bang, opt = {}) {
   const N = prof.length - 1;
   const pts = [], ws = [];
   for (let j = 0; j <= N; j++) { pts.push(fn(j / N)); ws.push(prof[j] * w); }
-  return { ...ribbon(pts, ws), fn, w, ...opt };
+  return { ...ribbon(pts, ws, opt.from ?? (prof === PROF.back ? 1 : prof === PROF.bang ? 3 : 2)), fn, w, ...opt };
 }
 function lens(fn, w, t0, t1, k, off = 0) {
   const pts = [], ws = [];
-  for (let j = 0; j <= 6; j++) {
-    const t = t0 + ((t1 - t0) * j) / 6;
+  for (let j = 0; j <= 4; j++) {
+    const t = t0 + ((t1 - t0) * j) / 4;
     pts.push(offsetAt(fn, t, off * w));
-    ws.push(Math.sin((Math.PI * j) / 6) * k * w);
+    ws.push(Math.sin((Math.PI * j) / 4) * k * w);
   }
   return ribbon(pts, ws).fill;
 }
 function flowLine(fn, w, t0, t1, off) {
   const pts = [];
-  for (let j = 0; j <= 5; j++) pts.push(offsetAt(fn, t0 + ((t1 - t0) * j) / 5, off * w));
+  for (let j = 0; j <= 4; j++) pts.push(offsetAt(fn, t0 + ((t1 - t0) * j) / 4, off * w));
   return `M${P(pts[0])}${cr(pts)}`;
 }
 /** 가닥 묶음 렌더: 전체 실루엣엔 굵은 외곽(언더레이), 겹치는 안쪽엔 가는 결선 */
@@ -165,7 +190,7 @@ function hairLayer(list, cls) {
     s += path(st.fill, { class: st.cls || cls });
     if (st.sh) s += path(lens(st.fn, st.w, ...st.sh), { class: 'hs' });
     if (st.fl) s += path(st.fl.map(([a, b, o]) => flowLine(st.fn, st.w, a, b, o)).join(''), { class: 'hw' });
-    s += path(st.line, { class: 'hi' });
+    if (st.line) s += path(st.line, { class: 'hi' });
   }
   return s;
 }
@@ -232,7 +257,7 @@ const EXPR = {
 const EXPR_OVERRIDE = {
   osana: {
     neutral: { eye: { drop: 4 }, mouth: 'smirk', brow: [1, 0, -1] },
-    smile: { eye: { drop: 5, lowRaise: 10 }, brow: [-4, -6, -3] },
+    smile: { eye: { mode: 'open', drop: 5, lowRaise: 10 }, brow: [-4, -6, -3] },
   },
 };
 
@@ -383,7 +408,7 @@ function brows(C, dy, alpha) {
 }
 
 const MOUTH_LINE = '#8a3634';
-function mouth(kind) {
+function mouth(kind, i) {
   const st = { fill: 'none', stroke: MOUTH_LINE, 'stroke-width': 2.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
   const OPEN = 'M382 300Q400 306 418 300C417 318 409 329 400 329C391 329 383 318 382 300Z';
   switch (kind) {
@@ -392,16 +417,18 @@ function mouth(kind) {
     case 'smirk':
       return path('M387 308Q398 312 408 306Q412 303 414 300', st) + path('M391 315Q398 317 404 314', { ...st, 'stroke-width': 1.3, opacity: 0.5 });
     case 'open':
-      return el('clipPath', { id: 'mc' }, path(OPEN)) + path(OPEN, { fill: '#a3333d' }) +
-        el('g', { 'clip-path': 'url(#mc)' }, el('ellipse', { cx: 400, cy: 327, rx: 12, ry: 7, fill: '#f08b90' }) + path('M380 299Q400 306 420 299L420 305Q400 311 380 305Z', { fill: '#fff' })) +
+      return el('clipPath', { id: `${i}mc` }, path(OPEN)) + path(OPEN, { fill: '#a3333d' }) +
+        el('g', { 'clip-path': `url(#${i}mc)` }, el('ellipse', { cx: 400, cy: 327, rx: 12, ry: 7, fill: '#f08b90' }) + path('M380 299Q400 306 420 299L420 305Q400 311 380 305Z', { fill: '#fff' })) +
         path(OPEN, { ...st, 'stroke-width': 2 });
     case 'wave':
-      return path('M387 309Q389 315 396 311Q400 308 404 311Q411 315 413 309Q409 318 400 318Q391 318 387 309Z', { fill: '#b2434b', stroke: MOUTH_LINE, 'stroke-width': 1.8, 'stroke-linejoin': 'round' }) +
-        path('M384 306Q387 302 391 306', { ...st, 'stroke-width': 1.6 }) + path('M409 306Q413 302 416 306', { ...st, 'stroke-width': 1.6 });
+      // 당황한 물결 입(살짝 벌어짐)
+      return path('M384 310Q388 303 392 309Q396 315 400 309Q404 303 408 309Q412 315 416 309Q412 321 400 320Q388 321 384 310Z', { fill: '#c45a60', 'fill-opacity': 0.55, stroke: 'none' }) +
+        path('M384 310Q388 303 392 309Q396 315 400 309Q404 303 408 309Q412 315 416 309', { ...st, 'stroke-width': 2.4 });
     case 'tiny':
       return path('M394 309Q400 312 406 308', st);
     case 'pout':
-      return path('M389 312Q394 304 400 307Q406 304 411 312', st) + path('M395 316Q400 318 405 316', { ...st, 'stroke-width': 1.5, opacity: 0.6 });
+      // 삐죽 내민 입: 작은 ㅅ자 + 아랫입술
+      return path('M390 313Q395 303 400 306Q405 303 410 313', st) + path('M394 317Q400 321 406 317', { ...st, 'stroke-width': 1.6, opacity: 0.7 });
     case 'sad':
       return path('M392 312Q400 307 408 312', st);
     default:
@@ -422,80 +449,105 @@ function blush(C, a, hatch, puff) {
     s += path(d + mirrorD(d), { stroke: '#e65c78', 'stroke-width': 1.9, 'stroke-linecap': 'round', opacity: 0.85 });
   }
   if (puff) {
-    const d = 'M480 264Q492 282 482 300';
-    s += path(d + mirrorD(d), { fill: 'none', stroke: SKIN.line, 'stroke-width': 1.8, 'stroke-linecap': 'round', opacity: 0.7 });
+    // 부푼 볼: 볼 안쪽 곡선 + 홍조 위 하이라이트
+    const d = 'M474 262Q492 280 478 302';
+    s += path(d + mirrorD(d), { fill: 'none', stroke: SKIN.line, 'stroke-width': 2, 'stroke-linecap': 'round', opacity: 0.75 });
+    s += el('ellipse', { cx: 466, cy: 280, rx: 6, ry: 3, fill: '#fff', opacity: 0.7 }) + el('ellipse', { cx: 334, cy: 280, rx: 6, ry: 3, fill: '#fff', opacity: 0.7 });
   }
   return s;
 }
 
 function sweat() {
-  const d = 'M532 160C537 174 547 186 547 196C547 206 540 212 532 212C524 212 517 206 517 196C517 186 527 174 532 160Z';
+  // 화면 왼쪽 관자놀이(리본·포니테일이 없는 쪽)
+  const d = 'M272 150C277 166 288 178 288 190C288 201 281 208 272 208C263 208 256 201 256 190C256 178 267 166 272 150Z';
   return path(d, { fill: '#cdeeff', stroke: '#5c9fd2', 'stroke-width': 2.2, 'stroke-linejoin': 'round' }) +
-    path('M525 194Q524 201 530 205', { fill: 'none', stroke: '#fff', 'stroke-width': 2.6, 'stroke-linecap': 'round' }) +
-    path('M556 150L564 140M560 166L572 162', { stroke: '#5c9fd2', 'stroke-width': 2.2, 'stroke-linecap': 'round' });
+    path('M264 188Q263 196 270 201', { fill: 'none', stroke: '#fff', 'stroke-width': 2.6, 'stroke-linecap': 'round' }) +
+    path('M246 140L238 130M242 158L230 154', { stroke: '#5c9fd2', 'stroke-width': 2.2, 'stroke-linecap': 'round' });
 }
 
 /* ------------------------------------------------------------------ */
 /* 머리 모양 정의                                                        */
 /* ------------------------------------------------------------------ */
-const DOME = [[400, 64], [478, 72], [534, 122], [554, 200], [554, 290], [528, 362], [400, 386], [272, 362], [246, 290], [246, 200], [266, 122], [322, 72]];
+const TOP_R = 'M400 64C450 64 500 84 530 118C548 140 556 170 555 205';
+const TOP_L = 'C244 170 252 140 270 118C300 84 350 64 400 64Z';
+/** 뒷머리 두상 */
+const DOME = TOP_R + 'C554 250 552 290 540 330C520 370 460 390 400 390C340 390 280 370 260 330C248 290 246 250 245 205' + TOP_L;
+/** 포니테일용 두상(옆머리를 묶어 올려 아래가 좁다) */
+const DOME_P = TOP_R + 'C554 240 546 280 526 312C500 350 450 372 400 372C350 372 300 350 274 312C254 280 246 240 245 205' + TOP_L;
+/** 앞머리 레이어에 넣는 정수리 덮개(아래 가장자리는 앞머리·옆머리에 가려진다) */
+const CAP = TOP_R + 'C554 236 548 272 530 306C520 270 510 230 496 196C480 170 444 152 400 150C356 152 320 170 304 196C290 230 280 270 270 306C252 272 246 236 245 205' + TOP_L;
+/** 천사의 고리: 가르마 쪽을 향한 가는 빛줄기들을 호를 따라 배치 */
+function angelRing(part, y0, x0 = 292, x1 = 508) {
+  let d = '';
+  let j = 0;
+  for (let x = x0; x <= x1; x += 12, j++) {
+    const y = y0 + Math.pow((x - 400) / 118, 2) * 34;
+    const len = [40, 26, 48, 30, 44, 22][j % 6] * (1 - Math.abs(x - 400) / 320);
+    const w = [9, 6, 11, 7, 10, 5][j % 6];
+    const a = Math.atan2(y - part[1], x - part[0]);
+    const ux = Math.cos(a), uy = Math.sin(a);
+    const p0 = [x - ux * len * 0.5, y - uy * len * 0.5], p1 = [x + ux * len * 0.5, y + uy * len * 0.5];
+    d += ribbon([p0, lerp(p0, p1, 0.5), p1], [0, w, 0]).fill;
+  }
+  return path(`M${x0} ${y0 + 30}Q400 ${y0 - 34} ${x1} ${y0 + 30}`, { fill: 'none', stroke: '#fff', 'stroke-width': 16, 'stroke-opacity': 0.12, 'stroke-linecap': 'round' }) + path(d, { class: 'hs' });
+}
 
 /* ---- 아카네(osana): 붉은 밤갈색 긴 생머리, 반묶음 + 짙은 리본, 분홍 핀 2개 ---- */
 function osanaHair() {
   const pt = [440, 80];
-  const SH = (t0 = 0.2, t1 = 0.42) => [t0, t1, 0.34, -0.12];
   const bangs = [
-    strand(bz(pt, [350, 74], [292, 150], [290, 256]), 46, PROF.bang, { sh: SH(0.24, 0.42), fl: [[0.3, 0.8, 0.15]] }),
-    strand(bz(pt, [368, 90], [312, 150], [318, 228]), 52, PROF.bang, { sh: SH(), fl: [[0.25, 0.75, -0.1]] }),
-    strand(bz(pt, [392, 98], [338, 162], [350, 222]), 54, PROF.bang, { sh: SH(), fl: [[0.3, 0.8, 0.12]] }),
-    strand(bz(pt, [412, 106], [372, 168], [380, 214]), 44, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [492, 84], [518, 156], [512, 252]), 46, PROF.bang, { sh: SH(0.22, 0.42), fl: [[0.3, 0.8, -0.12]] }),
-    strand(bz(pt, [476, 96], [502, 164], [486, 218]), 48, PROF.bang, { sh: SH(), fl: [[0.3, 0.75, 0.1]] }),
-    strand(bz(pt, [456, 106], [474, 170], [456, 222]), 46, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [436, 110], [444, 172], [426, 214]), 40, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [420, 130], [398, 196], [404, 256]), 28, PROF.bang, { sh: SH(0.25, 0.45) }),
+    strand(bz(pt, [350, 74], [292, 150], [290, 256]), 46, PROF.bang, { fl: [[0.5, 0.85, 0.15]] }),
+    strand(bz(pt, [368, 90], [312, 150], [318, 228]), 52, PROF.bang, { fl: [[0.5, 0.82, -0.1]] }),
+    strand(bz(pt, [392, 98], [338, 162], [350, 222]), 54, PROF.bang, { fl: [[0.5, 0.85, 0.12]] }),
+    strand(bz(pt, [412, 106], [372, 168], [380, 214]), 44, PROF.bang),
+    strand(bz(pt, [492, 84], [518, 156], [512, 252]), 46, PROF.bang, { fl: [[0.5, 0.85, -0.12]] }),
+    strand(bz(pt, [476, 96], [502, 164], [486, 218]), 48, PROF.bang, { fl: [[0.5, 0.82, 0.1]] }),
+    strand(bz(pt, [456, 106], [474, 170], [456, 222]), 46, PROF.bang),
+    strand(bz(pt, [436, 110], [444, 172], [426, 214]), 40, PROF.bang),
+    strand(bz(pt, [420, 130], [398, 196], [404, 256]), 28, PROF.bang),
     strand(bz([430, 100], [396, 140], [364, 190], [366, 242]), 11, PROF.wisp),
     strand(bz([450, 100], [474, 150], [494, 200], [490, 236]), 10, PROF.wisp),
   ];
   const sideL = [
-    strand(bz([308, 140], [266, 280], [306, 440], [296, 602]), 50, PROF.lock, { sh: [0.32, 0.52, 0.26, -0.15], fl: [[0.2, 0.85, 0.18], [0.3, 0.9, -0.15]] }),
+    strand(bz([308, 140], [266, 280], [306, 440], [296, 602]), 50, PROF.lock, { sh: [0.3, 0.5, 0.16, -0.2], fl: [[0.3, 0.85, 0.18], [0.35, 0.9, -0.15]] }),
     strand(bz([322, 130], [290, 206], [300, 300], [330, 364]), 32, PROF.lock, { fl: [[0.25, 0.8, 0.1]] }),
     strand(bz([326, 170], [304, 250], [316, 330], [344, 380]), 12, PROF.wisp),
   ];
   const sideR = [
-    strand(bz([492, 140], [536, 280], [494, 440], [506, 598]), 50, PROF.lock, { sh: [0.32, 0.52, 0.26, 0.15], fl: [[0.2, 0.85, -0.18], [0.3, 0.9, 0.15]] }),
+    strand(bz([492, 140], [536, 280], [494, 440], [506, 598]), 50, PROF.lock, { sh: [0.3, 0.5, 0.16, 0.2], fl: [[0.3, 0.85, -0.18], [0.35, 0.9, 0.15]] }),
     strand(bz([478, 130], [510, 206], [500, 300], [470, 364]), 32, PROF.lock, { fl: [[0.25, 0.8, -0.1]] }),
     strand(bz([474, 170], [496, 250], [484, 330], [456, 380]), 12, PROF.wisp),
   ];
   const backL = [
-    [bz([272, 160], [226, 380], [214, 700], [192, 952]), 72],
-    [bz([296, 220], [262, 440], [254, 700], [236, 926]), 62],
-    [bz([322, 300], [298, 500], [290, 720], [274, 906]), 56],
-    [bz([252, 300], [212, 500], [200, 720], [178, 892]), 34],
+    [bz([284, 180], [240, 400], [232, 700], [212, 950]), 58],
+    [bz([304, 230], [272, 450], [266, 710], [250, 926]), 56],
+    [bz([326, 300], [302, 500], [296, 720], [282, 906]), 52],
+    [bz([270, 320], [234, 520], [222, 730], [204, 896]), 30],
   ];
   const back = [];
   backL.forEach(([fn, w], j) => {
     back.push(strand(fn, w, PROF.back, { fl: [[0.2, 0.9, 0.12 * (j % 2 ? -1 : 1)]], sh: j < 2 ? [0.25, 0.5, 0.12, -0.2] : undefined }));
     back.push(strand(mirFn(fn), w, PROF.back, { fl: [[0.2, 0.9, -0.12 * (j % 2 ? -1 : 1)]], sh: j < 2 ? [0.25, 0.5, 0.12, 0.2] : undefined }));
   });
-  return { bangs, side: [...sideL, ...sideR], back, dome: closed(DOME) };
+  return { bangs, side: [...sideL, ...sideR], back, part: pt };
 }
 
 /** 반묶음 매듭 + 짙은 자주 리본 (뒤통수 오른쪽 위) */
 function osanaKnot(C) {
   const h = C.hair;
   let s = '';
-  const loop = closed([[508, 98], [532, 84], [556, 94], [560, 120], [544, 140], [518, 138]]);
+  // 묶은 머리 고리(뒤통수 오른쪽에서 살짝 보임)
+  const loop = closed([[524, 96], [548, 80], [574, 88], [580, 114], [564, 134], [538, 132]]);
   s += path(loop, { fill: `url(#${C.id}hg)`, stroke: h.line, 'stroke-width': 2.6 });
-  s += path('M516 104Q536 96 552 110M518 124Q534 116 550 128', { fill: 'none', stroke: h.line, 'stroke-width': 1.5, opacity: 0.7 });
-  const R = { f: '#3b2131', l: '#634054', d: '#22121c', line: '#170a12' };
-  const tail1 = ribbon([[538, 142], [548, 182], [544, 224], [552, 266]], [14, 15, 15, 15]);
-  const tail2 = ribbon([[528, 142], [526, 178], [518, 216], [522, 250]], [13, 14, 14, 14]);
+  s += path('M532 102Q552 92 570 104M536 120Q552 112 568 122', { fill: 'none', stroke: h.line, 'stroke-width': 1.5, opacity: 0.7 });
+  const R = { f: '#3b2131', l: '#6a4458', d: '#22121c', line: '#170a12' };
+  const tail1 = ribbon([[560, 150], [570, 186], [566, 226], [574, 268]], [14, 15, 15, 15]);
+  const tail2 = ribbon([[550, 150], [550, 184], [544, 220], [550, 252]], [13, 14, 14, 14]);
   s += path(tail2.fill, { fill: R.d, stroke: R.line, 'stroke-width': 2 }) + path(tail1.fill, { fill: R.f, stroke: R.line, 'stroke-width': 2 });
-  s += path('M536 138C552 118 576 118 578 134C580 150 560 154 538 146Z', { fill: R.f, stroke: R.line, 'stroke-width': 2.2 });
-  s += path('M528 138C512 118 490 120 490 136C490 152 510 154 528 146Z', { fill: R.f, stroke: R.line, 'stroke-width': 2.2 });
-  s += path('M542 140C554 132 566 132 570 138M502 136C510 130 518 132 524 138', { fill: 'none', stroke: R.l, 'stroke-width': 2, opacity: 0.9 });
-  s += el('rect', { x: 525, y: 133, width: 15, height: 15, rx: 5, fill: R.l, stroke: R.line, 'stroke-width': 2 });
+  s += path('M558 146C574 126 598 126 600 142C602 158 582 162 560 154Z', { fill: R.f, stroke: R.line, 'stroke-width': 2.2 });
+  s += path('M550 146C534 126 512 128 512 144C512 160 532 162 550 154Z', { fill: R.f, stroke: R.line, 'stroke-width': 2.2 });
+  s += path('M564 148C576 140 588 140 592 146M524 144C532 138 540 140 546 146', { fill: 'none', stroke: R.l, 'stroke-width': 2, opacity: 0.9 });
+  s += el('rect', { x: 547, y: 141, width: 15, height: 15, rx: 5, fill: R.l, stroke: R.line, 'stroke-width': 2 });
   return s;
 }
 function osanaPins() {
@@ -508,17 +560,16 @@ function osanaPins() {
 /* ---- 히나(tenko): 분홍 웨이브, 하늘색 핀 / 포니테일 + 하늘색 리본 ---- */
 function tenkoBangs() {
   const pt = [392, 80];
-  const SH = (t0 = 0.2, t1 = 0.42) => [t0, t1, 0.34, 0.1];
   return [
-    strand(bz(pt, [326, 80], [290, 156], [290, 258]), 46, PROF.bang, { sh: SH(0.24, 0.42), fl: [[0.3, 0.8, 0.15]] }),
-    strand(bz(pt, [344, 96], [298, 160], [318, 224]), 52, PROF.bang, { sh: SH(), fl: [[0.25, 0.75, -0.1]] }),
-    strand(bz(pt, [366, 104], [328, 170], [348, 218]), 52, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [470, 80], [516, 156], [512, 254]), 46, PROF.bang, { sh: SH(0.22, 0.42), fl: [[0.3, 0.8, -0.12]] }),
-    strand(bz(pt, [452, 94], [506, 162], [484, 222]), 52, PROF.bang, { sh: SH(), fl: [[0.3, 0.75, 0.1]] }),
-    strand(bz(pt, [430, 102], [476, 168], [456, 216]), 50, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [410, 108], [440, 172], [424, 214]), 44, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [394, 112], [404, 172], [384, 212]), 40, PROF.bang, { sh: SH() }),
-    strand(bz(pt, [398, 136], [418, 198], [410, 254]), 26, PROF.bang, { sh: SH(0.25, 0.45) }),
+    strand(bz(pt, [326, 80], [290, 156], [290, 258]), 46, PROF.bang, { fl: [[0.5, 0.85, 0.15]] }),
+    strand(bz(pt, [344, 96], [298, 160], [318, 224]), 52, PROF.bang, { fl: [[0.5, 0.82, -0.1]] }),
+    strand(bz(pt, [366, 104], [328, 170], [348, 218]), 52, PROF.bang),
+    strand(bz(pt, [470, 80], [516, 156], [512, 254]), 46, PROF.bang, { fl: [[0.5, 0.85, -0.12]] }),
+    strand(bz(pt, [452, 94], [506, 162], [484, 222]), 52, PROF.bang, { fl: [[0.5, 0.82, 0.1]] }),
+    strand(bz(pt, [430, 102], [476, 168], [456, 216]), 50, PROF.bang),
+    strand(bz(pt, [410, 108], [440, 172], [424, 214]), 44, PROF.bang),
+    strand(bz(pt, [394, 112], [404, 172], [384, 212]), 40, PROF.bang),
+    strand(bz(pt, [398, 136], [418, 198], [410, 254]), 26, PROF.bang),
     strand(bz([380, 100], [342, 150], [326, 196], [334, 240]), 10, PROF.wisp),
     strand(bz([412, 100], [452, 150], [476, 200], [470, 240]), 10, PROF.wisp),
   ];
@@ -531,17 +582,17 @@ function tenkoSide(long) {
       strand(bz(m([326, 172]), m([302, 250]), m([316, 334]), m([344, 384])), 12, PROF.wisp),
     ];
     const wv = long ? wavy(m([304, 146]), m([300, 660]), 8, 14 * sgn, 0.7) : wavy(m([306, 146]), m([296, 450]), 5, 10 * sgn, 0.7);
-    out.unshift(strand(poly(wv), long ? 52 : 44, PROF.lock, { sh: [0.3, 0.46, 0.26, -0.15 * sgn], fl: [[0.2, 0.85, 0.18 * sgn], [0.3, 0.9, -0.15 * sgn]] }));
+    out.unshift(strand(poly(wv), long ? 52 : 44, PROF.lock, { sh: [0.28, 0.44, 0.16, -0.2 * sgn], fl: [[0.3, 0.85, 0.18 * sgn], [0.35, 0.9, -0.15 * sgn]] }));
     return out;
   };
   return [...fr(1), ...fr(-1)];
 }
 function tenkoBackLong() {
   const defs = [
-    [wavy([270, 170], [188, 968], 9, 16, 0.3), 78],
-    [wavy([296, 236], [236, 944], 8, -14, 1.0), 64],
-    [wavy([322, 316], [284, 908], 6, 12, 1.6), 54],
-    [wavy([248, 320], [166, 900], 6, 14, 2.2), 40],
+    [wavy([280, 180], [204, 968], 9, 15, 0.3), 66],
+    [wavy([302, 240], [244, 944], 8, -13, 1.0), 58],
+    [wavy([324, 316], [288, 908], 6, 11, 1.6), 50],
+    [wavy([262, 320], [186, 900], 6, 13, 2.2), 36],
   ];
   const back = [];
   defs.forEach(([pts, w], j) => {
@@ -555,11 +606,28 @@ function tenkoBackLong() {
 function tenkoPony() {
   const S = (pts, w, prof, o) => strand(poly(pts), w, prof, o);
   return [
-    S([[524, 100], [572, 86], [614, 116], [636, 190], [628, 280], [646, 370], [634, 460], [654, 550], [636, 640], [652, 716]], 98, [0.4, 0.8, 1, 1, 0.96, 0.9, 0.8, 0.64, 0.4, 0], { fl: [[0.15, 0.9, 0.15], [0.2, 0.95, -0.2]], sh: [0.12, 0.3, 0.14, 0.1] }),
-    S([[530, 104], [574, 112], [604, 172], [600, 262], [616, 352], [600, 442], [618, 532], [598, 612], [606, 672]], 64, [0.4, 0.8, 1, 1, 0.96, 0.9, 0.75, 0.5, 0], { fl: [[0.2, 0.9, 0.1]] }),
-    S([[540, 100], [596, 104], [642, 160], [660, 240], [674, 320], [664, 410], [682, 490], [668, 572]], 52, [0.4, 0.8, 1, 1, 0.92, 0.8, 0.5, 0], { fl: [[0.2, 0.9, -0.1]] }),
-    S([[536, 96], [586, 78], [628, 94], [652, 140]], 26, [0.6, 1, 0.7, 0]),
+    S([[522, 100], [560, 90], [592, 116], [608, 184], [600, 270], [616, 360], [604, 450], [622, 540], [606, 630], [618, 700]], 76, [0.4, 0.8, 1, 1, 0.96, 0.9, 0.8, 0.62, 0.36, 0], { fl: [[0.15, 0.8, 0.15], [0.2, 0.82, -0.2]], sh: [0.1, 0.26, 0.12, 0.1] }),
+    S([[528, 104], [562, 112], [584, 170], [580, 260], [594, 350], [580, 440], [596, 530], [578, 610], [586, 664]], 50, [0.4, 0.8, 1, 1, 0.96, 0.9, 0.75, 0.5, 0], { fl: [[0.2, 0.8, 0.1]] }),
+    S([[536, 100], [580, 102], [616, 156], [630, 236], [642, 316], [634, 406], [648, 486], [636, 560]], 40, [0.4, 0.8, 1, 1, 0.92, 0.8, 0.5, 0], { fl: [[0.2, 0.78, -0.1]] }),
+    S([[532, 96], [572, 80], [606, 94], [626, 136]], 22, [0.6, 1, 0.7, 0]),
   ];
+}
+/** 땋은 머리: 중심선을 따라 좌우로 기운 잎 모양을 엇갈려 쌓고, 잎마다 아래쪽에 그늘 */
+function braid(fn, n, len, w) {
+  let d = '', sd = '';
+  for (let j = n - 1; j >= 0; j--) {
+    const t = (j + 0.5) / n;
+    const c = fn(t), a = fn(Math.max(0, t - 0.02)), b = fn(Math.min(1, t + 0.02));
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const tx = (b[0] - a[0]) / l, ty = (b[1] - a[1]) / l;
+    const ang = (j % 2 ? 1 : -1) * 0.85;
+    const ux = tx * Math.cos(ang) - ty * Math.sin(ang), uy = tx * Math.sin(ang) + ty * Math.cos(ang);
+    const k = 1 - t * 0.3;
+    const p0 = [c[0] - ux * len * 0.5 * k, c[1] - uy * len * 0.5 * k], p1 = [c[0] + ux * len * 0.5 * k, c[1] + uy * len * 0.5 * k];
+    d += ribbon([p0, lerp(p0, p1, 0.45), p1], [4, w * k, 2]).fill;
+    sd += ribbon([lerp(p0, p1, 0.55), lerp(p0, p1, 0.8), p1], [w * k * 0.7, w * k * 0.5, 1]).fill;
+  }
+  return path(d, { class: 'hbr' }) + path(sd, { class: 'hw', fill: '#000', 'fill-opacity': 0.1, stroke: 'none' });
 }
 function tenkoPin() {
   return el('g', { transform: 'translate(472 170) rotate(-32)' },
@@ -583,10 +651,11 @@ function tenkoPonyRibbon() {
 /* ------------------------------------------------------------------ */
 /* 교복                                                                 */
 /* ------------------------------------------------------------------ */
-const ARM = [[272, 462], [260, 560], [255, 660], [262, 760], [276, 846]];
-const ARM_W = [64, 55, 50, 50, 54];
-const HAND = 'M264 872C260 892 266 914 279 924C290 932 302 924 302 906C303 892 300 880 298 870Z';
-const HAND_LN = 'M281 902L285 921M290 898L294 914';
+// 뒷짐 포즈: 윗팔은 몸통 앞, 아래팔은 팔꿈치에서 꺾여 몸통 뒤(허리 뒤)로 들어간다
+const UPPER = [[274, 462], [264, 540], [258, 610], [259, 668], [262, 694]];
+const UPPER_W = [60, 52, 48, 46, 44];
+const FORE = [[258, 630], [262, 690], [282, 742], [318, 782], [350, 800]];
+const FORE_W = [46, 46, 46, 44, 42];
 
 function skirtAndLegs(i) {
   let s = '';
@@ -604,11 +673,12 @@ function skirtAndLegs(i) {
     const bx0 = X0 + XW * t0, bx1 = X0 + XW * t1, bm = (bx0 + bx1) / 2;
     const b0 = [bx0, hemY(bx0) + (j % 2 ? 7 : 0)], b1 = [bx1, hemY(bx1) + (j % 2 ? 0 : 7)];
     const m = [bm, hemY(bm) + 4];
-    panels += path(`M${P([topX(t0), 790])}L${P([topX(t1), 790])}L${P(b1)}L${P(m)}L${P(b0)}Z`, { fill: j % 2 ? `url(#${i}sk)` : SKIRT.dark, 'fill-opacity': j % 2 ? 1 : 0.9 });
+    if (!(j % 2)) panels += path(`M${P([topX(t0), 790])}L${P([topX(t1), 790])}L${P(b1)}L${P(m)}L${P(b0)}Z`, { fill: '#000', 'fill-opacity': 0.24 });
     if (!j) hem += `M${P(b0)}`;
     hem += `L${P(m)}L${P(b1)}`;
   }
-  s += path(`M306 790L494 790L${P([X0 + XW, hemY(X0 + XW)])}L${P([X0, hemY(X0)])}Z`, { fill: `url(#${i}sk)` });
+  const hemPts = hem.slice(1).split('L');
+  s += path(`M306 790L494 790L${hemPts.slice().reverse().join('L')}Z`, { fill: `url(#${i}sk)` });
   s += panels;
   // 주름 하이라이트/선
   let pl = '', hl = '';
@@ -628,9 +698,11 @@ function uniform(C, opts) {
   const i = C.id, k = C.knit;
   const ln = { stroke: k.line, 'stroke-width': 2.6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
   let s = skirtAndLegs(i);
-  // 손(소매 끝에서)
-  s += path(HAND + mirrorD(HAND), { fill: SKIN.base, stroke: SKIN.line, 'stroke-width': 2 });
-  s += path(HAND_LN + mirrorD(HAND_LN), { stroke: SKIN.line, 'stroke-width': 1.3, opacity: 0.6, 'stroke-linecap': 'round' });
+  // 아래팔(몸통 뒤)
+  const fore = ribbon(FORE, FORE_W);
+  s += path(fore.fill + mirrorD(fore.fill), { fill: `url(#${i}kn)` });
+  s += path(fore.line + mirrorD(fore.line), { fill: 'none', ...ln });
+  s += path('M248 700C256 712 264 718 274 720' + mirrorD('M248 700C256 712 264 718 274 720'), { fill: 'none', stroke: k.dark, 'stroke-width': 1.6, opacity: 0.6, 'stroke-linecap': 'round' });
   // 셔츠 뒷깃 + 목
   s += path('M366 390C368 368 374 350 380 344L420 344C426 350 432 368 434 390Z', { fill: SHIRT.base, stroke: SHIRT.line, 'stroke-width': 2 });
   s += path(NECK, { fill: SKIN.base, stroke: SKIN.line, 'stroke-width': 2.2 });
@@ -639,15 +711,14 @@ function uniform(C, opts) {
   s += path('M374 396L400 600L426 396', { fill: 'none', stroke: SHIRT.shade, 'stroke-width': 10, opacity: 0.8 });
 
   // 카디건 몸판 (화면 왼쪽 판이 위)
-  const panelL = 'M366 386C342 396 304 410 282 428C266 440 258 456 260 474L300 524C306 600 320 650 320 700C318 750 306 800 304 846L408 850L408 596C396 540 378 450 366 386Z';
-  const panelR = mirrorD(panelL).replace('392 850L392 596', '392 850L392 596');
-  const pR = 'M434 386C458 396 496 410 518 428C534 440 542 456 540 474L500 524C494 600 480 650 480 700C482 750 494 800 496 846L392 850L392 596C404 540 422 450 434 386Z';
+  const panelL = 'M366 386C342 396 304 410 282 426C258 440 246 458 244 482L300 524C306 600 320 650 320 700C318 750 306 800 304 846L408 850L408 596C396 540 378 450 366 386Z';
+  const pR = 'M434 386C458 396 496 410 518 426C542 440 554 458 556 482L500 524C494 600 480 650 480 700C482 750 494 800 496 846L392 850L392 596C404 540 422 450 434 386Z';
   s += el('clipPath', { id: `${i}cp` }, path(pR) + path(panelL));
   s += path(pR, { fill: `url(#${i}kn)`, ...ln });
   s += path(panelL, { fill: `url(#${i}kn)`, ...ln });
   let shade = '';
-  const bust = 'M306 548C332 576 370 582 404 570L404 606C370 612 332 602 310 586Z';
-  shade += path(bust + mirrorD(bust), { fill: k.shade, opacity: 0.5 });
+  const bust = 'M312 552C330 580 360 590 392 578C372 600 336 598 314 578Z';
+  shade += path(bust + mirrorD(bust), { fill: k.dark, opacity: 0.28 });
   const side = 'M282 430C300 480 306 560 322 640C332 700 322 780 334 850L300 850L296 430Z';
   shade += path(side + mirrorD(side), { fill: k.shade, opacity: 0.45 });
   shade += path('M300 410L500 410L500 444C460 432 340 432 300 444Z', { fill: k.dark, opacity: 0.2 });
@@ -669,20 +740,17 @@ function uniform(C, opts) {
     s += path(pk + mirrorD(pk), { fill: k.base, ...ln, 'stroke-width': 1.8 });
     s += path('M324 750L378 748' + mirrorD('M324 750L378 748'), { stroke: k.line, 'stroke-width': 1.4, opacity: 0.8 });
   }
-  // 소매
-  const arm = ribbon(ARM, ARM_W);
+  // 윗팔(몸통 앞). 팔꿈치 단면에는 선을 긋지 않는다
+  const up = ribbon(UPPER, UPPER_W);
+  const cut = up.fill.indexOf('L');
+  const upSides = up.fill.slice(0, cut) + 'M' + up.fill.slice(cut + 1, -1);
   for (const flip of [false, true]) {
     const f = (d) => (flip ? mirrorD(d) : d);
-    s += path(f(arm.fill), { fill: `url(#${i}kn)` });
-    s += path(f('M242 478C234 560 230 680 238 780C244 820 252 840 252 848L266 848C258 800 250 720 252 640C254 580 258 520 262 470Z'), { fill: k.shade, opacity: 0.55 });
-    s += path(f(arm.line), { fill: 'none', ...ln });
+    s += path(f(up.fill), { fill: `url(#${i}kn)` });
+    s += path(f('M246 478C238 540 234 610 238 690C244 660 250 600 266 470Z'), { fill: k.shade, opacity: 0.55 });
+    s += path(f(upSides), { fill: 'none', ...ln });
     s += path(f('M242 472C258 464 284 466 304 478'), { fill: 'none', stroke: k.dark, 'stroke-width': 1.6, opacity: 0.55 });
-    s += path(f('M282 640C274 650 273 662 279 674M287 686C279 696 278 708 284 718M234 690C240 698 242 708 238 718'), { fill: 'none', stroke: k.dark, 'stroke-width': 1.6, 'stroke-linecap': 'round', opacity: 0.6 });
-    const cuff = ribbon([[276, 836], [281, 874]], [58, 60]);
-    s += path(f(cuff.fill), { fill: k.base, ...ln, 'stroke-width': 2.2 });
-    let c2 = '';
-    for (let x = 252; x < 306; x += 7) c2 += `M${x} ${840 + (x - 252) * 0.1}L${x + 1} ${870 + (x - 252) * 0.1}`;
-    s += path(f(c2), { stroke: k.dark, 'stroke-width': 1.1, opacity: 0.5 });
+    s += path(f('M280 600C272 610 271 622 277 634M236 640C242 648 244 658 240 668'), { fill: 'none', stroke: k.dark, 'stroke-width': 1.6, 'stroke-linecap': 'round', opacity: 0.6 });
   }
   // 셔츠 깃
   const collar = 'M400 406L370 370C358 380 346 394 338 408L370 452Z';
@@ -766,11 +834,7 @@ function yukata(C) {
   s += path(skirt, { fill: fabric, ...ln }) + path(skirt, { fill: shade });
   s += path('M398 756C392 900 384 1050 376 1200L392 1200C398 1050 404 900 410 756Z', { fill: '#000', opacity: 0.12 });
   s += path('M398 756C392 900 384 1050 376 1200', { fill: 'none', ...ln, 'stroke-width': 2.2 });
-  s += path('M330 1000C340 1080 344 1140 346 1200M460 980C456 1060 452 1130 452 1200', { fill: 'none', stroke: y.dark, 'stroke-width': 2, opacity: 0.4, 'stroke-linecap': 'round' });
-  // 손
-  const hand = 'M292 856C288 876 294 898 308 902C320 904 326 888 322 858Z';
-  s += path(hand + mirrorD(hand), { fill: SKIN.base, stroke: SKIN.line, 'stroke-width': 2 });
-  s += path('M304 884L307 899M312 882L315 895' + mirrorD('M304 884L307 899M312 882L315 895'), { stroke: SKIN.line, 'stroke-width': 1.2, opacity: 0.6 });
+  s += path('M330 1000C340 1080 344 1140 346 1200M460 980C456 1060 452 1130 452 1200M318 800C340 830 360 840 380 842', { fill: 'none', stroke: y.dark, 'stroke-width': 2, opacity: 0.4, 'stroke-linecap': 'round' });
   // 목·가슴 V
   s += path('M378 300C379 336 378 362 371 390L400 482L429 390C422 362 421 336 422 300Z', { fill: SKIN.base, stroke: SKIN.line, 'stroke-width': 2.2 });
   s += path(NECK_SH, { fill: SKIN.shade });
@@ -795,13 +859,13 @@ function yukata(C) {
   s += el('ellipse', { cx: 400, cy: 706, rx: 12, ry: 8, fill: y.cord, stroke: y.cordD, 'stroke-width': 2 });
   s += path('M392 712C388 726 386 740 388 752M408 712C412 726 416 738 414 750', { fill: 'none', stroke: y.cord, 'stroke-width': 3.4, 'stroke-linecap': 'round' });
   // 소매(넓게 늘어짐)
-  const sleeve = 'M282 428C254 442 240 476 236 524C228 620 220 740 220 846C220 880 232 898 258 900L312 896C318 856 318 760 316 700C314 640 312 600 304 540L300 474Z';
+  const sleeve = 'M282 428C254 440 236 474 230 520C222 600 210 720 206 830C204 870 218 894 250 898L298 896C314 894 322 884 322 868C322 800 318 730 314 680C310 630 306 590 302 548L300 474Z';
   for (const flip of [false, true]) {
     const f = (d) => (flip ? mirrorD(d) : d);
     s += path(f(sleeve), { fill: fabric, ...ln }) + path(f(sleeve), { fill: shade });
-    s += path(f('M240 504C234 620 228 760 228 860C230 884 240 892 258 894L264 894C250 878 246 858 248 818C250 718 252 600 258 500Z'), { fill: '#000', opacity: 0.13 });
-    s += path(f('M296 520C290 600 286 700 290 800'), { fill: 'none', stroke: y.dark, 'stroke-width': 1.8, opacity: 0.6, 'stroke-linecap': 'round' });
-    s += path(f('M314 856C310 864 304 872 298 876'), { fill: 'none', ...ln, 'stroke-width': 2 });
+    s += path(f('M234 504C226 620 216 760 214 850C214 880 226 890 250 892L258 892C240 876 234 856 236 816C238 718 242 600 250 500Z'), { fill: '#000', opacity: 0.14 });
+    s += path(f('M270 470C262 540 258 610 262 680M292 700C286 760 284 820 290 884'), { fill: 'none', stroke: y.dark, 'stroke-width': 1.8, opacity: 0.55, 'stroke-linecap': 'round' });
+    s += path(f('M262 680C272 700 290 712 312 716'), { fill: 'none', stroke: y.dark, 'stroke-width': 1.6, opacity: 0.45, 'stroke-linecap': 'round' });
   }
   return s;
 }
@@ -814,15 +878,16 @@ function hairStyle(C, charKey, hair) {
   let H;
   if (charKey === 'osana') {
     const o = osanaHair();
-    H = { bangs: o.bangs, side: o.side, back: o.back, pony: [], dome: o.dome, backExtra: osanaKnot(C), acc: osanaPins() };
+    H = { bangs: o.bangs, side: o.side, back: o.back, pony: [], part: o.part, backExtra: '', acc: osanaKnot(C) + osanaPins() };
   } else if (hair === 'ponytail') {
-    H = { bangs: tenkoBangs(), side: tenkoSide(false), back: [], pony: tenkoPony(), dome: closed(DOME), backExtra: tenkoPonyRibbon(), acc: '' };
+    H = { bangs: tenkoBangs(), side: tenkoSide(false), back: [], pony: tenkoPony(), part: [392, 80], backExtra: tenkoPonyRibbon(), acc: '' };
   } else {
-    H = { bangs: tenkoBangs(), side: tenkoSide(true), back: tenkoBackLong(), pony: [], dome: closed(DOME), backExtra: '', acc: tenkoPin() };
+    H = { bangs: tenkoBangs(), side: tenkoSide(true), back: tenkoBackLong(), pony: [], part: [392, 80], backExtra: '', acc: tenkoPin(), braid: braid(bz([338, 116], [298, 200], [286, 320], [298, 444]), 14, 40, 24) };
   }
   H.backSvg = hairLayer([...H.back, ...H.pony], 'hd');
-  H.domeSvg = path(H.dome, { class: 'hd', stroke: C.hair.line, 'stroke-width': 2.7 });
-  H.frontSvg = hairLayer([...H.side, ...H.bangs], 'hf');
+  H.domeSvg = path(hair === 'ponytail' ? DOME_P : DOME, { class: 'hd', stroke: C.hair.line, 'stroke-width': 2.7 });
+  const cap = { fill: CAP, line: '' };
+  H.frontSvg = hairLayer([cap, ...H.side], 'hf') + (H.braid || '') + hairLayer(H.bangs, 'hf') + angelRing(H.part, 122);
   PREC = 1;
   return H;
 }
@@ -841,7 +906,8 @@ function build(charKey, outfit, hair, exprKey) {
   }
   const style = `.hf{fill:url(#${i}hg)}.hd{fill:url(#${i}hb)}.hu{fill:none;stroke:${h.line};stroke-width:5.4;stroke-linejoin:round}` +
     `.hi{fill:none;stroke:${h.line};stroke-width:1.6;stroke-opacity:.7;stroke-linejoin:round;stroke-linecap:round}` +
-    `.hw{fill:none;stroke:${h.dark};stroke-width:1.4;stroke-opacity:.55;stroke-linecap:round}.hs{fill:${h.hi};fill-opacity:.7}`;
+    `.hw{fill:none;stroke:${h.dark};stroke-width:1.4;stroke-opacity:.55;stroke-linecap:round}.hs{fill:${h.hi};fill-opacity:.7}` +
+    `.hbr{fill:url(#${i}hg);stroke:${h.line};stroke-width:2;stroke-linejoin:round}`;
 
   // 1) 뒷머리: 긴 가닥 → 두상 → 목 뒤 어둠 → 매듭/리본
   const back = H.backSvg + H.domeSvg + el('ellipse', { cx: 400, cy: 350, rx: 112, ry: 96, fill: h.inner, opacity: 0.6 }) + H.backExtra;
@@ -850,16 +916,15 @@ function build(charKey, outfit, hair, exprKey) {
   // 3) 얼굴
   const fc = face(C, H.bangs);
   // 4) 표정
-  const ex1 = blush(C, ex.blush, ex.hatch, ex.puff) + eyes(C, ex.eye) + mouth(ex.mouth);
+  const ex1 = blush(C, ex.blush, ex.hatch, ex.puff) + eyes(C, ex.eye) + mouth(ex.mouth, i);
   // 5) 앞머리, 6) 눈썹(앞머리 위로 비침), 액세서리, 효과
   const br = brows(C, ex.brow, 0.78);
   const fx = ex.sweat ? sweat() : '';
 
   const sc = C.scale;
   const tf = sc === 1 ? undefined : `matrix(${sc} 0 0 ${sc} ${rd(400 * (1 - sc))} ${rd(1200 * (1 - sc))})`;
-  const g = el('g', { id: 'back' }, back) + el('g', { id: 'body' }, body) + el('g', { id: 'face' }, fc) +
-    el('g', { id: 'expr' }, ex1) + el('g', { id: 'front' }, H.frontSvg) + el('g', { id: 'brow' }, br) +
-    el('g', { id: 'acc' }, H.acc) + el('g', { id: 'fx' }, fx);
+  const L = (name, inner) => el('g', { 'data-layer': name }, inner);
+  const g = L('back', back) + L('body', body) + L('face', fc) + L('expr', ex1) + L('front', H.frontSvg) + L('brow', br) + L('acc', H.acc) + L('fx', fx);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" width="800" height="1200">` +
     `<title>임시 일러스트</title><!-- PLACEHOLDER: ${charKey} ${outfit}/${hair}/${exprKey} — scripts/art/characters.mjs 로 생성한 교체용 임시 스프라이트 -->` +
     `<defs><style>${style}</style>${defs}</defs>` + el('g', { transform: tf }, g) + `</svg>\n`;
