@@ -1,0 +1,1438 @@
+/* 《내일도 같이 갈래?》 플레이 화면: 무대 · 대사창 · 이름표 · 빠른 메뉴 탭 · 선택지 · 날짜 카드 · 토스트 (무대·대사창 팀)
+ * 방향: 「맑은 여름 하늘」 흰·하늘 반투명 유리 + 얇은 장식선 + 4각 별. 밤 배경(#vn[data-tone=night])은 남색 유리.
+ * 배치 변수(--sx --sy --sw --sh, --tx --ty --tw --th, --cx --cy --cw --ch, --fs --m --btn --hy --hr, --tb-grow)는
+ * layout.ts·textbox.ts 가 #vn 루트에 넣는다. 수치는 docs/UI_DESIGN.md 5·6·8·9장.
+ */
+
+/* =========================================================================
+ * 1. 게임 루트
+ * ========================================================================= */
+.vn {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* 스크롤 컨테이너가 아니게: 화면보다 큰 레터박스(.backdrop)나 화면 밖 요소로 포커스·scrollIntoView 가
+   * 일어나도 #vn 이 밀려 올라가 무대 위쪽이 잘리는 일이 없게 한다(지원하지 않으면 hidden 그대로) */
+  overflow: clip;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  --fs: 18px;
+  --m: 8px;
+  --btn: 44px;
+  --win-alpha: 0.82;
+  /* 패널 본문 글자(화면 팀도 씀) */
+  --ui: clamp(16px, calc(var(--fs) * 0.78), 19px);
+}
+
+/* 레터박스 채움: 어둡게가 아니라 밝게 흐린다(하늘 느낌). 밤은 어둡게 + 남색 베일 */
+.backdrop {
+  position: absolute;
+  inset: -40px;
+  background-color: #cfe6f8;
+  background-size: cover;
+  background-position: center;
+  filter: blur(24px) brightness(1.08) saturate(1.05);
+  transform: scale(1.06);
+  transition: background-image 0.6s;
+}
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(240, 248, 255, 0.55), rgba(255, 244, 248, 0.45));
+}
+.vn[data-tone='night'] .backdrop {
+  filter: blur(24px) brightness(0.8) saturate(1.05);
+}
+.vn[data-tone='night'] .backdrop::after {
+  background: linear-gradient(180deg, rgba(16, 26, 56, 0.45), rgba(30, 24, 60, 0.4));
+}
+
+/* =========================================================================
+ * 2. 무대
+ * ========================================================================= */
+.stage {
+  position: absolute;
+  left: var(--sx);
+  top: var(--sy);
+  width: var(--sw);
+  height: var(--sh);
+  overflow: hidden;
+  overflow: clip;
+  background: #cfe6f8;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.6),
+    0 10px 40px rgba(30, 70, 120, 0.25);
+  /* 쌓임 맥락: 무대 안 베일·카드가 대사창·빠른 메뉴를 덮지 않게 */
+  contain: layout paint;
+  /* 인물 기본 위치: 정수리가 빠른 메뉴 탭·장소 표시와 겹치지 않고, 얼굴은 대사창 위에 오게 */
+  --char-bottom: -22%;
+  --char-height: 116%;
+}
+
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 0.55s ease;
+}
+.bg-layer.on {
+  opacity: 1;
+}
+
+.chars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.char {
+  position: absolute;
+  bottom: var(--char-bottom);
+  height: var(--char-height);
+  width: auto;
+  transform: translateX(-50%);
+  opacity: 1;
+  filter: drop-shadow(0 6px 16px rgba(24, 60, 110, 0.28));
+  transition:
+    left 0.45s ease,
+    opacity 0.35s ease,
+    filter 0.35s ease,
+    translate 0.35s ease;
+  will-change: opacity;
+}
+/* 등장: 아래 2.5% 에서 제자리로 + 페이드(그림 해독이 끝난 뒤 stage.ts 가 entering 을 뗀다) */
+.char.entering {
+  opacity: 0;
+  translate: 0 2.5%;
+}
+.char.leaving {
+  opacity: 0;
+}
+.char.pos-left {
+  left: 27%;
+}
+.char.pos-center {
+  left: 50%;
+}
+.char.pos-right {
+  left: 73%;
+}
+/* 말하지 않는 인물: 어둡게가 아니라 살짝 바래게(밝은 화면 톤 유지). 선택지 중에는 모두 */
+.char.dim,
+.vn[data-frame='choice'] .char {
+  filter: brightness(0.9) saturate(0.78) contrast(0.95) drop-shadow(0 6px 16px rgba(24, 60, 110, 0.2));
+}
+
+/* 무대 위 햇살(오른쪽 위 빛 번짐) — 낮은 하늘빛, 노을은 살구빛, 밤은 없음 */
+.sunwash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 45% at 88% -8%, rgba(255, 246, 214, 0.55), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 30%);
+  mix-blend-mode: screen;
+  transition: opacity 0.6s ease;
+}
+.stage[data-tone='evening'] .sunwash {
+  background: radial-gradient(ellipse 60% 45% at 85% -6%, rgba(255, 214, 170, 0.42), transparent 70%);
+}
+.stage[data-tone='night'] .sunwash {
+  opacity: 0;
+}
+
+/* 빛망울: transform·opacity 만 움직인다(개수 상한은 stage.ts) */
+.motes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.motes i {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, var(--c, rgba(200, 232, 255, 0.55)) 45%, transparent 72%);
+  opacity: var(--o, 0.7);
+  filter: blur(var(--b, 0px));
+  animation: mote-float var(--d, 14s) ease-in-out var(--dl, 0s) infinite alternate;
+}
+.motes i.glint {
+  border-radius: 0;
+  background: #fff;
+  -webkit-mask: var(--i-star) center / contain no-repeat;
+  mask: var(--i-star) center / contain no-repeat;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9));
+  animation: mote-twinkle 4s ease-in-out var(--dl, 0s) infinite;
+}
+/* 대사 화면: 위쪽에만 옅게 */
+.stage > .motes[data-kind='play'] {
+  opacity: 0.85;
+}
+.stage[data-tone='night'] > .motes[data-kind='play'] {
+  opacity: 1;
+}
+@keyframes mote-float {
+  from {
+    translate: 0 0;
+  }
+  to {
+    translate: var(--dx, 12px) -36px;
+  }
+}
+@keyframes mote-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+    scale: 0.6;
+  }
+  50% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+/* 설정에서 빛망울 효과를 끄면 비운다(stage.ts 가 비우고, 루트에 data-particles=0 이 있으면 CSS 도 감춘다) */
+[data-particles='0'] .motes {
+  display: none;
+}
+
+/* 암전·섬광 */
+.veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.veil.black {
+  background: #050407;
+}
+.veil.white {
+  background: #fffdf8;
+}
+.veil.on {
+  opacity: 1;
+}
+
+.stage.shake {
+  animation: vn-shake 0.42s linear;
+}
+@keyframes vn-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(-1.1%, 0.4%);
+  }
+  40% {
+    transform: translate(1%, -0.4%);
+  }
+  60% {
+    transform: translate(-0.6%, 0.2%);
+  }
+  80% {
+    transform: translate(0.5%, 0);
+  }
+}
+
+/* 선택지 중 무대 베일: 가운데는 밝게, 가장자리는 하늘 남색으로 살짝 눌러 선택지 리본이 떠 보이게 */
+.choice-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232, 244, 255, 0.22), rgba(36, 70, 118, 0.26) 100%);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s;
+}
+.vn[data-frame='choice'] .choice-veil {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* =========================================================================
+ * 3. 장소 표시: 무대 왼쪽 위 유리 알약(해/달 아이콘 + 때 │ 장소)
+ * ========================================================================= */
+.place-chip {
+  position: absolute;
+  left: calc(var(--fs) * 0.8);
+  top: calc(var(--fs) * 0.7);
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  max-width: calc(100% - var(--fs) * 1.6);
+  padding: 0.45em 1.1em 0.45em 0.8em;
+  font: 600 max(16px, calc(var(--fs) * 0.72)) / 1.3 var(--font-ui);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  white-space: nowrap;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.66));
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  border: 1px solid var(--glass-hi);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 6px 18px rgba(28, 72, 124, 0.16);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+.place-chip.on {
+  opacity: 1;
+  transform: none;
+}
+/* 무대가 작은 화면(세로 대체 배치·낮은 가로)에서는 선택지 첫 줄과 겹치지 않게 선택지 동안 감춘다 */
+.vn[data-layout='below'][data-frame='choice'] .place-chip.on,
+.vn[data-dense='1'][data-frame='choice'] .place-chip.on,
+.vn[data-dense='2'][data-frame='choice'] .place-chip.on,
+.vn[data-dense='3'][data-frame='choice'] .place-chip.on {
+  opacity: 0;
+}
+.place-chip .ico {
+  --i: var(--i-sun);
+  color: #d98a1f;
+}
+.place-chip .sep {
+  flex: none;
+  width: 1px;
+  height: 1em;
+  background: var(--sky-300);
+}
+.place-chip .pc-where {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stage[data-tone='evening'] .place-chip .ico {
+  color: #e0743a;
+}
+.stage[data-tone='night'] .place-chip {
+  background: rgba(24, 34, 64, 0.72);
+  border-color: rgba(190, 220, 255, 0.35);
+  color: #eef3ff;
+  box-shadow:
+    0 0 0 1px rgba(140, 190, 255, 0.22),
+    0 6px 18px rgba(0, 6, 30, 0.3);
+}
+.stage[data-tone='night'] .place-chip .ico {
+  --i: var(--i-moon);
+  color: var(--sun);
+}
+.stage[data-tone='night'] .place-chip .sep {
+  background: rgba(170, 205, 255, 0.45);
+}
+
+/* =========================================================================
+ * 4. 대사창 + 이름표 탭
+ *    치수(위아래 여백 0.95em+0.6em, 줄 높이 1.62, 테두리 1px)는 layout.ts 의 TEXT_* 상수와 같아야 한다.
+ *    --tb-grow: 기본 3줄을 넘는 문장이면 textbox.ts 가 #vn 루트에 넣어 대사창(과 빠른 메뉴 탭)을 위로 늘린다.
+ * ========================================================================= */
+.textbox {
+  position: absolute;
+  left: var(--tx);
+  top: calc(var(--ty) - var(--tb-grow, 0px));
+  width: var(--tw);
+  height: calc(var(--th) + var(--tb-grow, 0px));
+  padding: calc(var(--fs) * 0.95) calc(var(--fs) * 1.35) calc(var(--fs) * 0.6);
+  border-radius: calc(var(--fs) * 0.55);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, calc(var(--win-alpha) * 0.96)) 0%,
+    rgba(244, 250, 255, calc(var(--win-alpha) * 0.9)) 100%
+  );
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  border: 1px solid var(--glass-hi);
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    var(--glass-shadow),
+    inset 0 1px 0 #fff;
+  --name-1: var(--npc-1);
+  --name-2: var(--npc-2);
+  /* 나타날 때는 페이드만 한다(위치를 옮기는 연출은 숨긴 동안·전환 중에 재는 배치 값을 흔들어서 뺐다) */
+  transition:
+    opacity 0.25s ease-out,
+    --name-1 0.2s ease,
+    --name-2 0.2s ease;
+}
+.textbox.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.textbox[data-who='osana'] {
+  --name-1: var(--akane-1);
+  --name-2: var(--akane-2);
+}
+.textbox[data-who='tenko'] {
+  --name-1: var(--hina-1);
+  --name-2: var(--hina-2);
+}
+.textbox[data-who='me'] {
+  --name-1: var(--me-1);
+  --name-2: var(--me-2);
+}
+/* 안쪽 장식선 + 네 모서리 꺾쇠(하늘 선 + 분홍 마름모) */
+.textbox::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(112, 172, 226, 0.3);
+  border-radius: 5px;
+  pointer-events: none;
+  background:
+    var(--corner-tl) left -1px top -1px / 16px no-repeat,
+    var(--corner-tr) right -1px top -1px / 16px no-repeat,
+    var(--corner-bl) left -1px bottom -1px / 16px no-repeat,
+    var(--corner-br) right -1px bottom -1px / 16px no-repeat;
+}
+/* 위 테두리: 화자 색 띠(왼쪽에서 오른쪽으로 사라짐) */
+.textbox::after {
+  content: '';
+  position: absolute;
+  left: calc(var(--fs) * 0.55);
+  right: 18%;
+  top: -1px;
+  height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--name-1), var(--name-2) 30%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+}
+.textbox.mono::after {
+  background: linear-gradient(90deg, var(--sky-400), rgba(162, 212, 246, 0.6) 40%, rgba(255, 255, 255, 0) 100%);
+}
+
+/* 이름표: 대사창 위 테두리 왼쪽에 붙은 탭. 오른쪽 빠른 메뉴 탭(--qbw)과 겹치지 않게 최대 폭을 줄인다 */
+.textbox .name {
+  position: absolute;
+  left: calc(var(--fs) * 0.55);
+  bottom: calc(100% + 1px);
+  height: var(--btn);
+  max-width: 42%;
+  padding: 0 1.05em 0 0.85em;
+  font: 400 max(17px, calc(var(--fs) * 0.92)) / var(--btn) var(--font-deco);
+  letter-spacing: 0.06em;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: linear-gradient(180deg, var(--name-2) -30%, var(--name-1) 70%);
+  border-radius: calc(var(--fs) * 0.5) calc(var(--fs) * 0.5) 0 0;
+  box-shadow:
+    0 -2px 10px rgba(28, 72, 124, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+/* 게임 대사창(루트 바로 아래)만: 오른쪽 빠른 메뉴 탭 폭(--qbw, qbar.ts)만큼 비워 두 탭이 겹치지 않게.
+ * 설정 미리보기처럼 다른 곳에 붙은 대사창은 빠른 메뉴가 없으므로 42% 만 */
+.vn > .textbox .name {
+  max-width: min(42%, calc(100% - var(--qbw, 0px) - var(--fs) * 1.1 - 26px));
+}
+/* 이름 앞 흰 4각 별(장식) */
+.textbox .name::before {
+  content: '';
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.45em;
+  vertical-align: 0.05em;
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-mask: var(--i-star) center / contain no-repeat;
+  mask: var(--i-star) center / contain no-repeat;
+}
+.textbox .name:empty {
+  display: none;
+}
+
+.textbox .text {
+  position: relative;
+  font: 400 var(--fs) / 1.62 var(--font-text);
+  letter-spacing: 0.01em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  /* 불투명도를 낮춰도 읽히게 흰 번짐 */
+  text-shadow:
+    0 0 2px rgba(255, 255, 255, 0.9),
+    0 0 8px rgba(255, 255, 255, 0.6);
+  white-space: pre-wrap;
+}
+.textbox.mono .text {
+  color: var(--ink-2);
+}
+.textbox .text .hidden-char {
+  visibility: hidden;
+}
+
+/* 다음 표시: 반짝이는 4각 별(하늘→분홍), 문장을 다 쓴 뒤에만 */
+.textbox .next {
+  position: absolute;
+  right: calc(var(--fs) * 0.85);
+  bottom: calc(var(--fs) * 0.5);
+  width: calc(var(--fs) * 0.85);
+  height: calc(var(--fs) * 0.85);
+  background: linear-gradient(135deg, var(--sky-500), var(--pink-400));
+  -webkit-mask: var(--i-star) center / contain no-repeat;
+  mask: var(--i-star) center / contain no-repeat;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.textbox.done .next {
+  opacity: 1;
+  animation: next-glint 1.4s ease-in-out infinite;
+}
+@keyframes next-glint {
+  0%,
+  100% {
+    transform: translateY(-2px) scale(0.85) rotate(0deg);
+  }
+  50% {
+    transform: translateY(3px) scale(1) rotate(45deg);
+  }
+}
+
+/* 밤 톤(축제·밤 배경): 남색 유리 + 밝은 글자(13.9:1) */
+.vn[data-tone='night'] > .textbox {
+  background: linear-gradient(180deg, rgba(26, 38, 70, calc(var(--win-alpha) * 0.9)), rgba(18, 26, 52, calc(var(--win-alpha) * 0.94)));
+  border-color: rgba(190, 220, 255, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(140, 190, 255, 0.22),
+    0 12px 32px rgba(0, 6, 30, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.vn[data-tone='night'] > .textbox::before {
+  border-color: rgba(170, 205, 255, 0.22);
+}
+.vn[data-tone='night'] > .textbox .text {
+  color: #f4f7ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.vn[data-tone='night'] > .textbox.mono .text {
+  color: #d6e0f5;
+}
+
+/* =========================================================================
+ * 5. 빠른 메뉴 탭(.qbar): 대사창 위 테두리 오른쪽에 붙은 유리 탭 (qbar.ts)
+ *    - 이름표 탭(왼쪽)과 같은 높이 띠(--btn)를 나눠 쓴다. 아랫변 = 대사창 윗변(--tb-grow 로 같이 올라감).
+ *    - .hud(기록·자동·스킵·메뉴) + .qbar-extra(퀵저장·퀵로드·숨기기·설정)를 display: contents 로 한 줄에 섞고
+ *      data-q 로 order 를 정한다.
+ *    - 테두리를 border 로 그리면 버튼 높이가 줄어들어 모두 box-shadow 로 그린다.
+ * ========================================================================= */
+.qbar {
+  position: absolute;
+  right: var(--hr);
+  /* 아랫변이 대사창 윗변과 정확히 같게(--ty 기준) */
+  top: calc(var(--ty) - var(--btn) - var(--tb-grow, 0px));
+  height: var(--btn);
+  display: flex;
+  align-items: stretch;
+  padding: 0 5px;
+  border-radius: calc(var(--fs) * 0.5) calc(var(--fs) * 0.5) 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, calc(var(--win-alpha) * 0.9)), rgba(255, 255, 255, calc(var(--win-alpha) * 0.97)));
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 1px 0 0 rgba(255, 255, 255, 0.9),
+    inset -1px 0 0 rgba(255, 255, 255, 0.9),
+    0 -1px 0 0 rgba(112, 172, 226, 0.42),
+    -1px 0 0 0 rgba(112, 172, 226, 0.42),
+    1px 0 0 0 rgba(112, 172, 226, 0.42),
+    0 -6px 14px -6px rgba(28, 72, 124, 0.22);
+  z-index: 5;
+  transition: opacity 0.25s ease;
+}
+/* 탭 아래 두 모서리를 창 테두리에 오목하게 이어 붙인다(브라우저 탭 모양) */
+.qbar::before,
+.qbar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  background: radial-gradient(circle at var(--cx0) 0, transparent 9.5px, rgba(255, 255, 255, calc(var(--win-alpha) * 0.97)) 10px);
+}
+.qbar::before {
+  left: -10px;
+  --cx0: 0;
+}
+.qbar::after {
+  right: -10px;
+  --cx0: 100%;
+}
+.qbar .hud,
+.qbar .qbar-extra {
+  display: contents;
+}
+.qbar button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32em;
+  min-width: 44px;
+  height: 100%;
+  padding: 0 0.55em;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font: 600 max(16px, calc(var(--fs) * 0.66)) / 1 var(--font-ui);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.qbar [data-q='log'] {
+  order: 1;
+}
+.qbar [data-q='auto'] {
+  order: 2;
+}
+.qbar [data-q='skip'] {
+  order: 3;
+}
+.qbar [data-q='qsave'] {
+  order: 5;
+}
+.qbar [data-q='qload'] {
+  order: 6;
+}
+.qbar [data-q='hide'] {
+  order: 8;
+}
+.qbar [data-q='config'] {
+  order: 9;
+}
+.qbar [data-q='menu'] {
+  order: 10;
+}
+/* 구분선: 맨 앞(기록)을 뺀 모든 버튼 왼쪽에 1px(위아래 30% 비움). 묶음 첫 버튼은 6px 더 띄우고 진하게 */
+.qbar button:not([data-q='log'])::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 30%;
+  bottom: 30%;
+  width: 1px;
+  background: rgba(112, 172, 226, 0.35);
+}
+.qbar [data-q='qsave'],
+.qbar [data-q='hide'] {
+  margin-left: 6px;
+}
+.qbar [data-q='qsave']::before,
+.qbar [data-q='hide']::before {
+  left: -3px;
+  top: 22%;
+  bottom: 22%;
+  background: rgba(112, 172, 226, 0.55);
+}
+.qbar button .ico {
+  width: 1.1em;
+  height: 1.1em;
+  opacity: 0.85;
+}
+@media (hover: hover) {
+  .qbar button:hover {
+    color: var(--sky-700);
+    background: rgba(232, 244, 255, 0.9);
+  }
+}
+.qbar button:active {
+  color: var(--sky-700);
+  background: rgba(214, 236, 255, 0.95);
+}
+/* 켜짐(자동·스킵) */
+.qbar button[aria-pressed='true'],
+.qbar button[aria-pressed='true']:hover {
+  color: #fff;
+  background: var(--grad-on);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.qbar button[aria-pressed='true']::before {
+  opacity: 0;
+}
+/* 폭 단계(#vn[data-qm], layout.ts 가 대사창 폭으로 정함)
+ * icons: 아이콘+글자 8개 / full: 글자 8개 / compact: 기록·자동·스킵·메뉴 4개(나머지는 메뉴 안, 단축키 F5·F9·H 는 그대로) */
+.vn:not([data-qm='icons']) .qbar .ico {
+  display: none;
+}
+.vn[data-qm='compact'] .qbar .qbar-extra {
+  display: none;
+}
+
+/* 밤 톤: 남색 유리 + 밝은 글자 + 하늘 구분선 */
+.vn[data-tone='night'] .qbar {
+  background: linear-gradient(180deg, rgba(30, 42, 78, calc(var(--win-alpha) * 0.88)), rgba(26, 38, 70, calc(var(--win-alpha) * 0.9)));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 -1px 0 0 rgba(140, 190, 255, 0.22),
+    -1px 0 0 0 rgba(140, 190, 255, 0.22),
+    1px 0 0 0 rgba(140, 190, 255, 0.22),
+    0 -6px 14px -6px rgba(0, 6, 30, 0.4);
+}
+.vn[data-tone='night'] .qbar::before,
+.vn[data-tone='night'] .qbar::after {
+  background: radial-gradient(circle at var(--cx0) 0, transparent 9.5px, rgba(26, 38, 70, calc(var(--win-alpha) * 0.9)) 10px);
+}
+.vn[data-tone='night'] .qbar button {
+  color: #e5ecfb;
+}
+@media (hover: hover) {
+  .vn[data-tone='night'] .qbar button:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+.vn[data-tone='night'] .qbar button:not([data-q='log'])::before {
+  background: rgba(170, 205, 255, 0.28);
+}
+
+/* 대사창이 없는 동안(날짜 카드, 암전 연출): 이음새를 떼고 둥근 캡슐로.
+ * 날짜 카드는 창이 없으니 무대 오른쪽 아래로 옮기고 옅게(누르거나 포커스하면 선명하게) */
+.vn[data-frame='card'] .qbar,
+.vn:has(> .textbox.hidden) .qbar {
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px #fff,
+    0 0 0 1px var(--glass-edge),
+    0 6px 16px rgba(28, 72, 124, 0.15);
+}
+.vn[data-frame='card'] .qbar::before,
+.vn[data-frame='card'] .qbar::after,
+.vn:has(> .textbox.hidden) .qbar::before,
+.vn:has(> .textbox.hidden) .qbar::after {
+  display: none;
+}
+.vn[data-frame='card'] .qbar {
+  top: calc(var(--sy) + var(--sh) - var(--m) - var(--btn));
+  opacity: 0.78;
+}
+.vn[data-frame='card'] .qbar:hover,
+.vn[data-frame='card'] .qbar:focus-within {
+  opacity: 1;
+}
+.vn[data-tone='night'][data-frame='card'] .qbar,
+.vn[data-tone='night']:has(> .textbox.hidden) .qbar {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 0 1px rgba(140, 190, 255, 0.28),
+    0 6px 16px rgba(0, 6, 30, 0.3);
+}
+
+/* =========================================================================
+ * 6. 대사창 숨기기(H): 그림만 남긴다. 아무 입력이나 누르면 돌아온다(대사는 넘기지 않음, game.ts)
+ * ========================================================================= */
+.vn[data-hidewin='1'] .textbox,
+.vn[data-hidewin='1'] .qbar,
+.vn[data-hidewin='1'] .choices,
+.vn[data-hidewin='1'] .place-chip {
+  opacity: 0;
+  pointer-events: none;
+}
+.vn[data-hidewin='1'] .choice-veil {
+  opacity: 0;
+}
+.hide-hint {
+  position: absolute;
+  left: 50%;
+  bottom: max(14px, var(--m));
+  translate: -50% 0;
+  display: none;
+  align-items: center;
+  gap: 0.5em;
+  max-width: calc(100% - 24px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font: 600 16px/1.3 var(--font-ui);
+  color: var(--ink-2);
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 6px 16px rgba(28, 72, 124, 0.15);
+  pointer-events: none;
+  animation: hint-out 0.6s ease 2.4s forwards;
+}
+.vn[data-hidewin='1'] .hide-hint {
+  display: inline-flex;
+}
+.hide-hint .ico {
+  --i: var(--i-eye);
+  color: var(--sky-600);
+}
+@keyframes hint-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* =========================================================================
+ * 7. 선택지: 양끝이 옅어지는 유리 리본 + 위아래 장식선 + 번호 배지 + 오른쪽 마름모
+ *    목록 영역(--cx/--cy/--cw/--ch)은 무대 위 여백부터 탭 띠 바로 위까지라 빠른 메뉴·이름표·대사창과 겹치지 않는다.
+ *    버튼은 줄어들지 않고(flex: none, 두 줄 문구가 버튼 밖으로 넘치지 않게), 영역보다 길면 목록 안에서 스크롤된다.
+ *    가운데 정렬은 첫·끝 버튼의 auto 여백으로 한다(넘치면 맨 위부터 보이고 위쪽이 잘리지 않음).
+ *    위아래 여백 4px·최소 높이 48/44px·간격 0.75/0.4em 은 layout.ts 의 CHOICE_* 와 같아야 한다.
+ * ========================================================================= */
+.choices {
+  position: absolute;
+  left: var(--cx);
+  top: var(--cy);
+  width: var(--cw);
+  height: var(--ch);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: calc(var(--fs) * 0.75);
+  padding: 4px 6%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  counter-reset: choice;
+  z-index: 4;
+}
+.choices.on {
+  display: flex;
+}
+.choices > .choice:first-child {
+  margin-top: auto;
+}
+.choices > .choice:last-child {
+  margin-bottom: auto;
+}
+.choice {
+  position: relative;
+  flex: none;
+  width: min(100%, calc(var(--fs) * 30));
+  min-height: max(48px, calc(var(--fs) * 2.55));
+  padding: 0.5em 2.9em;
+  font: 400 calc(var(--fs) * 1.02) / 1.4 var(--font-text);
+  letter-spacing: 0.01em;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  text-align: center;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  counter-increment: choice;
+  /* 위아래 1px 하늘 장식선(양끝으로 사라짐)은 배경 층으로, 바탕은 양끝이 투명한 흰 리본 */
+  background:
+    linear-gradient(90deg, transparent, var(--sky-300) 18%, var(--sky-300) 82%, transparent) 50% 3px / 92% 1px no-repeat,
+    linear-gradient(90deg, transparent, var(--sky-300) 18%, var(--sky-300) 82%, transparent) 50% calc(100% - 3px) / 92% 1px no-repeat,
+    linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.93) 9%, rgba(255, 255, 255, 0.93) 91%, rgba(255, 255, 255, 0) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 8px 22px rgba(24, 60, 110, 0.16);
+  opacity: 0;
+  translate: 0 8px;
+  animation: vn-choice-in 0.35s ease forwards;
+  transition:
+    transform 0.18s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.choice:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.choice:nth-child(3) {
+  animation-delay: 0.14s;
+}
+.choice:nth-child(4) {
+  animation-delay: 0.21s;
+}
+@keyframes vn-choice-in {
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+/* 번호 배지(키보드 1~3). absolute 라 좌우 여백 2.9em 안에 들어가 줄바꿈에 영향이 없다.
+ * game.ts 가 span.num 을 넣지 않은 버튼은 CSS 카운터로 같은 배지를 그린다 */
+.choice .num,
+.choice:not(:has(> .num))::before {
+  position: absolute;
+  left: 1.05em;
+  top: 50%;
+  translate: 0 -50%;
+  width: 1.55em;
+  height: 1.55em;
+  display: grid;
+  place-items: center;
+  font: 700 max(16px, 0.72em) / 1 var(--font-ui);
+  color: var(--sky-700);
+  border: 1px solid var(--sky-300);
+  border-radius: 50%;
+  background: #fff;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+.choice:not(:has(> .num))::before {
+  content: counter(choice);
+}
+/* 오른쪽 장식 마름모 */
+.choice::after {
+  content: '';
+  position: absolute;
+  right: 1.25em;
+  top: 50%;
+  width: 0.42em;
+  height: 0.42em;
+  translate: 0 -50%;
+  rotate: 45deg;
+  background: var(--sky-300);
+  transition: background-color 0.2s ease;
+}
+@media (hover: hover) {
+  .choice:hover {
+    transform: scale(1.015);
+  }
+}
+.choice:focus-visible {
+  transform: scale(1.015);
+}
+.choice.picked,
+.choice:focus-visible {
+  color: var(--pink-700);
+  background:
+    linear-gradient(90deg, transparent, var(--pink-300) 14%, var(--pink-300) 86%, transparent) 50% 3px / 92% 1px no-repeat,
+    linear-gradient(90deg, transparent, var(--pink-300) 14%, var(--pink-300) 86%, transparent) 50% calc(100% - 3px) / 92% 1px no-repeat,
+    linear-gradient(90deg, rgba(255, 236, 244, 0) 0%, rgba(255, 240, 246, 0.97) 9%, rgba(255, 240, 246, 0.97) 91%, rgba(255, 236, 244, 0) 100%);
+  box-shadow: 0 10px 26px rgba(214, 90, 139, 0.22);
+}
+@media (hover: hover) {
+  .choice:hover {
+    color: var(--pink-700);
+    background:
+      linear-gradient(90deg, transparent, var(--pink-300) 14%, var(--pink-300) 86%, transparent) 50% 3px / 92% 1px no-repeat,
+      linear-gradient(90deg, transparent, var(--pink-300) 14%, var(--pink-300) 86%, transparent) 50% calc(100% - 3px) / 92% 1px no-repeat,
+      linear-gradient(90deg, rgba(255, 236, 244, 0) 0%, rgba(255, 240, 246, 0.97) 9%, rgba(255, 240, 246, 0.97) 91%, rgba(255, 236, 244, 0) 100%);
+    box-shadow: 0 10px 26px rgba(214, 90, 139, 0.22);
+  }
+  .choice:hover::after {
+    background: var(--pink-400);
+  }
+  .choice:hover .num,
+  .choice:hover:not(:has(> .num))::before {
+    color: #fff;
+    border-color: var(--pink-400);
+    background: var(--pink-400);
+  }
+}
+.choice.picked::after,
+.choice:focus-visible::after {
+  background: var(--pink-400);
+}
+.choice.picked .num,
+.choice:focus-visible .num,
+.choice.picked:not(:has(> .num))::before,
+.choice:focus-visible:not(:has(> .num))::before {
+  color: #fff;
+  border-color: var(--pink-400);
+  background: var(--pink-400);
+}
+.choice:disabled {
+  cursor: default;
+}
+.choices.locked .choice:not(.picked) {
+  opacity: 0.35;
+  animation: none;
+  translate: 0 0;
+}
+.choices.locked .choice.picked {
+  animation: none;
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* 높이가 낮은 가로 화면(dense 1~3, layout.ts): 버튼·간격을 줄이고 폭을 넓혀 줄바꿈을 줄인다 */
+.vn[data-dense='1'] .choices,
+.vn[data-dense='2'] .choices,
+.vn[data-dense='3'] .choices {
+  gap: calc(var(--fs) * 0.4);
+  padding-left: 4%;
+  padding-right: 4%;
+}
+.vn[data-dense='1'] .choice,
+.vn[data-dense='2'] .choice,
+.vn[data-dense='3'] .choice {
+  width: min(100%, calc(var(--fs) * 36));
+  min-height: 44px;
+  padding: 0.35em 2.4em 0.35em 2.7em;
+  line-height: 1.3;
+}
+.vn[data-dense='1'] .choice::after,
+.vn[data-dense='2'] .choice::after,
+.vn[data-dense='3'] .choice::after {
+  right: 1em;
+}
+.vn[data-dense='1'] .choice .num,
+.vn[data-dense='2'] .choice .num,
+.vn[data-dense='3'] .choice .num,
+.vn[data-dense='1'] .choice:not(:has(> .num))::before,
+.vn[data-dense='2'] .choice:not(:has(> .num))::before,
+.vn[data-dense='3'] .choice:not(:has(> .num))::before {
+  left: 0.7em;
+}
+/* 아주 낮은 화면(dense 3), 또는 세로로 3개가 안 들어가는 화면(dense 2)의 선택지 3개: 가로로 나란히.
+ * 좁은 칸에서는 마름모를 빼고 번호 배지 자리만 남긴다.
+ * :has() 를 모르는 브라우저가 규칙 전체를 버리지 않게 dense 3 과 따로 쓴다(모르면 세로 + 스크롤). */
+.vn[data-dense='3'] .choices {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  align-content: center;
+  align-content: safe center;
+}
+.vn[data-dense='3'] .choices > .choice {
+  margin: 0;
+  flex: 1 1 0;
+  min-width: min(100%, 11em);
+  max-width: calc(var(--fs) * 24);
+  padding-right: 0.8em;
+}
+.vn[data-dense='3'] .choices > .choice::after {
+  display: none;
+}
+.vn[data-dense='2'] .choices:has(> .choice:nth-child(3)) {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  align-content: center;
+  align-content: safe center;
+}
+.vn[data-dense='2'] .choices:has(> .choice:nth-child(3)) > .choice {
+  margin: 0;
+  flex: 1 1 0;
+  min-width: min(100%, 11em);
+  max-width: calc(var(--fs) * 24);
+  padding-right: 0.8em;
+}
+.vn[data-dense='2'] .choices:has(> .choice:nth-child(3)) > .choice::after {
+  display: none;
+}
+
+/* =========================================================================
+ * 8. 날짜 카드(일력): .stage > .card 로 범위를 좁힌다(대화 기록 항목 .card 와 이름이 겹치던 결함 방지)
+ *    날짜 형식('7월 9일 목요일')이면 달·숫자·요일로 나눠 그리고, 아니면(.text-only) 문장 한 덩어리. stage.ts
+ * ========================================================================= */
+.stage > .card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--fs) * 0.55);
+  /* 세로 가운데는 오른쪽 아래 빠른 메뉴 캡슐 위 영역 기준 */
+  padding: var(--m) 8% calc(var(--m) + var(--btn)) 8%;
+  overflow: hidden;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+.stage > .card.on {
+  opacity: 1;
+}
+.stage > .card > :not(.card-bg):not(.motes) {
+  position: relative;
+}
+.stage > .card .card-bg {
+  position: absolute;
+  inset: -30px;
+  background: var(--bg) center / cover;
+  filter: blur(14px) saturate(1.1);
+}
+.stage > .card .card-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 55% 55% at 50% 48%, rgba(255, 255, 255, 0.78), rgba(236, 246, 255, 0.6) 60%, rgba(214, 236, 252, 0.5) 100%);
+}
+.stage > .card .card-kicker {
+  font: 700 max(16px, calc(var(--fs) * 0.68)) / 1 var(--font-ui);
+  letter-spacing: 0.14em;
+  color: var(--sky-700);
+  padding: 0.5em 1.1em 0.5em 1.24em;
+  border: 1px solid var(--sky-300);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+}
+/* 일력 종이 */
+.cal {
+  flex: none;
+  width: clamp(220px, calc(var(--fs) * 13), 360px);
+  max-width: 100%;
+  border-radius: 14px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff, #f7fbff);
+  box-shadow:
+    0 0 0 1px rgba(112, 172, 226, 0.35),
+    0 18px 40px rgba(28, 72, 124, 0.22),
+    0 2px 0 #fff inset;
+  rotate: -1.5deg;
+}
+.card.on .cal {
+  animation: cal-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.card.instant .cal {
+  animation: none;
+}
+.cal-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: max(40px, calc(var(--fs) * 1.9));
+  padding: 0 0.9em 0 1em;
+  font: 700 max(16px, calc(var(--fs) * 0.8)) / 1 var(--font-ui);
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--grad-cal);
+  text-shadow: 0 1px 1px rgba(20, 40, 80, 0.25);
+}
+/* 뜯어 쓰는 일력의 구멍 두 개 + 점선 절취선 */
+.cal-head::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  width: 54px;
+  height: 9px;
+  translate: -50% 0;
+  background: radial-gradient(circle at 4.5px 4.5px, rgba(16, 50, 96, 0.35) 3.6px, transparent 4.2px) 0 0 / 45px 9px repeat-x;
+}
+.cal-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, #fff 0 6px, transparent 6px 11px);
+  opacity: 0.9;
+}
+.cal-head .ico {
+  --i: var(--i-sun);
+  width: 1.25em;
+  height: 1.25em;
+  color: #fff3c4;
+}
+.cal-head .ico[data-wx='rain'] {
+  --i: var(--i-rain);
+  color: #fff;
+}
+.cal-head .ico[data-wx='moon'] {
+  --i: var(--i-moon);
+}
+.cal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(var(--fs) * 0.35) 1em calc(var(--fs) * 0.9);
+}
+.cal-day {
+  font: 700 calc(var(--fs) * 4.1) / 1.02 var(--font-serif);
+  color: var(--ink);
+  letter-spacing: 0.02em;
+  font-variant-numeric: lining-nums;
+}
+.cal-dow {
+  font: 700 max(16px, calc(var(--fs) * 0.95)) / 1.2 var(--font-ui);
+  letter-spacing: 0.2em;
+  margin-right: -0.2em;
+  color: var(--sky-700);
+}
+.cal-dow[data-dow='일'] {
+  color: var(--pink-700);
+}
+.cal-line {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  width: 78%;
+  margin: calc(var(--fs) * 0.45) 0 calc(var(--fs) * 0.3);
+  color: var(--pink-400);
+}
+.cal-line::before,
+.cal-line::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--sky-300));
+}
+.cal-line::after {
+  background: linear-gradient(90deg, var(--sky-300), transparent);
+}
+.cal-line .ico {
+  --i: var(--i-star);
+  width: 0.8em;
+  height: 0.8em;
+}
+.cal-sub {
+  font: 400 max(16px, calc(var(--fs) * 0.95)) / 1.45 var(--font-text);
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+  word-break: keep-all;
+}
+/* 날짜 형식이 아닌 카드: 큰 숫자 대신 명조 문장 */
+.cal.text-only .cal-day {
+  font-size: calc(var(--fs) * 1.55);
+  line-height: 1.4;
+  padding: 0.3em 0 0.1em;
+  word-break: keep-all;
+}
+@keyframes cal-in {
+  from {
+    opacity: 0;
+    translate: 0 -18px;
+    rotate: -5deg;
+  }
+}
+/* 주간 진행 점(월~금): 지난 날 하늘, 오늘 분홍 + 후광 */
+.stage > .card .week {
+  display: flex;
+  gap: calc(var(--fs) * 0.8);
+  padding: 0.55em 1.1em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  font: 600 max(16px, calc(var(--fs) * 0.62)) / 1 var(--font-ui);
+  color: var(--ink-3);
+}
+.week span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45em;
+}
+.week span::after {
+  content: '';
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--sky-400);
+  background: #fff;
+}
+.week span.past::after {
+  background: var(--sky-300);
+  border-color: var(--sky-300);
+}
+.week span.now {
+  color: var(--pink-700);
+}
+.week span.now::after {
+  background: var(--pink-400);
+  border-color: var(--pink-400);
+  box-shadow: 0 0 0 4px rgba(247, 143, 180, 0.25);
+}
+/* 밤 카드: 남색 베일 + 남색 띠 */
+.stage[data-tone='night'] > .card .card-bg::after {
+  background: radial-gradient(ellipse 55% 55% at 50% 48%, rgba(60, 70, 120, 0.35), rgba(14, 22, 50, 0.7));
+}
+.stage[data-tone='night'] .cal-head {
+  background: linear-gradient(100deg, #2a3f7a, #3d4f95 60%, #6a5aa8);
+}
+.stage[data-tone='night'] > .card .week,
+.stage[data-tone='night'] > .card .card-kicker {
+  background: rgba(24, 34, 64, 0.6);
+  color: #e5ecfb;
+  border-color: rgba(190, 220, 255, 0.35);
+}
+.stage[data-tone='night'] .week span.now {
+  color: var(--pink-200);
+}
+/* 낮은 화면: 일력이 무대 높이를 넘지 않게 숫자·간격을 줄인다 */
+@media (max-height: 420px) {
+  .stage > .card {
+    gap: calc(var(--fs) * 0.4);
+  }
+  .stage > .card .cal-day {
+    font-size: calc(var(--fs) * 3.2);
+  }
+  .stage > .card .cal.text-only .cal-day {
+    font-size: calc(var(--fs) * 1.35);
+  }
+  .stage > .card .cal-body {
+    padding-bottom: calc(var(--fs) * 0.6);
+  }
+}
+
+/* =========================================================================
+ * 9. 토스트: 흰 유리 알약 + 분홍 별, 16px
+ *    플레이 중 무대 오른쪽 위(왼쪽 위 장소 표시와 반대편) / 선택지 중 대사창 안 아래쪽 / 세로 배치는 대사창 바로 아래.
+ *    오버레이가 열려 있으면 화면 아래 가운데(.top 이면 위 가운데).
+ * ========================================================================= */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--safe-b) + 18px);
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  width: max-content;
+  max-width: calc(100% - 32px - var(--safe-l) - var(--safe-r));
+  padding: 10px 18px;
+  border-radius: 999px;
+  font: 600 16px/1.35 var(--font-ui);
+  color: var(--ink);
+  text-align: left;
+  word-break: keep-all;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #fff;
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 8px 22px rgba(28, 72, 124, 0.2);
+  pointer-events: none;
+  animation: toast-in 0.25s ease;
+}
+.toast::before {
+  content: '';
+  flex: none;
+  width: 1.05em;
+  height: 1.05em;
+  background: var(--pink-400);
+  -webkit-mask: var(--i-star) center / contain no-repeat;
+  mask: var(--i-star) center / contain no-repeat;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+  }
+}
+.toast.top {
+  top: calc(var(--safe-t) + 14px);
+  bottom: auto;
+}
+.vn[data-mode='play']:not([data-overlay]) > .toast,
+.vn[data-mode='play'][data-overlay='0'] > .toast {
+  top: calc(var(--sy) + var(--fs) * 0.7);
+  bottom: auto;
+  left: auto;
+  right: calc(100% - var(--sx) - var(--sw) + var(--fs) * 0.8);
+  transform: none;
+  max-width: calc(var(--sw) * 0.5);
+}
+/* 선택지 표시 중: 위쪽은 선택지 목록이 쓰므로 대사창 아래쪽(질문 문구 다음 줄들)에 띄운다 */
+.vn[data-mode='play'][data-frame='choice']:not([data-overlay]) > .toast,
+.vn[data-mode='play'][data-frame='choice'][data-overlay='0'] > .toast {
+  top: auto;
+  bottom: calc(100% - var(--ty) - var(--th) + var(--fs) * 0.35);
+  left: calc(var(--tx) + var(--tw) / 2);
+  right: auto;
+  transform: translateX(-50%);
+  max-width: calc(var(--tw) - var(--fs) * 2);
+}
+/* 세로 대체 배치: 무대가 좁아 장소 표시와 겹치므로 대사창 바로 아래 가운데로 */
+.vn[data-mode='play'][data-layout='below']:not([data-overlay]) > .toast,
+.vn[data-mode='play'][data-layout='below'][data-overlay='0'] > .toast {
+  top: calc(var(--ty) + var(--th) + 12px);
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+}
+
+/* =========================================================================
+ * 10. 포커스(이 파일의 조작 요소): 파란 테 3px + 흰 후광 6px — 밝은·어두운 바탕 모두에서 보인다
+ * ========================================================================= */
+.qbar button:focus-visible,
+.choice:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.85);
+}
+.qbar button:focus-visible {
+  z-index: 1;
+}
+
+/* =========================================================================
+ * 11. 움직임 줄이기 · 빛망울 끔 · backdrop-filter 미지원
+ * ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  .char,
+  .bg-layer,
+  .veil,
+  .stage > .card,
+  .choice,
+  .place-chip,
+  .textbox,
+  .qbar,
+  .choice-veil,
+  .toast {
+    transition-duration: 0.01s !important;
+    animation-duration: 0.01s !important;
+  }
+  .motes i,
+  .textbox.done .next,
+  .card.on .cal,
+  .stage.shake {
+    animation: none !important;
+  }
+}
+/* 빛망울 효과를 끄면 다음 표시 별·일력 낙하도 멈춘다(정지 그림으로 남김) */
+[data-particles='0'] .textbox.done .next,
+[data-particles='0'] .card.on .cal {
+  animation: none;
+}
+/* 유리 흐림을 못 쓰는 기기: 불투명도를 0.1 올려 글자가 배경에 묻히지 않게 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .textbox {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, min(1, calc(var(--win-alpha) * 0.96 + 0.1))) 0%,
+      rgba(244, 250, 255, min(1, calc(var(--win-alpha) * 0.9 + 0.1))) 100%
+    );
+  }
+  .qbar {
+    background: rgba(255, 255, 255, min(1, calc(var(--win-alpha) * 0.97 + 0.1)));
+  }
+  .vn[data-tone='night'] > .textbox {
+    background: linear-gradient(
+      180deg,
+      rgba(26, 38, 70, min(1, calc(var(--win-alpha) * 0.9 + 0.1))),
+      rgba(18, 26, 52, min(1, calc(var(--win-alpha) * 0.94 + 0.1)))
+    );
+  }
+  .vn[data-tone='night'] .qbar {
+    background: rgba(26, 38, 70, min(1, calc(var(--win-alpha) * 0.9 + 0.1)));
+  }
+  .place-chip {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}

@@ -17,6 +17,10 @@ export interface Info {
   typing: boolean;
   textOverflow: boolean;
   readCount: number;
+  /** 대사창 숨김(H) 중인지 */
+  hidewin: boolean;
+  /** 열린 시스템 시트의 탭(save/load/settings/log) */
+  sheet: string | null;
 }
 
 /** 설정(글자 즉시 표시 등)을 넣고 게임을 연다. 저장 데이터는 건드리지 않는다. */

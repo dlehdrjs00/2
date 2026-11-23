@@ -39,6 +39,8 @@ test('메뉴·기록·설정을 열고 닫아도 대사가 넘어가지 않는�
   // 설정 슬라이더 조작
   await openMenu(page);
   await page.locator('[data-panel=menu] [data-action=settings]').click();
+  // 배경음 음량은 설정 시트의 '소리' 분류 안에 있다
+  await page.locator('[data-panel=settings] [data-cfg=sound]').click();
   const slider = page.locator('[data-setting=bgmVolume]');
   const sb = (await slider.boundingBox())!;
   await page.mouse.click(sb.x + sb.width * 0.3, sb.y + sb.height / 2);
@@ -262,35 +264,59 @@ test('확인창: 기본 버튼에 포커스가 가고, Tab 으로 확인창 밖 
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
 });
 
-test('기록 패널: 글자를 드래그해 패널 밖에서 떼도 닫히지 않고, 배경을 눌렀다 떼면 닫힌다', async ({ page }, ti) => {
+test('기록 시트: 글자를 드래그해 빈 곳에서 떼도 닫히지 않고, 메뉴 패널은 배경을 눌렀다 뗄 때만 닫힌다', async ({ page }, ti) => {
   test.skip(ti.project.name !== 'desktop');
   await boot(page);
   await newGame(page);
   await advanceOne(page);
   await advanceOne(page);
+  // 1) 대화 기록(화면 전체를 덮는 시트): 글자를 눌러 시트의 빈 곳까지 끌고 가서 떼도 닫히지 않는다
   await page.locator('.hud button', { hasText: '기록' }).click();
   const item = page.locator('[data-panel=log] .log-item').first();
   await expect(item).toBeVisible();
   await page.waitForTimeout(450);
   const ib = (await item.boundingBox())!;
-  const pb = (await page.locator('[data-panel=log]').boundingBox())!;
-  const outX = pb.x + pb.width + 60;
+  const vp = page.viewportSize()!;
   const y = ib.y + ib.height / 2;
-  // 패널 안에서 눌러 바깥 배경에서 떼기
   await page.mouse.move(ib.x + ib.width * 0.3, y);
   await page.mouse.down();
-  await page.mouse.move(outX, y, { steps: 6 });
+  await page.mouse.move(vp.width - 8, y, { steps: 6 });
   await page.mouse.up();
   await page.waitForTimeout(250);
   expect((await info(page)).overlays).toBe(1);
-  // 배경에서 눌러 패널 안에서 떼기
-  await page.mouse.move(outX, y);
+  // 빈 곳에서 눌러 글자 위에서 떼도 그대로
+  await page.mouse.move(vp.width - 8, y);
   await page.mouse.down();
   await page.mouse.move(ib.x + ib.width * 0.3, y, { steps: 6 });
   await page.mouse.up();
   await page.waitForTimeout(250);
   expect((await info(page)).overlays).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+
+  // 2) 배경이 보이는 패널(메뉴): 누른 곳과 뗀 곳이 모두 배경일 때만 닫힌다
+  await page.waitForTimeout(300);
+  await openMenu(page);
+  await page.waitForTimeout(450);
+  const head = (await page.locator('[data-panel=menu] .panel-head h2').boundingBox())!;
+  const pb = (await page.locator('[data-panel=menu]').boundingBox())!;
+  const outX = Math.max(6, pb.x - 60);
+  const hy = head.y + head.height / 2;
+  // 패널 안에서 눌러 바깥 배경에서 떼기
+  await page.mouse.move(head.x + head.width / 2, hy);
+  await page.mouse.down();
+  await page.mouse.move(outX, hy, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect((await info(page)).overlays).toBe(1);
+  // 배경에서 눌러 패널 안에서 떼기
+  await page.mouse.move(outX, hy);
+  await page.mouse.down();
+  await page.mouse.move(head.x + head.width / 2, hy, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect((await info(page)).overlays).toBe(1);
   // 배경을 눌렀다 떼면 닫힘
-  await page.mouse.click(outX, y);
+  await page.mouse.click(outX, hy);
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
 });

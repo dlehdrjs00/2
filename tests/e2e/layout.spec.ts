@@ -124,8 +124,11 @@ test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사�
       const cs = getComputedStyle(tb);
       const b = tb.getBoundingClientRect();
       const t = tb.querySelector('.text')!.getBoundingClientRect();
-      const hudBottom = Math.max(...[...document.querySelectorAll('.hud button')].map((e) => e.getBoundingClientRect().bottom));
-      return { top: b.top, innerBottom: b.bottom - parseFloat(cs.borderBottomWidth), textBottom: t.bottom, hudBottom, vh: innerHeight };
+      const hud = [...document.querySelectorAll('.hud button')].map((e) => e.getBoundingClientRect());
+      const hudBottom = Math.max(...hud.map((r) => r.bottom));
+      const hudTop = Math.min(...hud.map((r) => r.top));
+      const stageTop = document.querySelector('.stage')!.getBoundingClientRect().top;
+      return { top: b.top, innerBottom: b.bottom - parseFloat(cs.borderBottomWidth), textBottom: t.bottom, hudBottom, hudTop, stageTop, vh: innerHeight };
     });
   const full = PARA.repeat(2);
   for (const [w, h] of [
@@ -146,7 +149,9 @@ test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사�
     expect(grown.top, `${w}x${h}: 대사창이 위로 늘어남`).toBeLessThan(base.top - 10);
     expect(grown.textBottom, `${w}x${h}: 글자가 대사창 안`).toBeLessThanOrEqual(grown.innerBottom + 0.5);
     expect(grown.textBottom).toBeLessThanOrEqual(grown.vh);
-    expect(grown.top, `${w}x${h}: HUD 줄은 덮지 않음`).toBeGreaterThanOrEqual(grown.hudBottom);
+    // 빠른 메뉴 탭은 대사창 위 테두리에 붙어 함께 올라간다: 탭 아랫변 = 대사창 윗변(소수점 오차 0.5px 허용)
+    expect(grown.top, `${w}x${h}: 빠른 메뉴 탭은 덮지 않음`).toBeGreaterThanOrEqual(grown.hudBottom - 0.5);
+    expect(grown.hudTop, `${w}x${h}: 빠른 메뉴 탭이 무대 위로 밀려나지 않음`).toBeGreaterThanOrEqual(grown.stageTop);
     // 짧은 문장으로 돌아오면 원래 크기
     await put('짧은 문장.');
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));

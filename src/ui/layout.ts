@@ -5,8 +5,13 @@
  * - below 모드(세로·정사각형에 가까운 화면): 무대를 위에, 대사창을 무대 아래 남는 공간에 둔다.
  * - 글자 크기는 무대 크기에 비례하되 최소 16px 을 보장한다(단순 축소로 글자가 작아지지 않게).
  *   최소 글자 크기를 지키느라 대사창이 커지면 무대 대비 비율이 커질 뿐 글자는 줄지 않는다.
- * - 선택지 목록은 HUD 줄 아래부터 대사창 위까지만 쓴다(HUD·대사창과 겹치지 않게). 높이가 모자라는 화면은
- *   dense 단계로 버튼을 촘촘하게 하거나 가로로 나란히 놓고, 그래도 넘치면 목록 안에서 스크롤된다(styles.css).
+ * - 이름표 탭(왼쪽)과 빠른 메뉴 탭(오른쪽)은 대사창 위 테두리에 붙어 같은 높이 띠(btn)를 나눠 쓴다
+ *   (무대 위쪽 HUD 줄은 없앰 — 일러스트의 얼굴 부분을 비운다). 띠의 위끝이 hy = ty − btn 이다.
+ * - 선택지 목록은 무대 위 여백(sy + m)부터 그 탭 띠 바로 위까지만 쓴다(빠른 메뉴·이름표·대사창과 겹치지 않게).
+ *   높이가 모자라는 화면은 dense 단계로 버튼을 촘촘하게 하거나 가로로 나란히 놓고, 그래도 넘치면 목록 안에서
+ *   스크롤된다(styles/play.css).
+ * - 글자 크기 설정(textScale 배율 1 / 1.12 / 1.25)은 fs 의 상·하한까지 함께 키운다. 3줄을 넘는 문장은
+ *   textbox.ts 의 넘침 안전장치가 대사창을 위로 늘려 처리한다. 수치는 docs/UI_DESIGN.md 9.1 과 같다.
  */
 export interface Insets {
   t: number;
@@ -27,12 +32,12 @@ export interface Layout {
   ty: number;
   tw: number;
   th: number;
-  /** 선택지 목록 영역: HUD 줄 아래(cy)부터 대사창 바로 위까지. 위아래 안쪽 여백 CHOICE_PAD_Y 포함 */
+  /** 선택지 목록 영역: 무대 위 여백(cy = sy + m)부터 탭 띠 바로 위까지. 위아래 안쪽 여백 CHOICE_PAD_Y 포함 */
   cx: number;
   cy: number;
   cw: number;
   ch: number;
-  /** 선택지 표시 중 어둡게 덮을 cy 위쪽 띠(무대 위 HUD 줄) 높이 */
+  /** 호환용(= cy − sy). 예전 HUD 줄 높이 */
   cband: number;
   /**
    * 선택지 배치 단계(한 줄짜리 버튼 기준).
@@ -40,15 +45,29 @@ export interface Layout {
    */
   dense: Density;
   fs: number;
+  /** 무대 안 여백 max(8, sh × 0.022) */
+  m: number;
+  /** 이름표·빠른 메뉴 탭 높이(터치 40~44px) */
   btn: number;
+  /** 탭 띠의 위끝(= ty − btn) */
   hy: number;
+  /** 빠른 메뉴 탭의 오른쪽 여백(화면 오른쪽 끝에서) */
   hr: number;
+  /** 빠른 메뉴 폭 단계: 아이콘+글자 8개 / 글자 8개 / 4개 */
+  qm: QuickMenuWidth;
+}
+
+export type QuickMenuWidth = 'icons' | 'full' | 'compact';
+
+export interface LayoutOptions {
+  /** 글자 크기 배율(settings.textScaleFactor 결과: 1 / 1.12 / 1.25). 생략하면 1 */
+  textScale?: number;
 }
 
 export const MIN_FONT = 16;
 const ASPECT = 16 / 9;
 
-/** 대사창 치수(styles.css .textbox / .textbox .text 와 같아야 함): 위+아래 안쪽 여백(em), 줄 높이(em), 테두리(px) */
+/** 대사창 치수(styles/play.css .textbox / .textbox .text 와 같아야 함): 위+아래 안쪽 여백(em), 줄 높이(em), 테두리(px) */
 export const TEXT_PAD_EM = 0.95 + 0.6;
 export const TEXT_LINE_EM = 1.62;
 export const TEXT_BORDER = 1;
@@ -57,14 +76,17 @@ export function textBoxHeightFor(lines: number, fs: number): number {
   return fs * (TEXT_PAD_EM + TEXT_LINE_EM * lines) + TEXT_BORDER * 2 + 0.5;
 }
 
-/** 선택지(styles.css .choices / .choice 와 같아야 함) */
+/** 선택지(styles/play.css .choices / .choice 와 같아야 함) */
 export const CHOICE_PAD_Y = 4;
 export const CHOICE_MIN_H = 48;
 export const CHOICE_DENSE_MIN_H = 44;
 export const CHOICE_GAP_EM = 0.75;
 export const CHOICE_DENSE_GAP_EM = 0.4;
-/** HUD 줄·대사창과 선택지 목록 사이 간격 */
+/** 탭 띠(이름표·빠른 메뉴)와 선택지 목록 사이 간격 */
 const CHOICE_CLEAR = 4;
+/** 빠른 메뉴 폭 단계 경계(대사창 폭, px). 실측 탭 폭: 아이콘+글자 약 616px, 글자만 약 429px */
+const QM_ICONS_MIN_TW = 900;
+const QM_FULL_MIN_TW = 620;
 
 export type Density = 0 | 1 | 2 | 3;
 
@@ -87,10 +109,24 @@ function choiceDensity(space: number, fs: number): Density {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-export function computeLayout(vw: number, vh: number, safe: Insets): Layout {
+/** 탭 높이: 글자에 비례하되 터치 40px 이상, 무대를 덜 가리게 44px 이하 */
+function tabHeight(fs: number): number {
+  return clamp(fs * 1.75, 40, 44);
+}
+
+function quickMenuWidth(tw: number): QuickMenuWidth {
+  return tw >= QM_ICONS_MIN_TW ? 'icons' : tw >= QM_FULL_MIN_TW ? 'full' : 'compact';
+}
+
+/**
+ * @param safe 안전 영역(노치 등). 무대·대사창은 이 안에 놓는다
+ * @param opts 선택. textScale = 글자 크기 배율(하위 호환: 생략하면 1)
+ */
+export function computeLayout(vw: number, vh: number, safe: Insets, opts: LayoutOptions = {}): Layout {
   const aw = Math.max(1, vw - safe.l - safe.r);
   const ah = Math.max(1, vh - safe.t - safe.b);
   const ratio = aw / ah;
+  const scale = Number.isFinite(opts.textScale) && (opts.textScale as number) > 0 ? (opts.textScale as number) : 1;
 
   if (ratio >= 1.3) {
     // ---- 가로: overlay ----
@@ -102,20 +138,21 @@ export function computeLayout(vw: number, vh: number, safe: Insets): Layout {
     }
     const sx = safe.l + (aw - sw) / 2;
     const sy = safe.t + (ah - sh) / 2;
-    const fs = clamp(sh * 0.034, MIN_FONT, 26);
-    const margin = Math.max(8, sh * 0.022);
-    const th = clamp(Math.max(sh * 0.265, textBoxHeightFor(3, fs)), 0, sh * 0.45);
-    const tw = Math.min(sw - margin * 2, fs * 46);
+    const fs = clamp(sh * 0.034 * scale, MIN_FONT * scale, 26 * scale);
+    const m = Math.max(8, sh * 0.022);
+    // 기본 높이는 무대의 22%(창 위끝을 낮춰 인물을 덜 가림). 3줄 용량은 늘 보장한다
+    const th = clamp(Math.max(sh * 0.22, textBoxHeightFor(3, fs)), 0, sh * 0.45);
+    const tw = Math.min(sw - m * 2, fs * 46);
     const tx = sx + (sw - tw) / 2;
-    const ty = sy + sh - th - margin;
-    const btn = clamp(fs * 1.9, 40, 46);
-    const hy = sy + margin * 0.6;
-    // 선택지: HUD 줄 아래 ~ 대사창 위. 무대가 높이에 맞춰 줄어 좌우가 비면(레터박스) 그 폭까지 써서 줄바꿈을 줄인다
-    const cy = hy + btn + CHOICE_CLEAR;
-    const ch = Math.max(0, ty - CHOICE_CLEAR - cy);
+    const ty = sy + sh - th - m;
+    const btn = tabHeight(fs);
+    const hy = ty - btn;
+    // 선택지: 무대 위 여백 ~ 탭 띠 위. 무대가 높이에 맞춰 줄어 좌우가 비면(레터박스) 그 폭까지 써서 줄바꿈을 줄인다
+    const cy = sy + m;
+    const ch = Math.max(0, hy - CHOICE_CLEAR - cy);
     const wide = aw - sw > 2;
-    const cx = wide ? safe.l + margin : sx;
-    const cw = wide ? aw - margin * 2 : sw;
+    const cx = wide ? safe.l + m : sx;
+    const cw = wide ? aw - m * 2 : sw;
     return {
       mode: 'overlay',
       vw,
@@ -135,15 +172,20 @@ export function computeLayout(vw: number, vh: number, safe: Insets): Layout {
       cband: cy - sy,
       dense: choiceDensity(choiceSpace({ ch }), fs),
       fs,
+      m,
       btn,
       hy,
-      hr: vw - (sx + sw) + margin * 0.6,
+      // 탭 오른쪽 = 대사창 오른쪽 끝에서 모서리 반경(fs×0.55) + 오목 이음새 폭(10px) 안쪽
+      hr: vw - (tx + tw) + fs * 0.55 + 10,
+      qm: quickMenuWidth(tw),
     };
   }
 
   // ---- 세로/정사각형: below ----
-  const fs = clamp(aw * 0.042, MIN_FONT, 22);
-  const gap = Math.max(10, fs * 0.9);
+  const fs = clamp(aw * 0.042 * scale, MIN_FONT * scale, 22 * scale);
+  const btn = tabHeight(fs);
+  // 무대와 대사창 사이: 8px + 이름표·빠른 메뉴 탭 띠
+  const gap = btn + 8;
   let sw = aw;
   let sh = sw / ASPECT;
   const minTh = fs * 7.2;
@@ -158,11 +200,11 @@ export function computeLayout(vw: number, vh: number, safe: Insets): Layout {
   const tw = Math.min(aw - 16, fs * 40);
   const tx = safe.l + (aw - tw) / 2;
   const ty = sy + sh + gap;
-  const btn = clamp(fs * 1.9, 40, 44);
-  const hy = sy + 6;
-  // 선택지: HUD 줄 아래부터 무대 아래 대사창 바로 위까지(무대와 대사창 사이 간격 포함), 안전 영역 폭 전체
-  const cy = hy + btn + CHOICE_CLEAR;
-  const ch = Math.max(0, ty - CHOICE_CLEAR - cy);
+  const m = 8;
+  const hy = ty - btn;
+  // 선택지: 무대 위 여백부터 탭 띠 바로 위까지(무대와 대사창 사이 간격 포함), 안전 영역 폭 전체
+  const cy = sy + m;
+  const ch = Math.max(0, hy - CHOICE_CLEAR - cy);
   const cx = safe.l + 8;
   const cw = aw - 16;
   return {
@@ -184,9 +226,11 @@ export function computeLayout(vw: number, vh: number, safe: Insets): Layout {
     cband: cy - sy,
     dense: choiceDensity(choiceSpace({ ch }), fs),
     fs,
+    m,
     btn,
     hy,
-    hr: vw - (sx + sw) + 6,
+    hr: vw - (tx + tw) + fs * 0.55 + 10,
+    qm: quickMenuWidth(tw),
   };
 }
 
@@ -214,12 +258,13 @@ export function applyLayout(root: HTMLElement, L: Layout): void {
   s.setProperty('--ch', px(L.ch));
   s.setProperty('--cband', px(L.cband));
   s.setProperty('--fs', px(L.fs));
+  s.setProperty('--m', px(L.m));
   s.setProperty('--btn', px(L.btn));
   s.setProperty('--hy', px(L.hy));
   s.setProperty('--hr', px(L.hr));
-  s.setProperty('--chip-top', px(L.hy - L.sy + L.btn + 8));
   root.dataset.layout = L.mode;
   root.dataset.dense = String(L.dense);
+  root.dataset.qm = L.qm;
 }
 
 /** 휴대폰 세로 화면인지(태블릿·PC 의 세로 창은 안내하지 않음) */

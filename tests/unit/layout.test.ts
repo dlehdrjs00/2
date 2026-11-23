@@ -34,8 +34,11 @@ const tooShort: Array<[string, number, number, typeof none]> = [
 ];
 
 function expectChoicesClearOfHudAndTextbox(L: Layout, vw: number, safe: typeof none) {
-  // 선택지 목록은 HUD 줄 아래에서 시작해 대사창 위에서 끝난다(겹친 곳을 누르면 기록·메뉴가 열리던 문제)
-  expect(L.cy).toBeGreaterThanOrEqual(L.hy + L.btn);
+  // 선택지 목록은 무대 안(위 여백 아래)에서 시작해 이름표·빠른 메뉴 탭 띠 위에서 끝난다
+  // (겹친 곳을 누르면 기록·메뉴가 열리던 문제). 탭 띠 아래는 대사창이다
+  expect(L.cy).toBeGreaterThanOrEqual(L.sy);
+  expect(L.cy + L.ch).toBeLessThanOrEqual(L.hy);
+  expect(L.hy + L.btn).toBeCloseTo(L.ty, 5);
   expect(L.cy + L.ch).toBeLessThanOrEqual(L.ty);
   expect(L.cx).toBeGreaterThanOrEqual(safe.l - 0.5);
   expect(L.cx + L.cw).toBeLessThanOrEqual(vw - safe.r + 0.5);
@@ -97,6 +100,54 @@ describe('화면 배치', () => {
     const W = computeLayout(1280, 720, none);
     expect(W.cx).toBeCloseTo(W.sx, 5);
     expect(W.cw).toBeCloseTo(W.sw, 5);
+  });
+
+  it('명세 9.1 실측표: 대사창 높이·폭, 탭 띠 위치, 선택지 영역, 빠른 메뉴 폭 단계', () => {
+    const rows: Array<[number, number, typeof none, number, number, number, number, string]> = [
+      // vw, vh, safe, fs, th, tw, ch, qm
+      [1920, 1080, none, 26, 238, 1196, 747, 'icons'],
+      [1280, 720, none, 24.5, 159, 1126, 482, 'icons'],
+      [1024, 768, none, 19.6, 128, 901, 379, 'icons'],
+      [844, 390, notch, 16, 105, 640, 204, 'full'],
+      [844, 390, none, 16, 105, 676, 224, 'full'],
+      [667, 375, none, 16, 105, 650, 209, 'full'],
+      [740, 320, none, 16, 105, 553, 155, 'compact'],
+      [740, 280, none, 16, 105, 482, 115, 'compact'],
+      [390, 844, none, 16.4, 164, 374, 215, 'compact'],
+    ];
+    for (const [vw, vh, safe, fs, th, tw, ch, qm] of rows) {
+      const L = computeLayout(vw, vh, safe);
+      const at = `${vw}x${vh}`;
+      expect(Math.abs(L.fs - fs), `${at} fs`).toBeLessThan(0.06);
+      expect(Math.abs(L.th - th), `${at} th`).toBeLessThan(1);
+      expect(Math.abs(L.tw - tw), `${at} tw`).toBeLessThan(1);
+      expect(Math.abs(L.ch - ch), `${at} ch`).toBeLessThan(1);
+      expect(L.qm, at).toBe(qm);
+    }
+    // 1280x720 에서 탭 띠 위끝은 무대 높이의 약 69.7%(지금 71% 보다 낮음 = 인물을 덜 가림)
+    const W = computeLayout(1280, 720, none);
+    expect((W.hy - W.sy) / W.sh).toBeCloseTo(0.697, 2);
+    expect(W.m).toBeCloseTo(720 * 0.022, 5);
+    // 빠른 메뉴 탭 오른쪽 끝은 대사창 오른쪽 끝에서 모서리 반경 + 이음새 폭만큼 안쪽
+    expect(1280 - W.hr).toBeCloseTo(W.tx + W.tw - W.fs * 0.55 - 10, 5);
+  });
+
+  it('글자 크기 배율: fs 상·하한이 함께 커지고, 3줄 용량·터치 크기·겹침 없음은 그대로', () => {
+    for (const scale of [1.12, 1.25]) {
+      for (const [, vw, vh, safe] of cases) {
+        const base = computeLayout(vw, vh, safe);
+        const L = computeLayout(vw, vh, safe, { textScale: scale });
+        expect(L.fs).toBeGreaterThanOrEqual(MIN_FONT * scale - 1e-9);
+        expect(L.fs).toBeGreaterThan(base.fs);
+        expect(L.th).toBeGreaterThanOrEqual(Math.min(textBoxHeightFor(3, L.fs), L.sh * 0.45) - 0.01);
+        expect(L.btn).toBeGreaterThanOrEqual(40);
+        expectChoicesClearOfHudAndTextbox(L, vw, safe);
+      }
+    }
+    // 하위 호환: 세 번째 인자만 넘기면 배율 1
+    expect(computeLayout(844, 390, notch)).toEqual(computeLayout(844, 390, notch, { textScale: 1 }));
+    // 이상한 배율은 1 로 본다
+    expect(computeLayout(844, 390, notch, { textScale: Number.NaN })).toEqual(computeLayout(844, 390, notch));
   });
 
   it('가로 화면은 overlay, 세로 화면은 대사창을 무대 아래에 둔다', () => {

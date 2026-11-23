@@ -1,0 +1,259 @@
+/**
+ * 저장·불러오기 본문(docs/UI_DESIGN.md 6.10)
+ *
+ * .panel-body.sl
+ *   nav.rail[aria-label=쪽]  자동·퀵 / 1~5쪽(쪽당 6칸 = 수동 30칸), 지금 쪽은 aria-current=page
+ *   .slots                  카드 3×2(넓은 화면) / 가로형 2×3(낮은 화면) / 1×6(좁은 화면)
+ * .panel-hint               안내 + 쪽 번호
+ *
+ * 카드: .slot-wrap > button.slot[data-slot](.latest .empty .can-save .broken) + .slot-del
+ *   썸네일은 저장된 무대 상태로 그린 미니 무대, 왼쪽 위 .slot-no(01·자동·퀵), 루트 배지 .slot-route
+ *   정보: .slot-line1(.slot-r? .slot-name .slot-meta) + .slot-text
+ * 테스트 훅: .slot[data-slot], .slot-wrap > .slot + .slot-del, .slot-meta, .slot-name, .slot-text, .broken, 빈 칸 disabled(불러오기)
+ */
+import { MANUAL_SLOTS, type SaveManager, type SlotId, type SlotPeek } from '../../engine/save';
+import type { HeroineId, StageState } from '../../engine/types';
+import { el, formatSlotDate } from '../dom';
+import { ico } from '../icons';
+import { HEROINE_COLORS } from './common';
+import type { SheetView } from './sheet';
+
+export type SlotPage = 'q' | 1 | 2 | 3 | 4 | 5;
+export const PAGE_SIZE = 6;
+export const PAGES = Math.ceil(MANUAL_SLOTS / PAGE_SIZE) as 5;
+
+export interface SaveLoadOptions {
+  kind: 'save' | 'load';
+  saves: SaveManager;
+  /** 이번 세션에서 마지막으로 본 쪽(메모리) */
+  lastPage: SlotPage | null;
+  setLastPage(p: SlotPage): void;
+  /** 지금 저장할 수 있는지(플레이 중) */
+  canSave: boolean;
+  slotName(slot: SlotId): string;
+  heroineName(h: HeroineId): string;
+  /** 저장 시각만 빠르게(가장 최근 카드 표시용) */
+  savedAt(slot: SlotId): string | null;
+  thumb(stage: StageState | undefined): HTMLElement;
+  onSave(slot: SlotId, filled: boolean): void;
+  onLoad(slot: SlotId): void;
+  onDelete(slot: SlotId): void;
+}
+
+export interface SaveLoadView extends SheetView {
+  /** 방금 저장한 카드의 분홍 테를 한 번 빛낸다 */
+  pulse(slot: SlotId): void;
+}
+
+export function pageSlots(page: SlotPage): SlotId[] {
+  if (page === 'q') return ['auto', 'quick'];
+  const out: SlotId[] = [];
+  for (let i = (page - 1) * PAGE_SIZE + 1; i <= Math.min(MANUAL_SLOTS, page * PAGE_SIZE); i++) out.push(String(i) as SlotId);
+  return out;
+}
+
+export function pageOf(slot: SlotId): SlotPage {
+  if (slot === 'auto' || slot === 'quick') return 'q';
+  return Math.min(PAGES, Math.max(1, Math.ceil(Number(slot) / PAGE_SIZE))) as SlotPage;
+}
+
+/**
+ * 처음 열 때 보이는 쪽: 이번 세션에서 마지막으로 본 쪽 → 없으면 1쪽.
+ * 단, 불러오기에서 1~5쪽이 모두 비어 있고 자동·퀵에 저장이 있으면 자동·퀵 쪽.
+ */
+export function initialPage(kind: 'save' | 'load', saves: SaveManager, last: SlotPage | null): SlotPage {
+  if (kind === 'load') {
+    let manual = false;
+    for (let i = 1; i <= MANUAL_SLOTS && !manual; i++) manual = saves.exists(String(i) as SlotId);
+    if (!manual && (saves.exists('auto') || saves.exists('quick'))) return 'q';
+  }
+  return last ?? 1;
+}
+
+const slotNo = (slot: SlotId) => (slot === 'auto' ? '자동' : slot === 'quick' ? '퀵' : slot.padStart(2, '0'));
+
+export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
+  const body = el('div', 'panel-body sl');
+  const rail = el('nav', 'rail');
+  rail.setAttribute('aria-label', '쪽');
+  const grid = el('div', 'slots');
+  body.append(rail, grid);
+
+  const hint = el('div', 'panel-hint');
+  const hintText = el('span', 'hint-text');
+  const pageno = el('span', 'pageno');
+  hint.append(ico('star'), hintText, el('span', 'grow'), pageno);
+
+  let page = initialPage(o.kind, o.saves, o.lastPage);
+  const railBtns = new Map<SlotPage, HTMLButtonElement>();
+  const pages: SlotPage[] = ['q', 1, 2, 3, 4, 5];
+  for (const pg of pages) {
+    const b = el('button');
+    b.type = 'button';
+    b.dataset.page = String(pg);
+    if (pg === 'q') {
+      b.append(el('span', 'q', '자동·퀵'));
+      b.setAttribute('aria-label', '자동 저장·퀵저장 쪽');
+    } else {
+      b.textContent = String(pg);
+      b.setAttribute('aria-label', `${pg}쪽`);
+    }
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (page !== pg) {
+        page = pg;
+        o.setLastPage(pg);
+        render();
+      }
+      if (ev.detail > 0) b.blur();
+    });
+    railBtns.set(pg, b);
+    rail.append(b);
+  }
+
+  /** 가장 최근 저장 칸(분홍 테). 저장 화면은 자동 저장을 빼고 고른다 */
+  function latestSlot(): SlotId | null {
+    const cands: SlotId[] = ['quick'];
+    if (o.kind === 'load') cands.push('auto');
+    for (let i = 1; i <= MANUAL_SLOTS; i++) cands.push(String(i) as SlotId);
+    let best: { slot: SlotId; at: string } | null = null;
+    for (const s of cands) {
+      const at = o.savedAt(s);
+      if (at && (!best || at > best.at)) best = { slot: s, at };
+    }
+    return best?.slot ?? null;
+  }
+
+  function card(slot: SlotId, latest: SlotId | null): HTMLElement {
+    const wrap = el('div', 'slot-wrap');
+    const info: SlotPeek = o.saves.peek(slot);
+    const name = o.slotName(slot);
+    const b = el('button', 'slot');
+    b.type = 'button';
+    b.dataset.slot = slot;
+    const no = el('span', `slot-no${slot === 'auto' || slot === 'quick' ? ' wide' : ''}`, slotNo(slot));
+    no.setAttribute('aria-hidden', 'true');
+    const line1 = el('span', 'slot-line1');
+    const infoEl = el('span', 'slot-info');
+    let label = name;
+
+    if (info.empty) {
+      wrap.classList.add('is-empty');
+      b.classList.add('empty');
+      const thumb = el('span', 'slot-thumb');
+      const saveHere = o.kind === 'save' && o.canSave && slot !== 'auto';
+      if (saveHere) {
+        b.classList.add('can-save');
+        thumb.dataset.empty = '＋ 여기에 저장';
+        line1.append(el('span', 'slot-name', '여기에 저장'));
+        infoEl.append(line1, el('span', 'slot-text', '비어 있는 칸'));
+        label = `${name}: 비어 있음, 여기에 저장`;
+      } else {
+        thumb.dataset.empty = '비어 있음';
+        line1.append(el('span', 'slot-name', slot === 'auto' ? '자동 저장 없음' : slot === 'quick' ? '퀵저장 없음' : '비어 있음'));
+        infoEl.append(line1, el('span', 'slot-text', slot === 'quick' ? '빠른 메뉴 [퀵저장]·F5' : '아직 저장하지 않은 칸'));
+        b.disabled = true;
+        label = `${name}: 비어 있음`;
+      }
+      thumb.append(no);
+      b.append(thumb, infoEl);
+    } else if (info.broken) {
+      b.classList.add('broken');
+      const thumb = el('span', 'slot-thumb');
+      thumb.dataset.empty = '!';
+      thumb.append(no);
+      line1.append(el('span', 'slot-name', name));
+      infoEl.append(line1, el('span', 'slot-text', '읽을 수 없는 저장 데이터'));
+      b.append(thumb, infoEl);
+      label = `${name}: 읽을 수 없는 저장 데이터`;
+    } else {
+      const s = info.summary;
+      const thumb = o.thumb(info.stage);
+      thumb.append(no);
+      const route = s?.route ?? null;
+      if (route) {
+        const r = el('span', 'slot-route', `${o.heroineName(route)} 루트`);
+        r.style.setProperty('--r', HEROINE_COLORS[route].c1);
+        thumb.append(r);
+        const dot = el('span', 'slot-r');
+        dot.style.setProperty('--r', HEROINE_COLORS[route].c1);
+        dot.title = `${o.heroineName(route)} 루트`;
+        line1.append(dot);
+      }
+      const date = formatSlotDate(info.savedAt ?? '');
+      const title = s?.sceneTitle || name;
+      line1.append(el('span', 'slot-name', title), el('span', 'slot-meta', date));
+      infoEl.append(line1, el('span', 'slot-text', s?.text ?? ''));
+      b.append(thumb, infoEl);
+      if (slot === latest) b.classList.add('latest');
+      label = `${name}: ${title}${route ? ` · ${o.heroineName(route)} 루트` : ''}, ${date}. ${s?.text ?? ''}`;
+    }
+    b.setAttribute('aria-label', label);
+
+    if (o.kind === 'save' && slot === 'auto') {
+      // 자동 저장 칸에는 직접 저장하지 않는다(대사가 바뀔 때마다 자동으로 기록)
+      b.disabled = true;
+      b.title = '자동 저장은 대사가 바뀔 때마다 기록돼요';
+    }
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (o.kind === 'save') o.onSave(slot, !info.empty);
+      else o.onLoad(slot);
+    });
+    wrap.append(b);
+
+    if (!info.empty && slot !== 'auto') {
+      const del = el('button', 'slot-del');
+      del.type = 'button';
+      del.setAttribute('aria-label', `${name} 삭제`);
+      del.title = '삭제';
+      del.append(ico('trash'));
+      del.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        o.onDelete(slot);
+        if (ev.detail > 0) del.blur();
+      });
+      wrap.append(del);
+    }
+    return wrap;
+  }
+
+  function render() {
+    for (const [pg, b] of railBtns) {
+      if (pg === page) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    }
+    const latest = latestSlot();
+    grid.replaceChildren(...pageSlots(page).map((s) => card(s, latest)));
+    grid.classList.toggle('q', page === 'q');
+    if (page === 'q') {
+      hintText.textContent =
+        o.kind === 'save'
+          ? '퀵저장 칸에 저장할 수 있어요. 자동 저장은 대사가 바뀔 때마다 따로 기록돼요.'
+          : '자동 저장은 대사가 바뀔 때마다, 퀵저장은 빠른 메뉴의 [퀵저장]·F5 로 기록돼요.';
+      pageno.textContent = '자동·퀵';
+    } else {
+      hintText.textContent =
+        o.kind === 'save'
+          ? '칸을 누르면 지금 장면을 저장해요. 자동 저장과 퀵저장은 [자동·퀵] 쪽에 있어요.'
+          : '불러올 칸을 고르세요. 자동 저장과 퀵저장은 [자동·퀵] 쪽에 있어요.';
+      pageno.textContent = `${page} / ${PAGES}쪽`;
+    }
+  }
+
+  render();
+  return {
+    body,
+    after: hint,
+    refresh: render,
+    pulse(slot: SlotId) {
+      if (pageOf(slot) !== page) return;
+      const c = grid.querySelector<HTMLElement>(`.slot[data-slot="${slot}"]`);
+      if (!c) return;
+      c.classList.remove('saved');
+      void c.offsetWidth;
+      c.classList.add('saved');
+      setTimeout(() => c.classList.remove('saved'), 900);
+    },
+  };
+}
