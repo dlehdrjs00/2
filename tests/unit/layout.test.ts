@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { computeLayout, MIN_FONT } from '../../src/ui/layout';
+import {
+  CHOICE_PAD_Y,
+  choiceSpace,
+  choiceStackHeight,
+  computeLayout,
+  MIN_FONT,
+  textBoxHeightFor,
+  type Layout,
+} from '../../src/ui/layout';
 
 const none = { t: 0, r: 0, b: 0, l: 0 };
 const notch = { t: 0, r: 47, b: 21, l: 47 }; // 아이폰 가로(노치) 대략값
@@ -12,8 +20,27 @@ const cases: Array<[string, number, number, typeof none]> = [
   ['아이폰 SE 가로 667x375', 667, 375, none],
   ['아이폰 13 가로(노치) 844x390', 844, 390, notch],
   ['안드로이드 가로(브라우저 UI 포함) 800x340', 800, 340, none],
+  ['휴대폰 가로(브라우저 UI 포함) 740x320', 740, 320, none],
+  ['안드로이드 크롬 가로(주소창 표시) 740x280', 740, 280, none],
+  ['360dp 안드로이드 크롬 가로 692x280', 692, 280, none],
   ['세로 390x844', 390, 844, none],
+  ['세로로 계속하기 320x568', 320, 568, none],
 ];
+
+/** 지원 범위보다 낮은 화면(위아래 툴바가 있는 브라우저 가로 등): 잘리지 않는 것만 확인 */
+const tooShort: Array<[string, number, number, typeof none]> = [
+  ['삼성 인터넷 가로(툴바 위아래) 740x232', 740, 232, none],
+  ['아이폰 SE(1세대) 사파리 가로 568x212', 568, 212, none],
+];
+
+function expectChoicesClearOfHudAndTextbox(L: Layout, vw: number, safe: typeof none) {
+  // 선택지 목록은 HUD 줄 아래에서 시작해 대사창 위에서 끝난다(겹친 곳을 누르면 기록·메뉴가 열리던 문제)
+  expect(L.cy).toBeGreaterThanOrEqual(L.hy + L.btn);
+  expect(L.cy + L.ch).toBeLessThanOrEqual(L.ty);
+  expect(L.cx).toBeGreaterThanOrEqual(safe.l - 0.5);
+  expect(L.cx + L.cw).toBeLessThanOrEqual(vw - safe.r + 0.5);
+  expect(L.cband).toBeCloseTo(L.cy - L.sy, 5);
+}
 
 describe('화면 배치', () => {
   it.each(cases)('%s: 무대·대사창·버튼이 화면/안전 영역 안에 있고 글자가 최소 크기 이상', (_n, vw, vh, safe) => {
@@ -30,12 +57,46 @@ describe('화면 배치', () => {
     expect(L.tx).toBeGreaterThanOrEqual(safe.l - 0.5);
     expect(L.tx + L.tw).toBeLessThanOrEqual(vw - safe.r + 0.5);
     expect(L.ty + L.th).toBeLessThanOrEqual(vh - safe.b + 0.5);
-    // 대사창에 3줄 이상 들어감 (패딩 ≈1.55em + 줄 1.62em×3)
-    expect(L.th).toBeGreaterThanOrEqual(L.fs * (1.55 + 1.62 * 3) - 0.5);
-    // 선택지 영역에 터치 버튼 2개(48px)가 들어감
-    expect(L.ch).toBeGreaterThanOrEqual(48 * 2 + 12);
+    // 대사창에 3줄이 테두리까지 포함해 들어감 (위아래 여백 1.55em + 줄 1.62em×3 + 테두리 1px×2)
+    expect(L.th).toBeGreaterThanOrEqual(L.fs * (1.55 + 1.62 * 3) + 2);
+    expect(L.th).toBeGreaterThanOrEqual(textBoxHeightFor(3, L.fs) - 0.01);
     // 버튼 터치 영역
     expect(L.btn).toBeGreaterThanOrEqual(40);
+  });
+
+  it.each(cases)('%s: 선택지 목록이 HUD·대사창과 겹치지 않고, 고른 배치 단계로 한 줄짜리 선택지가 스크롤 없이 들어감', (_n, vw, vh, safe) => {
+    const L = computeLayout(vw, vh, safe);
+    expectChoicesClearOfHudAndTextbox(L, vw, safe);
+    const space = choiceSpace(L);
+    expect(space).toBeCloseTo(L.ch - CHOICE_PAD_Y * 2, 5);
+    // 단계 0·1: 세로로 3개, 단계 2: 세로로 2개(3개면 가로 배치). 지원 화면은 단계 3(항상 가로)까지 내려가지 않는다
+    expect(L.dense).toBeLessThanOrEqual(2);
+    if (L.dense <= 1) expect(space).toBeGreaterThanOrEqual(choiceStackHeight(3, L.fs, L.dense === 1));
+    else expect(space).toBeGreaterThanOrEqual(choiceStackHeight(2, L.fs, true));
+  });
+
+  it.each(tooShort)('%s: 지원 범위 밖의 낮은 화면도 선택지가 HUD·대사창과 겹치지 않는다(가로 배치 + 스크롤)', (_n, vw, vh, safe) => {
+    const L = computeLayout(vw, vh, safe);
+    expectChoicesClearOfHudAndTextbox(L, vw, safe);
+    expect(L.dense).toBe(3);
+    expect(L.ty + L.th).toBeLessThanOrEqual(vh + 0.5);
+  });
+
+  it('선택지 배치 단계: 화면 높이가 낮을수록 촘촘해진다', () => {
+    expect(computeLayout(844, 390, notch).dense).toBe(0);
+    expect(computeLayout(667, 375, none).dense).toBe(0);
+    expect(computeLayout(740, 320, none).dense).toBe(1);
+    expect(computeLayout(740, 280, none).dense).toBe(2);
+    expect(computeLayout(740, 232, none).dense).toBe(3);
+  });
+
+  it('무대가 높이에 맞춰 줄어 좌우가 비면(레터박스) 선택지는 안전 영역 폭을 쓴다(줄바꿈을 줄임)', () => {
+    const L = computeLayout(740, 280, none);
+    expect(L.sw).toBeLessThan(740 - 100);
+    expect(L.cw).toBeGreaterThan(L.sw + 100);
+    const W = computeLayout(1280, 720, none);
+    expect(W.cx).toBeCloseTo(W.sx, 5);
+    expect(W.cw).toBeCloseTo(W.sw, 5);
   });
 
   it('가로 화면은 overlay, 세로 화면은 대사창을 무대 아래에 둔다', () => {
