@@ -228,11 +228,13 @@ export class Game {
     );
     // 화면이 바뀐 직후 같은 자리에 들어온 두 번째 클릭(더블클릭·더블탭의 나머지)은
     // 새로 나타난 버튼·슬롯·배경에 닿기 전에 흡수한다. 키보드 활성화(detail 0)는 그대로 통과.
+    // 시각은 처리 시각이 아니라 입력이 일어난 시각(e.timeStamp)으로 본다: 첫 입력의 화면 전환으로
+    // 메인 스레드가 바빠 두 번째 입력이 늦게 처리돼도 '빠른 두 번 누르기'로 판정되게.
     this.root.addEventListener(
       'click',
       (e) => {
         if (e.detail === 0) return;
-        const now = performance.now();
+        const now = eventTime(e);
         const prev = this.lastClick;
         this.lastClick = { t: now, x: e.clientX, y: e.clientY };
         if (now >= this.uiLockUntil) return;
@@ -248,15 +250,15 @@ export class Game {
     );
     this.choicesEl.addEventListener(
       'pointerdown',
-      () => {
-        this.choicePointerDownAt = performance.now();
+      (e) => {
+        this.choicePointerDownAt = eventTime(e);
       },
       { capture: true, passive: true },
     );
     this.root.addEventListener('click', (e) => {
       const t = e.target as Element | null;
       if (t && t.closest('[data-noadvance]')) return;
-      this.requestAdvance();
+      this.requestAdvance(eventTime(e));
     });
 
     window.addEventListener('keydown', (e) => this.onKey(e));
@@ -322,7 +324,7 @@ export class Game {
       if (Number.isInteger(n) && n >= 1 && n <= cur.step.options.length && !e.repeat) {
         e.preventDefault();
         const btn = this.choicesEl.querySelectorAll<HTMLButtonElement>('.choice')[n - 1];
-        if (btn) this.pickChoice(cur.step.options[n - 1].id, btn);
+        if (btn) this.pickChoice(cur.step.options[n - 1].id, btn, eventTime(e));
       }
       return;
     }
@@ -330,7 +332,7 @@ export class Game {
       e.preventDefault();
       if (e.repeat) return;
       this.audio.unlock();
-      this.requestAdvance();
+      this.requestAdvance(eventTime(e));
     } else if (e.key === 'a' || e.key === 'A') this.toggleAuto();
     else if (e.key === 's' || e.key === 'S') this.toggleSkip();
     else if (e.key === 'l' || e.key === 'L' || e.key === 'ArrowUp') this.openLog();
@@ -340,10 +342,10 @@ export class Game {
     return this.mode !== 'play' || this.overlays.length > 0 || this.rotateShown || document.hidden;
   }
 
-  /** 클릭·터치·키보드로 대사를 진행하려 할 때 */
-  private requestAdvance() {
+  /** 클릭·터치·키보드로 대사를 진행하려 할 때. at: 입력이 일어난 시각 */
+  private requestAdvance(at = performance.now()) {
     if (this.blocked) return;
-    if (performance.now() < this.inputLockUntil) return;
+    if (at < this.inputLockUntil) return;
     if (this.skip) {
       this.setSkip(false);
       return;
@@ -381,11 +383,12 @@ export class Game {
     if (res) void this.present(res, {});
   }
 
-  private pickChoice(optionId: string, btn: HTMLButtonElement) {
+  /** at: 입력이 일어난 시각 */
+  private pickChoice(optionId: string, btn: HTMLButtonElement, at = performance.now()) {
     this.audio.unlock();
     if (this.choiceLocked || this.blocked) return;
     // 선택지가 아직 다 나타나지 않았거나(준비 시간), 화면 전환 직후 잠금 중이면 무시한다
-    if (performance.now() < Math.max(this.inputLockUntil, this.choicesArmedAt)) return;
+    if (at < Math.max(this.inputLockUntil, this.choicesArmedAt)) return;
     const cur = this.current;
     const state = this.state;
     if (!cur || !state || cur.step.t !== 'choice') return;
@@ -693,9 +696,10 @@ export class Game {
         ev.stopPropagation();
         // 준비되기 전에 누르기 시작한 클릭(누른 채로 선택지가 나타난 경우 포함)은 무시한다.
         // pointerdown 없이 오는 클릭(보조 기기 등)은 오래된 기록으로 막히지 않게 최근 것만 본다.
+        const at = eventTime(ev);
         const downAt = this.choicePointerDownAt;
-        if (ev.detail > 0 && downAt < this.choicesArmedAt && performance.now() - downAt < 1500) return;
-        this.pickChoice(o.id, b);
+        if (ev.detail > 0 && downAt < this.choicesArmedAt && at - downAt < 1500) return;
+        this.pickChoice(o.id, b, at);
       });
       this.choicesEl.append(b);
     });
@@ -1440,6 +1444,16 @@ export class Game {
       readCount: this.saves.readCount(),
     };
   }
+}
+
+/**
+ * 입력이 실제로 일어난 시각(performance.now() 와 같은 기준). 메인 스레드가 바빠 늦게 처리된 입력도 제때로 판정한다.
+ * timeStamp 가 다른 기준(예전 브라우저의 epoch 값)이거나 이상하면 처리 시각을 쓴다.
+ */
+function eventTime(e: Event): number {
+  const now = performance.now();
+  const t = e.timeStamp;
+  return Number.isFinite(t) && t > 0 && t <= now + 50 && now - t < 5000 ? t : now;
 }
 
 /** 불러오기 결과에 붙은 복원 안내(같은 문구는 한 번만) */

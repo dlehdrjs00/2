@@ -1,6 +1,6 @@
 /** 휴대폰 가로 화면 배치와 세로↔가로 전환 */
 import { expect, test } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, inViewport, newGame, openMenu } from './helpers';
+import { advanceOne, advanceToStop, boot, info, inViewport, newGame, openMenu, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(!ti.project.name.startsWith('phone'), '휴대폰 프로젝트 전용');
@@ -102,27 +102,22 @@ test('두 손가락으로 확대해도 배치가 다시 계산되지 않아 대�
       return ['--sx', '--sy', '--sw', '--sh', '--th', '--fs'].map((k) => s.getPropertyValue(k).trim()).join(' ');
     });
   const before = await vars();
-  const vp = page.viewportSize()!;
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Input.synthesizePinchGesture', {
-    x: Math.round(vp.width / 2),
-    y: Math.round(vp.height / 2),
-    scaleFactor: 2,
-    relativeSpeed: 600,
-    gestureSourceType: 'touch',
-  });
+  // 두 손가락 확대와 같은 상태(비주얼 뷰포트만 2배 확대). 이 환경의 Chromium 은 합성 핀치 제스처를 처리하지 않아 배율을 직접 바꾼다
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
   await expect.poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeGreaterThan(1.5);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
   await page.waitForTimeout(300);
   expect(await vars()).toBe(before);
   expect((await info(page)).textOverflow).toBe(false);
-  // 다시 축소하면 원래 배치 그대로
-  await cdp.send('Input.synthesizePinchGesture', {
-    x: Math.round(vp.width / 2),
-    y: Math.round(vp.height / 2),
-    scaleFactor: 0.5,
-    relativeSpeed: 600,
-    gestureSourceType: 'touch',
-  });
+  // 확대한 채로 대사를 넘겨도 잘리지 않는다(확대 중 터치 좌표 변환을 피해 키보드로 진행)
+  const s0 = (await info(page)).step;
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await info(page)).step).not.toBe(s0);
+  await waitSettled(page);
+  expect((await info(page)).textOverflow).toBe(false);
+  // 다시 원래 배율로
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
   await expect.poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeLessThan(1.05);
   await page.waitForTimeout(200);
   expect(await vars()).toBe(before);

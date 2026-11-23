@@ -42,8 +42,16 @@ export interface ValidationReport {
 }
 
 const ID_RE = /^[A-Za-z0-9_.-]+$/;
-export const LINE_WARN_CHARS = 85;
-export const LINE_MAX_CHARS = 120;
+/**
+ * 한 문장 길이 한도(치환 후 글자 수). 대사창은 3줄이 기본이고, 넘치면 대사창이 위로 늘어난다(textbox.ts 안전장치).
+ * 근거: Playwright 로 실제 대사창에 대본 문장을 이어 붙여 넣고 3줄에 들어가는 길이를 잰 값(글꼴 16px, 2026-11 측정).
+ *  - 740x320(휴대폰 가로·브라우저 UI 포함 기준, 대사창 글자 폭 508px): 108자까지 모두 3줄.
+ *    공백을 한글 한 글자 폭(1em)으로 넓힌 최악 글꼴 가정에서는 88자까지 모두 3줄 → LINE_MAX_CHARS.
+ *  - 740x280(안드로이드 크롬 주소창 표시, 글자 폭 437px): 최악 글꼴 가정에서 74자까지 모두 3줄 → LINE_WARN_CHARS.
+ *  - 667x375(아이폰 SE 가로, 글자 폭 605px)는 최악 가정에서도 106자까지 3줄이라 위 기준보다 여유가 있다.
+ */
+export const LINE_WARN_CHARS = 74;
+export const LINE_MAX_CHARS = 88;
 export const OPTION_MAX_CHARS = 34;
 const TERMINAL = new Set<Step['t']>(['jump', 'routeBranch', 'ending', 'goto']);
 

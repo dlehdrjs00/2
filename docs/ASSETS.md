@@ -22,40 +22,40 @@
 | 의상/헤어 | 표정 | 파일 | 상태 | 크기 |
 |---|---|---|---|---|
 | 교복(베이지 카디건), 반묶음+리본 | 기본(neutral) | `uniform_default_neutral.svg` | ✅ | 41KB |
-| 교복(베이지 카디건), 반묶음+리본 | 웃음(smile) | `uniform_default_smile.svg` | ✅ | 39KB |
+| 교복(베이지 카디건), 반묶음+리본 | 웃음(smile) | `uniform_default_smile.svg` | ✅ | 41KB |
 | 교복(베이지 카디건), 반묶음+리본 | 당황(fluster) | `uniform_default_fluster.svg` | ✅ | 41KB |
 | 교복(베이지 카디건), 반묶음+리본 | 부끄러움(shy) | `uniform_default_shy.svg` | ✅ | 41KB |
 | 교복(베이지 카디건), 반묶음+리본 | 삐짐(pout) | `uniform_default_pout.svg` | ✅ | 41KB |
 | 교복(베이지 카디건), 반묶음+리본 | 쓸쓸(sad) | `uniform_default_sad.svg` | ✅ | 41KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 기본(neutral) | `yukata_default_neutral.svg` | ✅ | 38KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 웃음(smile) | `yukata_default_smile.svg` | ✅ | 36KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 당황(fluster) | `yukata_default_fluster.svg` | ✅ | 38KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 부끄러움(shy) | `yukata_default_shy.svg` | ✅ | 38KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 삐짐(pout) | `yukata_default_pout.svg` | ✅ | 38KB |
-| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 쓸쓸(sad) | `yukata_default_sad.svg` | ✅ | 38KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 기본(neutral) | `yukata_default_neutral.svg` | ✅ | 40KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 웃음(smile) | `yukata_default_smile.svg` | ✅ | 40KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 당황(fluster) | `yukata_default_fluster.svg` | ✅ | 40KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 부끄러움(shy) | `yukata_default_shy.svg` | ✅ | 40KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 삐짐(pout) | `yukata_default_pout.svg` | ✅ | 40KB |
+| 유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본 | 쓸쓸(sad) | `yukata_default_sad.svg` | ✅ | 40KB |
 
 ### 히나(전학생) — 🟡 임시 (`assets/placeholder/char/tenko`)
 
 | 의상/헤어 | 표정 | 파일 | 상태 | 크기 |
 |---|---|---|---|---|
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 기본(neutral) | `uniform_default_neutral.svg` | ✅ | 43KB |
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 웃음(smile) | `uniform_default_smile.svg` | ✅ | 41KB |
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 당황(fluster) | `uniform_default_fluster.svg` | ✅ | 43KB |
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 부끄러움(shy) | `uniform_default_shy.svg` | ✅ | 43KB |
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 삐짐(pout) | `uniform_default_pout.svg` | ✅ | 43KB |
-| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 쓸쓸(sad) | `uniform_default_sad.svg` | ✅ | 43KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 기본(neutral) | `uniform_ponytail_neutral.svg` | ✅ | 39KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 웃음(smile) | `uniform_ponytail_smile.svg` | ✅ | 37KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 당황(fluster) | `uniform_ponytail_fluster.svg` | ✅ | 39KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 부끄러움(shy) | `uniform_ponytail_shy.svg` | ✅ | 39KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 삐짐(pout) | `uniform_ponytail_pout.svg` | ✅ | 39KB |
-| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 쓸쓸(sad) | `uniform_ponytail_sad.svg` | ✅ | 39KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 기본(neutral) | `yukata_ponytail_neutral.svg` | ✅ | 40KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 웃음(smile) | `yukata_ponytail_smile.svg` | ✅ | 38KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 당황(fluster) | `yukata_ponytail_fluster.svg` | ✅ | 41KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 부끄러움(shy) | `yukata_ponytail_shy.svg` | ✅ | 41KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 삐짐(pout) | `yukata_ponytail_pout.svg` | ✅ | 40KB |
-| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 쓸쓸(sad) | `yukata_ponytail_sad.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 기본(neutral) | `uniform_default_neutral.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 웃음(smile) | `uniform_default_smile.svg` | ✅ | 39KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 당황(fluster) | `uniform_default_fluster.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 부끄러움(shy) | `uniform_default_shy.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 삐짐(pout) | `uniform_default_pout.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 긴 웨이브+하늘색 머리핀 | 쓸쓸(sad) | `uniform_default_sad.svg` | ✅ | 41KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 기본(neutral) | `uniform_ponytail_neutral.svg` | ✅ | 36KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 웃음(smile) | `uniform_ponytail_smile.svg` | ✅ | 34KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 당황(fluster) | `uniform_ponytail_fluster.svg` | ✅ | 37KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 부끄러움(shy) | `uniform_ponytail_shy.svg` | ✅ | 36KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 삐짐(pout) | `uniform_ponytail_pout.svg` | ✅ | 36KB |
+| 교복(연회색 카디건), 높은 포니테일+하늘색 리본 | 쓸쓸(sad) | `uniform_ponytail_sad.svg` | ✅ | 37KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 기본(neutral) | `yukata_ponytail_neutral.svg` | ✅ | 36KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 웃음(smile) | `yukata_ponytail_smile.svg` | ✅ | 34KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 당황(fluster) | `yukata_ponytail_fluster.svg` | ✅ | 37KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 부끄러움(shy) | `yukata_ponytail_shy.svg` | ✅ | 37KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 삐짐(pout) | `yukata_ponytail_pout.svg` | ✅ | 37KB |
+| 유카타(연하늘 바탕 흰 나팔꽃, 남색 오비), 포니테일 | 쓸쓸(sad) | `yukata_ponytail_sad.svg` | ✅ | 37KB |
 
 ## 배경
 
@@ -63,25 +63,25 @@
 
 | id | 설명 | 사용 | 현재 파일 | 구분 | 상태 | 크기 |
 |---|---|---|---|---|---|---|
-| `title` | 타이틀 화면 배경(초여름 하늘과 학교 언덕) | ○ | `assets/placeholder/bg/title.svg` | 🟡 임시 | ❌ 없음 |  |
-| `road_morning` | 등굣길 주택가(아침) | ○ | `assets/placeholder/bg/road_morning.svg` | 🟡 임시 | ✅ | 76KB |
-| `road_evening` | 하굣길 주택가(노을) | ○ | `assets/placeholder/bg/road_evening.svg` | 🟡 임시 | ✅ | 76KB |
-| `road_rain` | 하굣길 주택가(소나기) | ○ | `assets/placeholder/bg/road_rain.svg` | 🟡 임시 | ✅ | 79KB |
-| `road_night` | 밤 귀갓길(가로등, 여름밤) | ○ | `assets/placeholder/bg/road_night.svg` | 🟡 임시 | ✅ | 88KB |
-| `classroom_day` | 2학년 3반 교실(낮, 창가) | ○ | `assets/placeholder/bg/classroom_day.svg` | 🟡 임시 | ❌ 없음 |  |
-| `classroom_evening` | 교실(방과 후 노을) | ○ | `assets/placeholder/bg/classroom_evening.svg` | 🟡 임시 | ❌ 없음 |  |
-| `hallway` | 복도와 자판기(낮) | ○ | `assets/placeholder/bg/hallway.svg` | 🟡 임시 | ❌ 없음 |  |
-| `shoe_lockers` | 현관 신발장(방과 후) | ○ | `assets/placeholder/bg/shoe_lockers.svg` | 🟡 임시 | ❌ 없음 |  |
-| `shoe_lockers_rain` | 현관 신발장(밖은 소나기) | ○ | `assets/placeholder/bg/shoe_lockers_rain.svg` | 🟡 임시 | ❌ 없음 |  |
-| `courtyard` | 중정 벤치(점심시간) | ○ | `assets/placeholder/bg/courtyard.svg` | 🟡 임시 | ❌ 없음 |  |
-| `shotengai` | 동네 상점가와 오래된 막과자 가게(늦은 오후) | ○ | `assets/placeholder/bg/shotengai.svg` | 🟡 임시 | ❌ 없음 |  |
-| `riverbank_evening` | 강변 둑길(노을) | ○ | `assets/placeholder/bg/riverbank_evening.svg` | 🟡 임시 | ❌ 없음 |  |
-| `station_morning` | 역 앞 맨션가(아침) | ○ | `assets/placeholder/bg/station_morning.svg` | 🟡 임시 | ❌ 없음 |  |
-| `apartment_door` | 맨션 복도의 현관문 앞(저녁) | ○ | `assets/placeholder/bg/apartment_door.svg` | 🟡 임시 | ❌ 없음 |  |
-| `shrine_steps` | 언덕 위 작은 신사 돌계단(노을, 고양이 자리) | - | `assets/placeholder/bg/shrine_steps.svg` | 🟡 임시 | ❌ 없음 |  |
-| `festival_street` | 여름 축제 노점 거리(밤, 제등) | ○ | `assets/placeholder/bg/festival_street.svg` | 🟡 임시 | ❌ 없음 |  |
-| `riverbank_night` | 불꽃놀이를 보는 강변 둑(밤) | ○ | `assets/placeholder/bg/riverbank_night.svg` | 🟡 임시 | ❌ 없음 |  |
-| `shrine_night` | 불꽃놀이가 보이는 신사 언덕(밤) | - | `assets/placeholder/bg/shrine_night.svg` | 🟡 임시 | ❌ 없음 |  |
+| `title` | 타이틀 화면 배경(초여름 하늘과 학교 언덕) | ○ | `assets/placeholder/bg/title.svg` | 🟡 임시 | ✅ | 39KB |
+| `road_morning` | 등굣길 주택가(아침) | ○ | `assets/placeholder/bg/road_morning.svg` | 🟡 임시 | ✅ | 85KB |
+| `road_evening` | 하굣길 주택가(노을) | ○ | `assets/placeholder/bg/road_evening.svg` | 🟡 임시 | ✅ | 87KB |
+| `road_rain` | 하굣길 주택가(소나기) | ○ | `assets/placeholder/bg/road_rain.svg` | 🟡 임시 | ✅ | 71KB |
+| `road_night` | 밤 귀갓길(가로등, 여름밤) | ○ | `assets/placeholder/bg/road_night.svg` | 🟡 임시 | ✅ | 83KB |
+| `classroom_day` | 2학년 3반 교실(낮, 창가) | ○ | `assets/placeholder/bg/classroom_day.svg` | 🟡 임시 | ✅ | 77KB |
+| `classroom_evening` | 교실(방과 후 노을) | ○ | `assets/placeholder/bg/classroom_evening.svg` | 🟡 임시 | ✅ | 77KB |
+| `hallway` | 복도와 자판기(낮) | ○ | `assets/placeholder/bg/hallway.svg` | 🟡 임시 | ✅ | 36KB |
+| `shoe_lockers` | 현관 신발장(방과 후) | ○ | `assets/placeholder/bg/shoe_lockers.svg` | 🟡 임시 | ✅ | 51KB |
+| `shoe_lockers_rain` | 현관 신발장(밖은 소나기) | ○ | `assets/placeholder/bg/shoe_lockers_rain.svg` | 🟡 임시 | ✅ | 54KB |
+| `courtyard` | 중정 벤치(점심시간) | ○ | `assets/placeholder/bg/courtyard.svg` | 🟡 임시 | ✅ | 47KB |
+| `shotengai` | 동네 상점가와 오래된 막과자 가게(늦은 오후) | ○ | `assets/placeholder/bg/shotengai.svg` | 🟡 임시 | ✅ | 79KB |
+| `riverbank_evening` | 강변 둑길(노을) | ○ | `assets/placeholder/bg/riverbank_evening.svg` | 🟡 임시 | ✅ | 53KB |
+| `station_morning` | 역 앞 맨션가(아침) | ○ | `assets/placeholder/bg/station_morning.svg` | 🟡 임시 | ✅ | 42KB |
+| `apartment_door` | 맨션 복도의 현관문 앞(저녁) | ○ | `assets/placeholder/bg/apartment_door.svg` | 🟡 임시 | ✅ | 26KB |
+| `shrine_steps` | 언덕 위 작은 신사 돌계단(노을, 고양이 자리) | ○ | `assets/placeholder/bg/shrine_steps.svg` | 🟡 임시 | ✅ | 74KB |
+| `festival_street` | 여름 축제 노점 거리(밤, 제등) | ○ | `assets/placeholder/bg/festival_street.svg` | 🟡 임시 | ✅ | 67KB |
+| `riverbank_night` | 불꽃놀이를 보는 강변 둑(밤) | ○ | `assets/placeholder/bg/riverbank_night.svg` | 🟡 임시 | ✅ | 67KB |
+| `shrine_night` | 불꽃놀이가 보이는 신사 언덕(밤) | ○ | `assets/placeholder/bg/shrine_night.svg` | 🟡 임시 | ✅ | 38KB |
 | `black` | 검은 화면(파일 없음) | ○ | 단색 #08070c | - | — |  |
 
 ## 음악(BGM)
@@ -90,12 +90,12 @@
 
 | id | 분위기 | 사용 | 현재 파일 | 구분 | 상태 | 크기 |
 |---|---|---|---|---|---|---|
-| `title` | 타이틀: 초여름 바람 같은 잔잔한 곡 | ○ | `assets/placeholder/audio/bgm_title.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `daily` | 일상: 경쾌하고 가벼운 학교생활 | ○ | `assets/placeholder/audio/bgm_daily.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `heart` | 설렘: 느리고 따뜻한 두근거림 | ○ | `assets/placeholder/audio/bgm_heart.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `evening` | 노을: 그리움이 섞인 하굣길 | ○ | `assets/placeholder/audio/bgm_evening.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `festival` | 축제: 피리·북 느낌의 들뜬 축제 | ○ | `assets/placeholder/audio/bgm_festival.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `confession` | 고백: 조용하고 맑은 피아노풍 | ○ | `assets/placeholder/audio/bgm_confession.mp3` | 🟡 임시 | ❌ 없음 |  |
+| `title` | 타이틀: 초여름 바람 같은 잔잔한 곡 | ○ | `assets/placeholder/audio/bgm_title.mp3` | 🟡 임시 | ✅ | 411KB |
+| `daily` | 일상: 경쾌하고 가벼운 학교생활 | ○ | `assets/placeholder/audio/bgm_daily.mp3` | 🟡 임시 | ✅ | 438KB |
+| `heart` | 설렘: 느리고 따뜻한 두근거림 | ○ | `assets/placeholder/audio/bgm_heart.mp3` | 🟡 임시 | ✅ | 399KB |
+| `evening` | 노을: 그리움이 섞인 하굣길 | ○ | `assets/placeholder/audio/bgm_evening.mp3` | 🟡 임시 | ✅ | 411KB |
+| `festival` | 축제: 피리·북 느낌의 들뜬 축제 | ○ | `assets/placeholder/audio/bgm_festival.mp3` | 🟡 임시 | ✅ | 399KB |
+| `confession` | 고백: 조용하고 맑은 피아노풍 | ○ | `assets/placeholder/audio/bgm_confession.mp3` | 🟡 임시 | ✅ | 411KB |
 
 ## 효과음(SFX)
 
@@ -103,16 +103,16 @@
 
 | id | 설명 | 사용 | 현재 파일 | 구분 | 상태 | 크기 |
 |---|---|---|---|---|---|---|
-| `select` | UI 선택음 | ○ | `assets/placeholder/audio/sfx_select.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `bell` | 학교 차임벨 | ○ | `assets/placeholder/audio/sfx_bell.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `door` | 교실 미닫이문 | ○ | `assets/placeholder/audio/sfx_door.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `rain` | 소나기 소리(수 초) | ○ | `assets/placeholder/audio/sfx_rain.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `camera` | 즉석카메라 셔터 | - | `assets/placeholder/audio/sfx_camera.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `firework` | 불꽃 터지는 소리 | ○ | `assets/placeholder/audio/sfx_firework.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `message` | 휴대폰 메시지 알림 | ○ | `assets/placeholder/audio/sfx_message.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `sparkle` | 반짝(놀람·깨달음 강조) | ○ | `assets/placeholder/audio/sfx_sparkle.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `footsteps` | 달려오는 발소리 | ○ | `assets/placeholder/audio/sfx_footsteps.mp3` | 🟡 임시 | ❌ 없음 |  |
-| `cat` | 고양이 울음(합성 임시음) | - | `assets/placeholder/audio/sfx_cat.mp3` | 🟡 임시 | ❌ 없음 |  |
+| `select` | UI 선택음 | ○ | `assets/placeholder/audio/sfx_select.mp3` | 🟡 임시 | ✅ | 5.8KB |
+| `bell` | 학교 차임벨 | ○ | `assets/placeholder/audio/sfx_bell.mp3` | 🟡 임시 | ✅ | 71KB |
+| `door` | 교실 미닫이문 | ○ | `assets/placeholder/audio/sfx_door.mp3` | 🟡 임시 | ✅ | 17KB |
+| `rain` | 소나기 소리(수 초) | ○ | `assets/placeholder/audio/sfx_rain.mp3` | 🟡 임시 | ✅ | 43KB |
+| `camera` | 즉석카메라 셔터 | ○ | `assets/placeholder/audio/sfx_camera.mp3` | 🟡 임시 | ✅ | 17KB |
+| `firework` | 불꽃 터지는 소리 | ○ | `assets/placeholder/audio/sfx_firework.mp3` | 🟡 임시 | ✅ | 52KB |
+| `message` | 휴대폰 메시지 알림 | ○ | `assets/placeholder/audio/sfx_message.mp3` | 🟡 임시 | ✅ | 11KB |
+| `sparkle` | 반짝(놀람·깨달음 강조) | ○ | `assets/placeholder/audio/sfx_sparkle.mp3` | 🟡 임시 | ✅ | 21KB |
+| `footsteps` | 달려오는 발소리 | ○ | `assets/placeholder/audio/sfx_footsteps.mp3` | 🟡 임시 | ✅ | 30KB |
+| `cat` | 고양이 울음(합성 임시음) | ○ | `assets/placeholder/audio/sfx_cat.mp3` | 🟡 임시 | ✅ | 11KB |
 
 ## 아직 없는(선택) 에셋
 

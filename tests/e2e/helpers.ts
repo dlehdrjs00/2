@@ -148,12 +148,24 @@ export async function inViewport(page: Page, selector: string) {
   return boxes as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>;
 }
 
-/** 같은 자리를 빠르게 두 번 누른다(마우스: 더블클릭, 터치: 간격 gapMs 의 두 번 탭) */
+/**
+ * 같은 자리를 빠르게 두 번 누른다(마우스: 더블클릭, 터치: 간격 gapMs 의 두 번 탭).
+ * 터치는 두 탭의 입력 시각을 CDP 로 직접 정해 보낸다. touchscreen.tap 을 두 번 부르면 테스트 도구·병렬 실행 부하로
+ * 간격이 수백 ms 까지 벌어져 더 이상 '더블탭'이 아니게 되기 때문이다.
+ */
 export async function doubleTap(page: Page, x: number, y: number, gapMs = 120) {
   if (test.info().project.use.hasTouch) {
-    await page.touchscreen.tap(x, y);
-    await page.waitForTimeout(gapMs);
-    await page.touchscreen.tap(x, y);
+    const cdp = await page.context().newCDPSession(page);
+    const g = gapMs / 1000;
+    const base = Date.now() / 1000 - (g + 0.06); // 두 번째 탭이 '방금' 끝난 시각이 되게
+    const pt = [{ x: Math.round(x), y: Math.round(y) }];
+    await Promise.all([
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt, timestamp: base }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: base + 0.03 }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt, timestamp: base + g }),
+      cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: base + g + 0.03 }),
+    ]);
+    await cdp.detach();
   } else {
     await page.mouse.dblclick(x, y);
   }
