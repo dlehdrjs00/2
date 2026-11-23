@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/engine/types.ts",
+    "src/engine/dsl.ts",
+    "src/engine/runner.ts",
+    "src/engine/text.ts",
+    "src/engine/validate.ts",
+    "src/story/**/*.ts",
+    "scripts/validate-story.ts"
+  ]
+}

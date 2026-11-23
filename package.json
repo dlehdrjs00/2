@@ -1,0 +1,31 @@
+{
+  "name": "ashita-mo-issho",
+  "private": true,
+  "version": "0.1.0",
+  "description": "《내일도 같이 갈래?》 — 학원 일상 러브코미디 비주얼노벨 웹게임 (첫 버전)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "typecheck": "tsc --noEmit",
+    "validate": "tsx scripts/validate-story.ts",
+    "export-script": "tsx scripts/export-script.ts",
+    "gen:art": "node scripts/art/characters.mjs && node scripts/art/backgrounds.mjs",
+    "gen:audio": "node scripts/gen-placeholder-audio.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test --trace off",
+    "check": "npm run typecheck && npm run validate && npm run test && npm run build",
+    "typecheck:story": "tsc --noEmit -p tsconfig.story.json",
+    "export-assets": "tsx scripts/export-assets.ts",
+    "docs": "npm run export-script && npm run export-assets"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
