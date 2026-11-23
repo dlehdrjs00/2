@@ -112,18 +112,16 @@ if (report.paths.length) {
 // ---- 대본 ----
 w('## 대본');
 w();
-let lastRoute = '';
+let lastHead = '';
 for (const id of SCENE_ORDER) {
   const s = STORY.scenes[id];
-  if (s.route !== lastRoute || s.part === 'epilogue') {
-    const head = `${ROUTE_KO[s.route]}${s.part === 'epilogue' ? ' — 여름 축제 후일담' : s.route === 'common' ? '' : ' — 본편'}`;
-    if (head !== lastRoute) {
-      w(`---`);
-      w();
-      w(`## ${head}`);
-      w();
-    }
-    lastRoute = s.route === lastRoute ? lastRoute : s.route;
+  const head = `${ROUTE_KO[s.route]}${s.part === 'epilogue' ? ' — 여름 축제 후일담' : s.route === 'common' ? '' : ' — 본편'}`;
+  if (head !== lastHead) {
+    w('---');
+    w();
+    w(`## ${head}`);
+    w();
+    lastHead = head;
   }
   writeScene(s);
 }
