@@ -10,6 +10,10 @@ export interface Info {
   auto: boolean;
   skip: boolean;
   overlays: number;
+  /** 무대에 표시 중인 배경 id */
+  bg: string | null;
+  /** 마지막으로 요청한 배경음 id */
+  bgm: string | null;
   typing: boolean;
   textOverflow: boolean;
   readCount: number;
@@ -86,9 +90,15 @@ export async function advanceOne(page: Page) {
   throw new Error(`진행되지 않음: ${before.step}`);
 }
 
+/** 선택지가 등장 연출을 마치고 누를 수 있게 될 때까지(준비 전 클릭은 의도적으로 무시된다) */
+export async function waitChoicesArmed(page: Page) {
+  await expect(page.locator('.choices.on')).toHaveAttribute('data-armed', '1');
+}
+
 export async function pick(page: Page, optionId: string) {
   const before = await info(page);
   expect(before.frame).toBe('choice');
+  await waitChoicesArmed(page);
   await page.locator(`.choice[data-option="${optionId}"]`).click();
   await expect.poll(async () => (await info(page)).step).not.toBe(before.step);
   await waitSettled(page);
@@ -136,4 +146,38 @@ export async function inViewport(page: Page, selector: string) {
     expect(b.bottom, selector).toBeLessThanOrEqual(vp.height + 0.5);
   }
   return boxes as Array<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>;
+}
+
+/** 같은 자리를 빠르게 두 번 누른다(마우스: 더블클릭, 터치: 간격 gapMs 의 두 번 탭) */
+export async function doubleTap(page: Page, x: number, y: number, gapMs = 120) {
+  if (test.info().project.use.hasTouch) {
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(gapMs);
+    await page.touchscreen.tap(x, y);
+  } else {
+    await page.mouse.dblclick(x, y);
+  }
+}
+
+/** 요소 가운데를 빠르게 두 번 누른다 */
+export async function doubleTapOn(page: Page, selector: string, gapMs = 120) {
+  const box = await page.locator(selector).boundingBox();
+  if (!box) throw new Error(`${selector} not visible`);
+  await doubleTap(page, box.x + box.width / 2, box.y + box.height / 2, gapMs);
+}
+
+/** 메뉴 → 타이틀로 → 확인 */
+export async function toTitle(page: Page) {
+  await openMenu(page);
+  await page.locator('[data-panel=menu] [data-action=title]').click();
+  await page.locator('[data-panel=confirm] [data-action=ok]').click();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+}
+
+/** localStorage 의 저장 슬롯 JSON */
+export async function readSlot(page: Page, slot: string): Promise<{ summary: { text: string }; state: { sceneId: string; stepId: string } } | null> {
+  return page.evaluate((k) => {
+    const raw = localStorage.getItem(k);
+    return raw ? JSON.parse(raw) : null;
+  }, `ashita.save.${slot}`);
 }

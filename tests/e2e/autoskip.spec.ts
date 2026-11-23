@@ -1,6 +1,6 @@
 /** 자동 진행·건너뛰기가 선택지/메뉴/처음 보는 대사에서 멈추는지 */
 import { expect, test } from '@playwright/test';
-import { advanceToStop, boot, info, newGame, openMenu, pick, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, tapStage, toTitle, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '데스크톱에서 확인');
@@ -71,4 +71,38 @@ test('건너뛰기는 읽은 대사만 넘기고, 선택지·처음 보는 대�
   expect(i.step).toBe(reactionB);
   expect(i.skip).toBe(false);
   await waitSettled(page);
+});
+
+test('건너뛰기가 처음 보는 대사에서 스스로 멈춘 직후의 "정지" 클릭은 그 대사를 넘기지 않는다', async ({ page }) => {
+  await boot(page); // 글자 즉시 표시: 타자 효과가 클릭을 흡수하지 않는 가장 엄한 조건
+  await newGame(page);
+  for (let k = 0; k < 4; k++) await advanceOne(page);
+  const target = (await info(page)).step; // 아직 넘기지 않은(처음 보는) 대사
+  await toTitle(page);
+  await newGame(page);
+  await page.locator('.hud button', { hasText: '스킵' }).click();
+  // 건너뛰기가 멈춘 것을 본 사용자가 반사적으로 누르는 시점(멈춘 뒤 약 120ms)
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const vn = (window as unknown as { __vn: { info: () => { skip: boolean } } }).__vn;
+        let seen = false;
+        const tick = () => {
+          const on = vn.info().skip;
+          if (on) seen = true;
+          if (seen && !on) setTimeout(resolve, 120);
+          else requestAnimationFrame(tick);
+        };
+        tick();
+      }),
+  );
+  await tapStage(page);
+  await page.waitForTimeout(500);
+  const i = await info(page);
+  expect(i.skip).toBe(false);
+  expect(i.step).toBe(target);
+  await expect(page.locator('.toast')).toContainText('처음 보는');
+  // 잠금이 풀린 뒤에는 정상적으로 넘어간다
+  await advanceOne(page);
+  expect((await info(page)).step).not.toBe(target);
 });

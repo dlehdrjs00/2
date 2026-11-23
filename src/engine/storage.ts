@@ -9,6 +9,11 @@ export interface KeyValueStore {
   set(key: string, value: string): boolean;
   remove(key: string): void;
   keys(): string[];
+  /**
+   * 다른 탭이 같은 저장소를 바꿨을 때 알림을 받는다(key 가 null 이면 전체 삭제).
+   * 해제 함수를 돌려준다. 탭 간 공유가 없는 저장소는 구현하지 않는다.
+   */
+  watch?(listener: (key: string | null) => void): () => void;
 }
 
 export class MemoryStore implements KeyValueStore {
@@ -32,26 +37,46 @@ export class MemoryStore implements KeyValueStore {
   }
 }
 
-class BrowserStore implements KeyValueStore {
-  persistent = true;
+/** 'storage' 이벤트를 받을 대상(브라우저에서는 window). 테스트에서 바꿔 끼울 수 있게 최소 형태만 쓴다 */
+export interface StorageEventSource {
+  addEventListener(type: 'storage', listener: (e: Event) => void): void;
+  removeEventListener(type: 'storage', listener: (e: Event) => void): void;
+}
+
+export class BrowserStore implements KeyValueStore {
+  /**
+   * localStorage 에 쓰지 못한 값(용량 초과 등). 이 탭에서는 여기 있는 값이 localStorage 의 옛 값보다 새것이므로
+   * get() 은 항상 이쪽을 먼저 본다('이 탭에서만 저장됐어요' 안내와 실제 불러오기가 일치하도록).
+   */
   private fallback = new MemoryStore();
-  constructor(private ls: Storage) {}
+  /** localStorage 읽기 자체가 실패한 적이 있음 */
+  private broken = false;
+  constructor(
+    private ls: Storage,
+    private events: StorageEventSource | null = defaultEventSource(),
+  ) {}
+  /** 지금 이 탭의 모든 값이 브라우저 저장소에 실제로 들어가 있는가 */
+  get persistent(): boolean {
+    return !this.broken && this.fallback.keys().length === 0;
+  }
   get(key: string) {
+    const mem = this.fallback.get(key);
+    if (mem !== null) return mem;
     try {
-      const v = this.ls.getItem(key);
-      return v ?? this.fallback.get(key);
+      return this.ls.getItem(key);
     } catch {
-      this.persistent = false;
-      return this.fallback.get(key);
+      this.broken = true;
+      return null;
     }
   }
   set(key: string, value: string) {
     try {
       this.ls.setItem(key, value);
+      // 이제 영구 저장본이 최신이므로 오래된 대체 값은 버린다
+      this.fallback.remove(key);
       return true;
     } catch {
-      // 용량 초과 등: 메모리에라도 남겨 이번 탭에서는 이어지게 한다
-      this.persistent = false;
+      // 용량 초과 등: 메모리에라도 남겨 이번 탭에서는 이어지게 한다(localStorage 의 옛 값은 새로고침 대비로 남겨 둔다)
       this.fallback.set(key, value);
       return false;
     }
@@ -76,6 +101,22 @@ class BrowserStore implements KeyValueStore {
     }
     return [...out];
   }
+  watch(listener: (key: string | null) => void): () => void {
+    const src = this.events;
+    if (!src) return () => {};
+    const handler = (e: Event) => {
+      const se = e as Event & { key?: string | null; storageArea?: unknown };
+      if (se.storageArea != null && se.storageArea !== this.ls) return; // sessionStorage 등 다른 저장소
+      listener(se.key ?? null);
+    };
+    src.addEventListener('storage', handler);
+    return () => src.removeEventListener('storage', handler);
+  }
+}
+
+function defaultEventSource(): StorageEventSource | null {
+  const g = globalThis as unknown as Partial<StorageEventSource>;
+  return typeof g.addEventListener === 'function' && typeof g.removeEventListener === 'function' ? (g as StorageEventSource) : null;
 }
 
 export function openStore(): KeyValueStore {

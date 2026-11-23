@@ -1,6 +1,6 @@
 /** 선택 전후 · 루트 진입 후 · 후일담에서의 저장/불러오기, 새로고침 후 이어하기 */
 import { expect, test, type Page } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readSlot, tapBackground, toTitle, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name === 'phone-se-landscape', '저장 흐름은 데스크톱·휴대폰 1종에서 확인');
@@ -66,6 +66,8 @@ test('루트 진입 후·후일담 저장, 새로고침 후 불러오기와 이�
     await advanceToStop(page);
     await pick(page, p);
   }
+  // 루트는 마지막 공통 선택지의 반응 대사 뒤에 확정된다
+  for (let g = 0; g < 80 && (await info(page)).route === null; g++) await advanceOne(page);
   const inRoute = await info(page);
   expect(inRoute.route).toBe('tenko');
   await advanceOne(page);
@@ -134,4 +136,95 @@ test('손상된 저장 데이터는 안내 후 삭제할 수 있고 게임은 �
   await page.keyboard.press('Escape');
   await newGame(page);
   expect((await info(page)).mode).toBe('play');
+});
+
+test('선택지가 떠 있을 때 불러오면 이전 선택지가 화면에 남지 않는다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  const saved = (await info(page)).step;
+  await saveTo(page, '1');
+  const c = await advanceToStop(page);
+  expect(c.frame).toBe('choice');
+  await expect(page.locator('.choice')).toHaveCount(2);
+  await loadFrom(page, '1');
+  const back = await info(page);
+  expect(back.step).toBe(saved);
+  expect(back.frame).toBe('say');
+  await expect(page.locator('.choices')).not.toHaveClass(/\bon\b/);
+  await expect(page.locator('.choice')).toHaveCount(0);
+  // 무대 가장자리를 눌러도 정상적으로 진행된다(남은 선택지 영역이 입력을 막지 않음)
+  await page.waitForTimeout(450);
+  await tapBackground(page);
+  await expect.poll(async () => (await info(page)).step).not.toBe(saved);
+});
+
+test('선택 직후 바로 페이지를 떠나도 자동 저장의 요약이 실제 위치(선택 후)와 맞는다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  const c = await advanceToStop(page);
+  expect(c.frame).toBe('choice');
+  await waitChoicesArmed(page);
+  // 선택 후 다음 대사를 그리기 전(200ms 연출 구간)에 새로고침
+  await page.evaluate(() => {
+    (document.querySelector('.choice[data-option=b]') as HTMLButtonElement).click();
+    location.reload();
+  });
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+  const auto = (await readSlot(page, 'auto'))!;
+  expect(auto.state.stepId).not.toBe(c.step);
+  expect(auto.summary.text.startsWith('[선택지]')).toBe(false);
+  await page.locator('[data-action=load]').click();
+  await expect(page.locator('[data-panel=load] .slot[data-slot=auto] .slot-text')).not.toContainText('[선택지]');
+});
+
+test('무대 정보 일부를 복원하지 못한 저장을 불러오면 그 사실을 알려 준다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  await advanceOne(page);
+  const charsBefore = await page.locator('.stage img.char').count();
+  await toTitle(page);
+  // 에셋 이름이 바뀐 상황: 저장된 배경·표정 이름이 매니페스트에 없다
+  await page.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('ashita.save.auto')!);
+    d.state.stage.bg = 'renamed_bg_xyz';
+    for (const c of Object.values(d.state.stage.chars) as Array<{ expr: string }>) c.expr = 'renamed_expr';
+    localStorage.setItem('ashita.save.auto', JSON.stringify(d));
+  });
+  await page.locator('[data-action=continue]').click();
+  await waitSettled(page);
+  const i = await info(page);
+  const charsAfter = await page.locator('.stage img.char').count();
+  // 검은 화면이 되거나 캐릭터가 빠졌다면 반드시 이유를 안내한다
+  if (i.bg === 'black' || charsAfter < charsBefore) await expect(page.locator('.toast')).toContainText('복원하지 못했어요');
+  else await expect(page.locator('.toast')).toContainText('불러왔어요');
+});
+
+test("'장면 처음부터' 복구는 그 장면의 배경·음악을 되살리고 이전 선택지를 남기지 않는다", async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceToStop(page);
+  await pick(page, 'a');
+  const before = await info(page);
+  expect(before.bgm).not.toBeNull();
+  await toTitle(page);
+  // 대본 수정으로 저장한 문장이 사라진 상황
+  await page.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('ashita.save.auto')!);
+    d.state.stepId = `${d.state.stepId}_removed`;
+    localStorage.setItem('ashita.save.auto', JSON.stringify(d));
+  });
+  await page.reload();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+  await page.locator('[data-action=continue]').click();
+  await expect(page.locator('[data-panel=confirm] .dialog-msg')).toContainText('장면 처음부터');
+  await page.locator('[data-panel=confirm] [data-action=ok]').click();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'play');
+  await waitSettled(page);
+  const r = await info(page);
+  expect(r.points).toEqual({ osana: 0, tenko: 0 }); // 그 장면의 선택이 되돌려짐(엔진 복구)
+  expect(r.bg).not.toBe('black');
+  expect(r.bgm).toBe(before.bgm); // 타이틀 곡이 계속 나오지 않음
+  await expect(page.locator('.choice')).toHaveCount(r.frame === 'choice' ? 2 : 0);
 });

@@ -5,11 +5,17 @@
  *  - 대사 진행은 #vn 루트의 click / 키보드에서만 일어난다. 메뉴·선택지·HUD·타이틀은 모두 [data-noadvance] 라서
  *    그 위의 입력은 대사 진행으로 전달되지 않는다.
  *  - 오버레이(메뉴 등)가 열려 있거나 세로 화면 안내가 떠 있으면 진행·자동 진행·건너뛰기가 모두 멈춘다.
- *  - 오버레이를 닫은 직후, 선택지를 고른 직후에는 짧은 입력 잠금(inputLockUntil)으로 중복 입력을 흡수한다.
+ *  - 오버레이를 닫은 직후, 선택지를 고른 직후, 이어하기·새 게임 직후, 건너뛰기가 스스로 멈춘 직후에는
+ *    짧은 입력 잠금(inputLockUntil)으로 중복 입력을 흡수한다(대사 진행과 선택지 모두에 적용).
+ *  - 화면이 바뀐 직후(오버레이 열기·닫기, 모드 전환, 슬롯 목록 갱신) 같은 자리에 들어온 두 번째 클릭
+ *    (더블클릭·더블탭의 나머지)은 루트의 캡처 단계에서 흡수한다(uiLockUntil). 키보드 활성화는 막지 않는다.
+ *  - 선택지는 나타나는 연출이 끝나고 잠깐 뒤에야 누를 수 있다(choicesArmedAt). 준비 전에 누르기 시작한 클릭도 무시한다.
  *  - 선택지는 한 번 누르면 잠긴다(choiceLocked). 실행기(choose)도 선택지가 아닌 위치에서는 아무것도 하지 않는다.
+ *  - 오버레이가 열려 있으면 그 밖의 화면은 inert 로 막아 Tab·Enter 로 아래 버튼을 누를 수 없다.
+ *  - 키 자동 반복(e.repeat)은 모두 무시한다(메뉴 깜빡임, 자동/건너뛰기 토글 반복, 확인창 즉시 확정 방지).
  */
-import type { CharId, EndingId, GameState, HeroineId, SayStep, Story } from '../engine/types';
-import { advance, choose, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
+import type { CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
+import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
 import { MANUAL_SLOTS, SaveManager, type LoadResult, type SaveSummary, type SlotId } from '../engine/save';
 import { autoDelayMs, charsPerSecond, DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../engine/settings';
 import type { KeyValueStore } from '../engine/storage';
@@ -42,6 +48,19 @@ export interface GameContent {
 }
 
 type Mode = 'boot' | 'title' | 'play' | 'ending';
+
+/** 화면이 바뀐 뒤 같은 자리 두 번째 클릭을 흡수하는 시간 */
+const UI_LOCK_MS = 400;
+/** 두 클릭을 '더블클릭·더블탭'으로 볼 최대 간격 */
+const ECHO_MS = 500;
+/** 이어하기·새 게임 직후 대사 진행·선택 잠금 */
+const START_LOCK_MS = 400;
+/** 건너뛰기가 스스로 멈춘 직후 잠금(반사적인 '정지' 클릭이 처음 보는 대사를 넘기지 않게) */
+const SKIP_STOP_LOCK_MS = 300;
+/** 선택지 준비 시간: 첫 버튼 등장 연출(0.35s) + 여유. 버튼마다 등장 지연(0.07s)만큼 더한다 */
+const CHOICE_ARM_MS = 500;
+const CHOICE_ARM_STAGGER_MS = 70;
+const CHOICE_ARM_REDUCED_MS = 350;
 
 const NAME_COLORS: Record<string, string> = {
   osana: 'var(--osana)',
@@ -78,7 +97,16 @@ export class Game {
   private autoTimer: ReturnType<typeof setTimeout> | null = null;
   private skipTimer: ReturnType<typeof setTimeout> | null = null;
   private inputLockUntil = 0;
+  private uiLockUntil = 0;
+  private lastClick: { t: number; x: number; y: number } | null = null;
+  private lastPointerType = 'mouse';
   private choiceLocked = false;
+  private choicesArmedAt = 0;
+  private choicePointerDownAt = -Infinity;
+  private armTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastLayoutSize: { vw: number; vh: number } | null = null;
+  /** 마지막으로 요청한 배경음(테스트·디버그용) */
+  private bgmRequested: string | null = null;
   private transitioning = false;
   private presentToken = 0;
   private rotateDismissed = false;
@@ -169,6 +197,7 @@ export class Game {
   }
 
   private setMode(m: Mode) {
+    this.lockUi();
     this.mode = m;
     this.root.dataset.mode = m;
     const playing = m === 'play';
@@ -190,6 +219,40 @@ export class Game {
     for (const type of ['pointerup', 'click', 'keydown', 'touchend'] as const) {
       this.root.addEventListener(type, unlock, { capture: true, passive: true });
     }
+    this.root.addEventListener(
+      'pointerdown',
+      (e) => {
+        this.lastPointerType = e.pointerType || 'mouse';
+      },
+      { capture: true, passive: true },
+    );
+    // 화면이 바뀐 직후 같은 자리에 들어온 두 번째 클릭(더블클릭·더블탭의 나머지)은
+    // 새로 나타난 버튼·슬롯·배경에 닿기 전에 흡수한다. 키보드 활성화(detail 0)는 그대로 통과.
+    this.root.addEventListener(
+      'click',
+      (e) => {
+        if (e.detail === 0) return;
+        const now = performance.now();
+        const prev = this.lastClick;
+        this.lastClick = { t: now, x: e.clientX, y: e.clientY };
+        if (now >= this.uiLockUntil) return;
+        // 마우스 더블클릭은 거의 같은 점(OS 허용 오차 수 px), 손가락 더블탭은 조금 더 벌어진다
+        const radius = this.lastPointerType === 'mouse' ? 8 : 32;
+        const near = prev !== null && now - prev.t < ECHO_MS && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) <= radius;
+        if (e.detail > 1 || near) {
+          e.stopPropagation();
+          e.preventDefault();
+        }
+      },
+      { capture: true },
+    );
+    this.choicesEl.addEventListener(
+      'pointerdown',
+      () => {
+        this.choicePointerDownAt = performance.now();
+      },
+      { capture: true, passive: true },
+    );
     this.root.addEventListener('click', (e) => {
       const t = e.target as Element | null;
       if (t && t.closest('[data-noadvance]')) return;
@@ -231,6 +294,12 @@ export class Game {
 
   private onKey(e: KeyboardEvent) {
     if (e.isComposing) return;
+    // 키를 누르고 있을 때의 자동 반복은 모두 무시한다.
+    // (Esc 반복으로 메뉴가 열렸다 닫혔다, A/S 반복으로 토글 반복, Enter 반복이 방금 열린 확인창의 기본 버튼을 누르는 일 방지)
+    if (e.repeat) {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') e.preventDefault();
+      return;
+    }
     const t = e.target as HTMLElement | null;
     const tag = t?.tagName;
     if (e.key === 'Escape') {
@@ -315,6 +384,8 @@ export class Game {
   private pickChoice(optionId: string, btn: HTMLButtonElement) {
     this.audio.unlock();
     if (this.choiceLocked || this.blocked) return;
+    // 선택지가 아직 다 나타나지 않았거나(준비 시간), 화면 전환 직후 잠금 중이면 무시한다
+    if (performance.now() < Math.max(this.inputLockUntil, this.choicesArmedAt)) return;
     const cur = this.current;
     const state = this.state;
     if (!cur || !state || cur.step.t !== 'choice') return;
@@ -351,6 +422,19 @@ export class Game {
     const token = ++this.presentToken;
     const state = this.state!;
     this.current = res;
+    // 표시 중인 스텝과 선택지 DOM 이 어긋나지 않게: 선택지가 아니면 남은 선택지를 항상 지운다
+    if (res.step.t !== 'choice') this.hideChoices();
+    // 건너뛰기는 읽은 대사만: 처음 보는 대사·선택지·엔딩에 닿으면 '그리기 전에' 멈춰서
+    // 타자 효과·효과음·장소 표시·암전 연출을 정상으로 보여 준다
+    if (this.skip) {
+      const t = res.step.t;
+      const unread = (t === 'say' || t === 'card') && !this.saves.isRead(res.step.id);
+      if (unread || t === 'choice' || t === 'ending') {
+        this.setSkip(false, true);
+        if (unread) this.toast('처음 보는 대사에서 건너뛰기를 멈췄어요.');
+        this.inputLockUntil = Math.max(this.inputLockUntil, performance.now() + SKIP_STOP_LOCK_MS);
+      }
+    }
     this.clearAutoTimer();
     this.root.dataset.frame = res.step.t;
     this.root.dataset.step = res.step.id;
@@ -359,7 +443,7 @@ export class Game {
 
     if (opts.fromLoad) {
       this.stage.renderSnapshot(state.stage);
-      this.audio.playBgm(state.stage.bgm);
+      this.playBgm(state.stage.bgm);
     } else {
       await this.applyEvents(res.events, instant, token);
       if (token !== this.presentToken) return;
@@ -415,7 +499,7 @@ export class Game {
   /** token: 연출 도중 불러오기·타이틀 이동 등으로 다른 표시가 시작되면 남은 연출을 버리기 위한 표식 */
   private async applyEvents(events: StageEvent[], instant: boolean, token: number) {
     for (const e of events) {
-      if (e.kind === 'bgm') this.audio.playBgm(e.track);
+      if (e.kind === 'bgm') this.playBgm(e.track);
       else if (e.kind === 'sfx' && !this.skip) this.audio.playSfx(e.sound);
     }
     const veil = !instant ? events.find((e) => e.kind === 'bg' && (e.fx === 'black' || e.fx === 'white')) : undefined;
@@ -568,8 +652,10 @@ export class Game {
       return;
     }
     if (!this.saves.isRead(cur.step.id)) {
+      // 안전장치(보통은 present 에서 미리 멈춘다)
       this.setSkip(false, true);
       this.toast('처음 보는 대사에서 건너뛰기를 멈췄어요.');
+      this.inputLockUntil = Math.max(this.inputLockUntil, performance.now() + SKIP_STOP_LOCK_MS);
       return;
     }
     this.doAdvance();
@@ -589,6 +675,15 @@ export class Game {
   private renderChoices(options: Array<{ id: string; text: string }>) {
     this.choicesEl.replaceChildren();
     this.choicesEl.classList.remove('locked');
+    // 준비 시간: 등장 연출이 끝나기 전(아직 반투명할 때) 들어온 연타·더블탭이 보지 못한 선택지를 고르지 않게
+    const arm = prefersReducedMotion() ? CHOICE_ARM_REDUCED_MS : CHOICE_ARM_MS + CHOICE_ARM_STAGGER_MS * Math.max(0, options.length - 1);
+    this.choicesArmedAt = performance.now() + arm;
+    this.choicesEl.dataset.armed = '0';
+    if (this.armTimer) clearTimeout(this.armTimer);
+    this.armTimer = setTimeout(() => {
+      this.armTimer = null;
+      this.choicesEl.dataset.armed = '1';
+    }, arm);
     options.forEach((o, i) => {
       const b = el('button', 'choice', o.text);
       b.type = 'button';
@@ -596,6 +691,10 @@ export class Game {
       b.setAttribute('aria-keyshortcuts', String(i + 1));
       b.addEventListener('click', (ev) => {
         ev.stopPropagation();
+        // 준비되기 전에 누르기 시작한 클릭(누른 채로 선택지가 나타난 경우 포함)은 무시한다.
+        // pointerdown 없이 오는 클릭(보조 기기 등)은 오래된 기록으로 막히지 않게 최근 것만 본다.
+        const downAt = this.choicePointerDownAt;
+        if (ev.detail > 0 && downAt < this.choicesArmedAt && performance.now() - downAt < 1500) return;
         this.pickChoice(o.id, b);
       });
       this.choicesEl.append(b);
@@ -604,6 +703,9 @@ export class Game {
   }
 
   private hideChoices() {
+    if (this.armTimer) clearTimeout(this.armTimer);
+    this.armTimer = null;
+    delete this.choicesEl.dataset.armed;
     this.choicesEl.classList.remove('on', 'locked');
     this.choicesEl.replaceChildren();
   }
@@ -616,7 +718,11 @@ export class Game {
     this.presentToken++;
     this.transitioning = false;
     this.stage.hurry();
+    this.hideChoices();
+    this.choiceLocked = false;
     this.closeAllOverlays();
+    // [새 게임]·확인창 더블클릭의 두 번째 입력이 첫 대사를 넘기지 않게
+    this.inputLockUntil = performance.now() + START_LOCK_MS;
     this.state = newGameState(this.story);
     this.current = null;
     this.stage.clearAll();
@@ -640,7 +746,12 @@ export class Game {
     this.presentToken++;
     this.transitioning = false;
     this.stage.hurry();
+    // 이전 화면의 선택지가 남지 않게(선택지 표시 중·선택 직후 200ms 구간에 불러온 경우 포함). 복구 연출 동안에도 보이지 않게 즉시 지운다
+    this.hideChoices();
+    this.choiceLocked = false;
     this.closeAllOverlays();
+    // [이어하기]·슬롯 더블클릭의 두 번째 입력이 복원된 대사를 넘기거나 선택지를 고르지 않게
+    this.inputLockUntil = performance.now() + START_LOCK_MS;
     this.state = state;
     this.current = null;
     this.hideScreen();
@@ -648,6 +759,8 @@ export class Game {
     this.setMode('play');
     this.auto = false;
     this.syncHud();
+    // settle 이 무대 상태를 바꾸기 전의 무대(정확한 위치면 저장 시점, 장면 처음부터 복구면 장면 진입 시점)
+    const entry = JSON.parse(JSON.stringify(state.stage)) as StageState;
     let res: StepResult;
     try {
       res = settle(this.story, state);
@@ -656,9 +769,11 @@ export class Game {
       return;
     }
     // 정확한 위치면 저장된 무대 스냅샷을 그대로 그리고,
-    // 장면 처음부터 복구하는 경우엔(스냅샷은 빈 무대) 장면 앞부분의 연출 명령으로 무대를 다시 만든다
+    // 장면 처음부터 복구하는 경우엔 장면 진입 시점 무대에서 장면 앞부분의 연출 명령으로 무대를 다시 만든다.
+    // 배경음도 그 시점 곡으로 맞춘다(bgm 지시 없이 앞 장면 곡을 이어받는 장면에서 타이틀 곡이 계속 나오지 않게).
     const exact = res.events.length === 0 || res.events.every((ev) => ev.kind === 'show' && !ev.entering);
-    this.stage.renderSnapshot(state.stage);
+    this.stage.renderSnapshot(entry);
+    this.playBgm(entry.bgm);
     void this.present(res, { fromLoad: exact });
   }
 
@@ -671,12 +786,18 @@ export class Game {
     }
     if (r.status === 'ok') {
       this.startFromState(r.data.state);
-      this.toast(`${slotName}을 불러왔어요.`, 1600);
+      // 일부 정보(배경·캐릭터 그림 등)를 복원하지 못했다면 그 이유를 함께 알린다(아무 설명 없이 검은 화면이 되지 않게)
+      const notes = loadNotes(r);
+      if (notes.length) this.toast(`${slotName}을 불러왔어요 · ${notes.join(' · ')}`, 5000);
+      else this.toast(`${slotName}을 불러왔어요.`, 1600);
       return;
     }
     if (r.status === 'recoverable') {
       void this.ask(r.message, { ok: '장면 처음부터', cancel: '취소' }).then((yes) => {
-        if (yes) this.startFromState(r.data.state);
+        if (!yes) return;
+        this.startFromState(r.data.state);
+        const notes = loadNotes(r);
+        if (notes.length) this.toast(notes.join(' · '), 5000);
       });
       return;
     }
@@ -694,15 +815,27 @@ export class Game {
     );
   }
 
+  /**
+   * 저장 카드 요약. 화면에 표시 중인 스텝(this.current)이 아니라 상태가 가리키는 실제 위치를 기준으로 만든다.
+   * (선택 직후 200ms 연출 구간에는 상태가 이미 다음 대사로 넘어가 있어서, current 기준이면 '[선택지]'로 잘못 남는다)
+   */
   private summary(): SaveSummary {
-    const cur = this.current;
     const state = this.state!;
     const scene = this.story.scenes[state.sceneId];
+    const step = this.stateStep() ?? this.current?.step;
     let text = '';
-    if (cur?.step.t === 'say' || cur?.step.t === 'card') text = this.t(cur.step.text);
-    else if (cur?.step.t === 'choice') text = cur.step.prompt ? `[선택지] ${this.t(cur.step.prompt)}` : '[선택지]';
+    if (step?.t === 'say' || step?.t === 'card') text = this.t(step.text);
+    else if (step?.t === 'choice') text = step.prompt ? `[선택지] ${this.t(step.prompt)}` : '[선택지]';
     if (text.length > 64) text = `${text.slice(0, 63)}…`;
     return { sceneTitle: scene ? this.t(scene.title) : '', text, route: state.route };
+  }
+
+  /** 상태(sceneId, stepId)가 가리키는 스텝 */
+  private stateStep() {
+    const state = this.state;
+    if (!state) return null;
+    const loc = findStep(this.story, state.sceneId, state.stepId);
+    return loc ? loc.scene.steps[loc.index] : null;
   }
 
   private autosave() {
@@ -711,7 +844,11 @@ export class Game {
   }
 
   private persistNow() {
-    if (this.mode === 'play' && this.state && this.current && this.current.step.t !== 'ending') this.autosave();
+    if (this.mode === 'play' && this.state && this.current) {
+      // 선택 결과가 곧바로 엔딩인 경우(200ms 연출 구간)에도 엔딩 위치를 자동 저장으로 남기지 않는다
+      const t = this.stateStep()?.t ?? this.current.step.t;
+      if (t !== 'ending') this.autosave();
+    }
     this.saves.flushGlobal();
   }
 
@@ -738,7 +875,7 @@ export class Game {
     this.textbox.setVisible(false);
     this.stage.clearAll();
     this.stage.setBgInstant('title');
-    this.audio.playBgm('title');
+    this.playBgm('title');
 
     const scr = el('div', 'title-screen');
     scr.dataset.noadvance = '';
@@ -838,6 +975,10 @@ export class Game {
   private openOverlay(build: (close: () => void) => HTMLElement, dismissable = true): () => void {
     this.clearAutoTimer();
     if (this.skip) this.setSkip(false, true);
+    this.lockUi();
+    // 키보드로 연 경우에만 닫을 때 원래 버튼으로 포커스를 돌려준다(마우스로 연 HUD 버튼에 포커스가 남으면 Space/Enter 가 대사 대신 버튼을 누름)
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    const restoreTo = opener && isFocusVisible(opener) ? opener : null;
     const ov = el('div', 'overlay');
     ov.dataset.noadvance = '';
     let closed = false;
@@ -846,29 +987,73 @@ export class Game {
       closed = true;
       ov.remove();
       this.overlays = this.overlays.filter((o) => o.el !== ov);
+      this.root.dataset.overlay = String(this.overlays.length);
       this.inputLockUntil = performance.now() + 250;
+      this.lockUi();
+      this.syncInert();
+      if (restoreTo && restoreTo.isConnected && !restoreTo.closest('[inert]')) restoreTo.focus({ preventScroll: true });
       if (!this.overlays.length) this.scheduleAuto();
     };
     const panel = build(close);
     ov.append(panel);
+    // 배경을 눌러 닫기: 누른 곳과 뗀 곳이 모두 배경일 때만(기록 글자를 드래그해 패널 밖에서 떼도 닫히지 않게).
+    // 터치 탭도 같은 위치의 호환 mousedown/mouseup 이 오므로 그대로 동작한다.
+    let downOnBackdrop = false;
+    let upOnBackdrop = false;
+    ov.addEventListener('mousedown', (e) => {
+      downOnBackdrop = e.target === ov;
+    });
+    ov.addEventListener('mouseup', (e) => {
+      upOnBackdrop = e.target === ov;
+    });
     ov.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (e.target === ov && dismissable) close();
+      const fromBackdrop = downOnBackdrop && upOnBackdrop;
+      downOnBackdrop = upOnBackdrop = false;
+      if (e.target === ov && fromBackdrop && dismissable) close();
     });
     this.overlays.push({ el: ov, close, dismissable });
     this.overlayRoot.append(ov);
     this.root.dataset.overlay = String(this.overlays.length);
-    const focusable = panel.querySelector<HTMLElement>('[data-autofocus], .btn, button');
+    this.syncInert();
+    // 선택자 목록은 우선순위가 아니라 문서 순서로 고르므로 data-autofocus 를 먼저 따로 찾는다
+    const focusable =
+      panel.querySelector<HTMLElement>('[data-autofocus]') ?? panel.querySelector<HTMLElement>('button:not([disabled]), .btn');
     focusable?.focus({ preventScroll: true });
     return close;
+  }
+
+  /**
+   * 모달 처리: 오버레이가 열려 있으면 맨 위 오버레이만 조작할 수 있게 나머지(무대·HUD·타이틀·아래 오버레이)를 inert 로 둔다.
+   * Tab 으로 아래 버튼에 가서 Enter 로 패널·확인창을 겹쳐 여는 일을 막는다. 세로 안내와 토스트는 제외.
+   */
+  private syncInert() {
+    const top = this.overlays[this.overlays.length - 1]?.el ?? null;
+    for (const child of Array.from(this.root.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child === this.overlayRoot || child === this.rotateEl || child === this.safeProbe || child.classList.contains('toast')) continue;
+      child.inert = top !== null;
+    }
+    for (const o of this.overlays) o.el.inert = o.el !== top;
   }
 
   private closeAllOverlays() {
     for (const o of [...this.overlays]) o.close();
   }
 
+  /** 화면이 바뀌었음을 표시: 잠시 동안 같은 자리 두 번째 클릭을 흡수한다 */
+  private lockUi(ms = UI_LOCK_MS) {
+    this.uiLockUntil = Math.max(this.uiLockUntil, performance.now() + ms);
+  }
+
+  private playBgm(id: string | null) {
+    this.bgmRequested = id;
+    this.audio.playBgm(id);
+  }
+
   private refreshTopOverlay() {
     // 확인 대화상자 아래에 있는 저장/불러오기 패널을 다시 그린다
+    this.lockUi();
     for (const o of this.overlays) {
       const panel = o.el.querySelector('.panel') as (HTMLElement & { refresh?: () => void }) | null;
       panel?.refresh?.();
@@ -878,6 +1063,7 @@ export class Game {
   private panel(title: string, onClose: () => void, small = false) {
     const p = el('div', `panel${small ? ' small' : ''}`);
     p.setAttribute('role', 'dialog');
+    p.setAttribute('aria-modal', 'true');
     p.setAttribute('aria-label', title);
     const head = el('div', 'panel-head');
     head.append(el('h2', '', title));
@@ -935,10 +1121,16 @@ export class Game {
         grid.replaceChildren();
         const slots: SlotId[] = kind === 'load' ? ['auto'] : [];
         for (let i = 1; i <= MANUAL_SLOTS; i++) slots.push(String(i) as SlotId);
-        for (const slot of slots) grid.append(this.slotCard(kind, slot, render));
+        for (const slot of slots) grid.append(this.slotCard(kind, slot, rerender));
+      };
+      // 다시 그린 직후 같은 자리 두 번째 클릭(예: 삭제 확인 더블클릭)이 새로 그려진 다른 슬롯에 닿지 않게
+      const rerender = () => {
+        this.lockUi();
+        render();
+        this.syncInert();
       };
       render();
-      (p as HTMLElement & { refresh?: () => void }).refresh = render;
+      (p as HTMLElement & { refresh?: () => void }).refresh = rerender;
       const note = el('p', 'setting-note', kind === 'save' ? '슬롯을 누르면 지금 위치를 저장해요. 자동 저장은 대사가 바뀔 때마다 따로 기록돼요.' : '불러올 슬롯을 고르세요.');
       body.append(note);
       return p;
@@ -977,10 +1169,9 @@ export class Game {
         else doSave();
       } else {
         const r = this.saves.load(slot);
-        if (this.mode === 'play' && r.status === 'ok') {
-          void this.ask(`${name}을 불러올까요?\n지금 진행 중인 위치는 자동 저장에만 남아요.`, { ok: '불러오기', cancel: '취소' }).then(
-            (y) => y && this.handleLoadResult(slot, this.saves.load(slot)),
-          );
+        const confirmMsg = r.status === 'ok' ? this.loadConfirmMessage(slot, name) : null;
+        if (confirmMsg) {
+          void this.ask(confirmMsg, { ok: '불러오기', cancel: '취소' }).then((y) => y && this.handleLoadResult(slot, this.saves.load(slot)));
         } else this.handleLoadResult(slot, r);
       }
     });
@@ -998,6 +1189,21 @@ export class Game {
       wrap.append(del);
     }
     return wrap;
+  }
+
+  /**
+   * 불러오기 확인 문구(필요 없으면 null). 불러오면 곧바로 자동 저장이 불러온 위치로 바뀌므로 그 사실을 그대로 알린다.
+   * 타이틀에서도 [이어하기]용 자동 저장이 있으면 덮어쓰기 전에 확인한다.
+   */
+  private loadConfirmMessage(slot: SlotId, name: string): string | null {
+    if (this.mode === 'play') {
+      if (slot === 'auto') return `${name}을 불러올까요?\n마지막으로 자동 저장된 위치로 돌아가요.`;
+      return `${name}을 불러올까요?\n지금 위치는 따로 남지 않고 자동 저장도 불러온 위치로 바뀌어요.\n필요하면 먼저 빈 슬롯에 저장하세요.`;
+    }
+    if (slot !== 'auto' && this.saves.exists('auto')) {
+      return `${name}을 불러올까요?\n[이어하기]의 자동 저장이 불러온 위치로 바뀌어요.`;
+    }
+    return null;
   }
 
   private openSettings() {
@@ -1115,7 +1321,8 @@ export class Game {
         cancel.dataset.action = 'cancel';
         const ok = button(o.ok, o.danger ? 'btn danger' : 'btn primary', () => done(true, close));
         ok.dataset.action = 'ok';
-        ok.dataset.autofocus = '';
+        // 기본 버튼에 포커스(Enter = 확인). 삭제처럼 되돌릴 수 없는 확인창은 실수로 확정되지 않게 취소에 둔다
+        (o.danger ? cancel : ok).dataset.autofocus = '';
         foot.append(cancel, ok);
         p.append(foot);
         return p;
@@ -1160,10 +1367,22 @@ export class Game {
 
   relayout(): void {
     const vv = window.visualViewport;
-    const vw = Math.round(vv?.width ?? window.innerWidth);
-    const vh = Math.round(vv?.height ?? window.innerHeight);
-    const L = computeLayout(vw, vh, measureSafeArea(this.safeProbe));
-    applyLayout(this.root, L);
+    // 두 손가락 확대 중에는 visualViewport 가 '확대된 보이는 영역' 크기를 돌려준다.
+    // 그대로 쓰면 무대가 작게 다시 계산되어 글자가 잘리고 보이는 영역 밖으로 밀려나므로,
+    // 배율을 곱해 확대 전(레이아웃 뷰포트) 크기로 계산한다. (iOS Safari 는 확대 중 innerWidth 도 줄어들어 대신 쓸 수 없다)
+    // 배율이 1이면 지금처럼 주소창·툴바 변화를 그대로 반영한다.
+    const scale = vv && vv.scale > 0 ? vv.scale : 1;
+    const zoomed = Math.abs(scale - 1) > 0.01;
+    const vw = Math.round(vv ? vv.width * scale : window.innerWidth);
+    const vh = Math.round(vv ? vv.height * scale : window.innerHeight);
+    const last = this.lastLayoutSize;
+    // 확대·이동 중 연달아 오는 resize 의 1~2px 반올림 차이로 배치가 흔들리지 않게 한다
+    const jitter = zoomed && last !== null && Math.abs(vw - last.vw) <= 2 && Math.abs(vh - last.vh) <= 2;
+    if (!jitter) {
+      this.lastLayoutSize = { vw, vh };
+      const L = computeLayout(vw, vh, measureSafeArea(this.safeProbe));
+      applyLayout(this.root, L);
+    }
     const showRotate = isPhonePortrait(vw, vh) && !this.rotateDismissed;
     if (showRotate !== this.rotateShown) {
       this.rotateShown = showRotate;
@@ -1214,10 +1433,35 @@ export class Game {
       auto: this.auto,
       skip: this.skip,
       overlays: this.overlays.length,
+      bg: this.stage.currentBg() ?? null,
+      bgm: this.bgmRequested,
       typing: this.textbox.isTyping,
       textOverflow: this.textbox.overflowing(),
       readCount: this.saves.readCount(),
     };
+  }
+}
+
+/** 불러오기 결과에 붙은 복원 안내(같은 문구는 한 번만) */
+function loadNotes(r: LoadResult): string[] {
+  const n = (r as { notes?: unknown }).notes;
+  if (!Array.isArray(n)) return [];
+  return [...new Set(n.filter((x): x is string => typeof x === 'string' && x.length > 0))];
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+function isFocusVisible(e: HTMLElement): boolean {
+  try {
+    return e.matches(':focus-visible');
+  } catch {
+    return false;
   }
 }
 

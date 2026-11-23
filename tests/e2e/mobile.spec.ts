@@ -91,3 +91,39 @@ test('세로로 돌리면 안내가 뜨고, 다시 가로로 돌려도 진행 �
   expect((await info(page)).step).not.toBe(s);
   await page.screenshot({ path: test.info().outputPath('portrait-keep.png') });
 });
+
+test('두 손가락으로 확대해도 배치가 다시 계산되지 않아 대사가 잘리지 않는다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  const vars = () =>
+    page.evaluate(() => {
+      const s = getComputedStyle(document.getElementById('vn')!);
+      return ['--sx', '--sy', '--sw', '--sh', '--th', '--fs'].map((k) => s.getPropertyValue(k).trim()).join(' ');
+    });
+  const before = await vars();
+  const vp = page.viewportSize()!;
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.synthesizePinchGesture', {
+    x: Math.round(vp.width / 2),
+    y: Math.round(vp.height / 2),
+    scaleFactor: 2,
+    relativeSpeed: 600,
+    gestureSourceType: 'touch',
+  });
+  await expect.poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeGreaterThan(1.5);
+  await page.waitForTimeout(300);
+  expect(await vars()).toBe(before);
+  expect((await info(page)).textOverflow).toBe(false);
+  // 다시 축소하면 원래 배치 그대로
+  await cdp.send('Input.synthesizePinchGesture', {
+    x: Math.round(vp.width / 2),
+    y: Math.round(vp.height / 2),
+    scaleFactor: 0.5,
+    relativeSpeed: 600,
+    gestureSourceType: 'touch',
+  });
+  await expect.poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1)).toBeLessThan(1.05);
+  await page.waitForTimeout(200);
+  expect(await vars()).toBe(before);
+});

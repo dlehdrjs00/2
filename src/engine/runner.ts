@@ -14,6 +14,7 @@ import type {
   HeroineId,
   LogEntry,
   Scene,
+  SceneEntry,
   StageState,
   Step,
   Story,
@@ -48,7 +49,7 @@ export function initialStage(): StageState {
 export function newGameState(story: Story): GameState {
   const first = story.scenes[story.start];
   if (!first || first.steps.length === 0) throw new StoryError(`시작 장면이 없습니다: ${story.start}`);
-  return {
+  const state: GameState = {
     sceneId: first.id,
     stepId: first.steps[0].id,
     points: { osana: 0, tenko: 0 },
@@ -60,6 +61,27 @@ export function newGameState(story: Story): GameState {
     log: [],
     endedWith: null,
   };
+  state.sceneEntry = snapshotSceneEntry(state);
+  return state;
+}
+
+/**
+ * 현재 상태를 '장면 진입 시점' 스냅샷으로 깊은 복사한다.
+ * state.sceneId 가 이미 들어온 장면을 가리키고, 그 장면의 첫 지시는 아직 실행되지 않은 시점에 부른다.
+ */
+export function snapshotSceneEntry(state: GameState): SceneEntry {
+  return JSON.parse(
+    JSON.stringify({
+      sceneId: state.sceneId,
+      points: state.points,
+      lastHeroine: state.lastHeroine,
+      route: state.route,
+      choices: state.choices,
+      flags: state.flags,
+      stage: state.stage,
+      logLength: state.log.length,
+    }),
+  ) as SceneEntry;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +178,7 @@ function enterScene(story: Story, state: GameState, sceneId: string): void {
   if (!scene || scene.steps.length === 0) throw new StoryError(`장면이 없습니다: ${sceneId}`);
   state.sceneId = scene.id;
   state.stepId = scene.steps[0].id;
+  state.sceneEntry = snapshotSceneEntry(state);
 }
 
 function moveNext(state: GameState, scene: Scene, index: number): void {
@@ -306,7 +329,12 @@ export function pushLog(state: GameState, entry: LogEntry): void {
   const last = state.log[state.log.length - 1];
   if (last && last.id === entry.id && last.kind === entry.kind) return; // 같은 줄 중복 기록 방지(불러오기 직후 등)
   state.log.push(entry);
-  if (state.log.length > LOG_LIMIT) state.log.splice(0, state.log.length - LOG_LIMIT);
+  if (state.log.length > LOG_LIMIT) {
+    const drop = state.log.length - LOG_LIMIT;
+    state.log.splice(0, drop);
+    // 장면 진입 위치도 같은 만큼 앞으로 당겨, 복구 때 이 장면 기록만 정확히 잘라낼 수 있게 한다
+    if (state.sceneEntry) state.sceneEntry.logLength = Math.max(0, state.sceneEntry.logLength - drop);
+  }
 }
 
 export function cloneState(state: GameState): GameState {

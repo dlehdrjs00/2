@@ -1,6 +1,21 @@
 /** 메뉴·선택지 입력이 대사 진행으로 새지 않는지, 빠른 연속 입력에 두 번 선택되지 않는지 */
 import { expect, test } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, newGame, openMenu, tapBackground, waitSettled } from './helpers';
+import {
+  advanceOne,
+  advanceToStop,
+  boot,
+  doubleTap,
+  doubleTapOn,
+  info,
+  newGame,
+  openMenu,
+  pick,
+  readSlot,
+  tapBackground,
+  toTitle,
+  waitChoicesArmed,
+  waitSettled,
+} from './helpers';
 
 test('메뉴·기록·설정을 열고 닫아도 대사가 넘어가지 않는다', async ({ page }) => {
   await boot(page);
@@ -68,7 +83,8 @@ test('선택지: 배경 클릭으로 넘어가지 않고, 빠른 연속 입력�
   expect(now.step).toBe(c.step);
   expect(now.points).toEqual({ osana: 0, tenko: 0 });
 
-  // 같은 선택지 연타 + 다른 선택지 즉시 클릭
+  // 같은 선택지 연타 + 다른 선택지 즉시 클릭(선택지가 다 나타나 누를 수 있게 된 뒤)
+  await waitChoicesArmed(page);
   const a = page.locator('.choice[data-option=a]');
   const b = page.locator('.choice[data-option=b]');
   const ab = (await a.boundingBox())!;
@@ -105,4 +121,176 @@ test('키보드: 포커스된 HUD 버튼에서 Enter/Space 를 눌러도 대사�
   const s1 = (await info(page)).step;
   await page.keyboard.press('Enter');
   await expect.poll(async () => (await info(page)).step).not.toBe(s1);
+});
+
+test('대사→선택지 경계의 연타, 선택지·대사에서 [이어하기] 더블클릭은 선택·진행으로 새지 않는다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  // 선택지 바로 앞 대사의 자동 저장을 기억해 둔다
+  let preChoice = '';
+  const c = await advanceToStop(page, async () => {
+    preChoice = await page.evaluate(() => localStorage.getItem('ashita.save.auto') ?? '');
+  });
+  expect(c.frame).toBe('choice');
+  expect(preChoice).not.toBe('');
+
+  // 1) 선택지 직전 대사에서, 대사를 넘기려고 무대 가운데(선택지 버튼이 나타날 자리)를 빠르게 두 번 누른다
+  await page.evaluate((raw) => localStorage.setItem('ashita.save.1', raw), preChoice);
+  await openMenu(page);
+  await page.locator('[data-panel=menu] [data-action=load]').click();
+  await page.locator('[data-panel=load] .slot[data-slot="1"]').click();
+  await page.locator('[data-panel=confirm] [data-action=ok]').click();
+  await expect.poll(async () => (await info(page)).frame).toBe('say');
+  await page.waitForTimeout(500); // 불러온 직후 잠금이 풀린 뒤
+  const box = (await page.locator('.stage').boundingBox())!;
+  await doubleTap(page, box.x + box.width * 0.5, box.y + box.height * 0.35, 150);
+  await page.waitForTimeout(800);
+  let now = await info(page);
+  expect(now.step).toBe(c.step);
+  expect(now.frame).toBe('choice');
+  expect(now.points).toEqual({ osana: 0, tenko: 0 });
+
+  // 2) 자동 저장이 선택지일 때 타이틀의 [이어하기]를 두 번 누른다 → 복원된 선택지가 골라지지 않음
+  await page.reload();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+  expect((await readSlot(page, 'auto'))!.state.stepId).toBe(c.step);
+  await doubleTapOn(page, '[data-action=continue]');
+  await page.waitForTimeout(800);
+  now = await info(page);
+  expect(now.mode).toBe('play');
+  expect(now.step).toBe(c.step);
+  expect(now.points).toEqual({ osana: 0, tenko: 0 });
+  expect((await readSlot(page, 'auto'))!.state.stepId).toBe(c.step);
+
+  // 3) 자동 저장이 대사일 때 [이어하기] 더블클릭 → 이어 읽을 문장이 넘어가지 않음
+  await pick(page, 'a');
+  const line = await info(page);
+  await page.reload();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+  const read0 = (await info(page)).readCount;
+  await doubleTapOn(page, '[data-action=continue]');
+  await page.waitForTimeout(800);
+  now = await info(page);
+  expect(now.step).toBe(line.step);
+  expect(now.readCount).toBe(read0);
+});
+
+test('화면이 바뀐 직후 같은 자리 두 번째 클릭은 새로 나타난 버튼·슬롯·배경에 닿지 않는다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  // 이른 위치를 수동 슬롯 1~6 에 복사하고 더 진행한다(자동 저장이 더 최신)
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('ashita.save.auto')!;
+    for (let i = 1; i <= 6; i++) localStorage.setItem(`ashita.save.${i}`, raw);
+  });
+  for (let k = 0; k < 3; k++) await advanceOne(page);
+
+  // HUD [메뉴] 더블클릭: 두 번째 클릭이 어두운 배경에 닿아 바로 닫히지 않음
+  await doubleTapOn(page, '.hud button:has-text("메뉴")');
+  await page.waitForTimeout(500);
+  expect((await info(page)).overlays).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+
+  await toTitle(page);
+  const autoBefore = (await readSlot(page, 'auto'))!.state.stepId;
+  await page.locator('[data-action=load]').click();
+  await expect(page.locator('[data-panel=load]')).toBeVisible();
+  for (const slot of ['2', '1', '3']) {
+    const wrap = page.locator('[data-panel=load] .slot-wrap').filter({ has: page.locator(`.slot[data-slot="${slot}"]`) });
+    await wrap.locator('.slot-del').click();
+    await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+    // 되돌릴 수 없는 확인창은 취소에 포커스
+    expect(await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.action)).toBe('cancel');
+    // [삭제] 더블클릭: 두 번째 클릭이 다시 그려진 아래 슬롯 카드를 눌러 확인 없이 불러오면 안 됨
+    await doubleTapOn(page, '[data-panel=confirm] [data-action=ok]');
+    await page.waitForTimeout(600);
+    const i = await info(page);
+    expect(i.mode).toBe('title');
+    expect(i.overlays).toBe(1); // 불러오기 패널만
+    await expect(page.locator(`[data-panel=load] .slot[data-slot="${slot}"]`)).toBeDisabled(); // 비었음
+  }
+  expect((await readSlot(page, 'auto'))!.state.stepId).toBe(autoBefore);
+});
+
+test('키를 누르고 있어도(자동 반복) 메뉴·자동 진행이 열렸다 닫혔다 하지 않는다', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop');
+  await boot(page, { textSpeed: 10, autoSpeed: 1, bgmVolume: 0, sfxVolume: 0 });
+  await newGame(page);
+  await advanceOne(page);
+  for (let k = 0; k < 7; k++) await page.keyboard.down('Escape');
+  await page.keyboard.up('Escape');
+  expect((await info(page)).overlays).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  for (let k = 0; k < 6; k++) await page.keyboard.down('a');
+  await page.keyboard.up('a');
+  expect((await info(page)).auto).toBe(true);
+  await page.keyboard.press('a');
+  expect((await info(page)).auto).toBe(false);
+});
+
+test('확인창: 기본 버튼에 포커스가 가고, Tab 으로 확인창 밖 버튼에 갈 수 없다', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop');
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-panel=menu] [data-action=title]').click();
+  await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+  const active = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.action ?? null);
+  expect(await active()).toBe('ok');
+  for (let k = 0; k < 10; k++) {
+    await page.keyboard.press('Tab');
+    const where = await page.evaluate(() => {
+      const a = document.activeElement;
+      if (!a || a === document.body) return 'body';
+      return a.closest('[data-panel=confirm]') ? 'confirm' : `outside:${a.textContent}`;
+    });
+    expect(where === 'confirm' || where === 'body', where).toBe(true);
+  }
+  // 아래 메뉴는 그대로 있고, 확인창 위에 다른 패널이 겹쳐 열리지 않았다
+  expect((await info(page)).overlays).toBe(2);
+  await page.locator('[data-panel=confirm] [data-action=cancel]').click();
+  await expect.poll(async () => (await info(page)).overlays).toBe(1);
+  // 다시 열어 Enter 를 누르면 기본 버튼(타이틀로)이 눌린다
+  await page.waitForTimeout(450);
+  await page.locator('[data-panel=menu] [data-action=title]').click();
+  await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+});
+
+test('기록 패널: 글자를 드래그해 패널 밖에서 떼도 닫히지 않고, 배경을 눌렀다 떼면 닫힌다', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop');
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  await advanceOne(page);
+  await page.locator('.hud button', { hasText: '기록' }).click();
+  const item = page.locator('[data-panel=log] .log-item').first();
+  await expect(item).toBeVisible();
+  await page.waitForTimeout(450);
+  const ib = (await item.boundingBox())!;
+  const pb = (await page.locator('[data-panel=log]').boundingBox())!;
+  const outX = pb.x + pb.width + 60;
+  const y = ib.y + ib.height / 2;
+  // 패널 안에서 눌러 바깥 배경에서 떼기
+  await page.mouse.move(ib.x + ib.width * 0.3, y);
+  await page.mouse.down();
+  await page.mouse.move(outX, y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect((await info(page)).overlays).toBe(1);
+  // 배경에서 눌러 패널 안에서 떼기
+  await page.mouse.move(outX, y);
+  await page.mouse.down();
+  await page.mouse.move(ib.x + ib.width * 0.3, y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect((await info(page)).overlays).toBe(1);
+  // 배경을 눌렀다 떼면 닫힘
+  await page.mouse.click(outX, y);
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
 });

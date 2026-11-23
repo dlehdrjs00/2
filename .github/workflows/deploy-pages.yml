@@ -12,9 +12,10 @@ permissions:
   pages: write
   id-token: write
 
+# 동시에 하나만 배포. 진행 중인 배포는 중간에 끊지 않는다(GitHub 공식 Pages 예제와 같은 설정)
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -28,6 +29,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run validate
+      # 단위 테스트만(vite.config.ts 의 test.exclude 로 tests/e2e 제외). E2E 는 브라우저가 필요해 여기서 돌리지 않는다
       - run: npm test
       - run: npx vite build
       - uses: actions/upload-pages-artifact@v3

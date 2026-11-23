@@ -125,21 +125,48 @@ describe('저장·불러오기', () => {
     }
   });
 
-  it('알 수 없는 배경/스프라이트는 버리고 진행은 유지한다', () => {
+  it('알 수 없는 배경/스프라이트는 버리고 진행은 유지하며, 버린 내용을 안내 문구(notes)로 돌려준다(장면 진입 스냅샷이 없는 스키마 1 저장)', () => {
     const story = miniStory();
     const store = new MemoryStore(true);
-    const strict = { ...permissiveAssets, hasBg: (b: string) => b !== 'gone', hasSprite: (c: string) => c !== 'tenko' };
+    const strict = { ...permissiveAssets, hasBg: (b: string) => b !== 'gone', hasSprite: () => false };
     const sm = new SaveManager(store, story, strict);
     const { state } = play(story, ['a'], 1);
     state.stage.bg = 'gone' as never;
-    sm.write('1', state, summary);
+    delete state.sceneEntry;
+    store.set('ashita.save.1', JSON.stringify({ schema: 1, game: GAME_KEY, storyVersion: 'x', savedAt: '', summary, state }));
     const r = sm.load('1');
     expect(r.status).toBe('ok');
     if (r.status === 'ok') {
       expect(r.data.state.stage.bg).toBe('black');
+      expect(r.data.state.stage.chars).toEqual({});
+      // 캐릭터 둘을 버려도 같은 문구는 한 번만
+      expect(r.notes).toEqual(['배경 정보를 복원하지 못했어요', '캐릭터 그림 정보를 일부 복원하지 못했어요']);
+    }
+  });
+
+  it('위치가 정확하면 버린 배경·캐릭터를 장면 진입 스냅샷부터 현재 대본으로 다시 실행해 채우고, 못 채운 것만 안내한다', () => {
+    const story = miniStory();
+    const store = new MemoryStore(true);
+    // 에셋 이름이 바뀌어 저장된 배경('gone')과 osana 의 표정('renamed')을 못 찾는 상황. tenko 그림은 아예 없음
+    const strict = {
+      ...permissiveAssets,
+      hasBg: (b: string) => b !== 'gone',
+      hasSprite: (c: string, _o: string, _h: string, e: string) => c !== 'tenko' && e !== 'renamed',
+    };
+    const sm = new SaveManager(store, story, strict);
+    const { state } = play(story, ['a'], 1);
+    expect(state.stepId).toBe('c1.ch2');
+    state.stage.bg = 'gone' as never;
+    state.stage.chars.osana!.expr = 'renamed' as never;
+    sm.write('1', state, summary);
+    const r = sm.load('1');
+    expect(r.status).toBe('ok');
+    if (r.status === 'ok') {
+      expect(r.data.state.stage.bg).toBe('classroom_day');
+      expect(r.data.state.stage.chars.osana).toEqual({ pos: 'left', expr: 'smile', outfit: 'uniform', hair: 'default' });
       expect(r.data.state.stage.chars.tenko).toBeUndefined();
-      expect(r.data.state.stage.chars.osana).toBeDefined();
-      expect(r.notes.length).toBeGreaterThan(0);
+      expect(r.data.state.stage.order).toEqual(['osana']);
+      expect(r.notes).toEqual(['캐릭터 그림 정보를 일부 복원하지 못했어요']);
     }
   });
 

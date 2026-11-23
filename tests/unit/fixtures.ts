@@ -1,6 +1,6 @@
 /** 단위 테스트용 작은 합성 스토리 (실제 대본과 무관하게 엔진 규칙만 검증) */
 import type { Story } from '../../src/engine/types';
-import { bg, choice, chose, decideRoute, ending, goto, jump, label, me, mono, opt, routeBranch, say, scene, show, when } from '../../src/engine/dsl';
+import { bg, bgm, choice, chose, decideRoute, ending, flag, goto, isFlag, jump, label, me, mono, opt, routeBranch, say, scene, show, when } from '../../src/engine/dsl';
 
 export function miniStory(): Story {
   const scenes = [
@@ -39,6 +39,57 @@ export function miniStory(): Story {
   return {
     version: 'test',
     start: 'c1',
+    scenes: Object.fromEntries(scenes.map((s) => [s.id, s])),
+    endings: {
+      osana: { id: 'osana', heroine: 'osana', title: 'A' },
+      tenko: { id: 'tenko', heroine: 'tenko', title: 'B' },
+    },
+  };
+}
+
+/**
+ * '장면 처음부터' 복구 검증용 합성 스토리.
+ * r2 는 실제 대본의 c3_break 처럼 bg·bgm 지시 없이 r1 의 무대(교실·daily·소꿉친구)를 물려받고,
+ * 장면 안에서 점수·플래그를 바꾸는 선택 뒤에 루트를 정한다.
+ */
+export function recoveryStory(): Story {
+  const scenes = [
+    scene({ id: 'r1', title: '등교', route: 'common', part: 'main' }, [
+      bg('classroom_day', 'black'),
+      bgm('daily'),
+      show('osana', { pos: 'left' }),
+      mono('r1.010', '아침'),
+      choice('r1.ch', undefined, [opt('a', 'A', { heroine: 'osana' }), opt('b', 'B', { heroine: 'tenko' })]),
+      say('r1.020', 'osana', '가자'),
+      jump('r2'),
+    ]),
+    scene({ id: 'r2', title: '쉬는 시간', route: 'common', part: 'main' }, [
+      mono('r2.010', '쉬는 시간'),
+      show('tenko', { pos: 'right' }),
+      say('r2.020', 'tenko', '안녕'),
+      choice('r2.ch', '누구와', [
+        opt('a', '소꿉친구', { heroine: 'osana', goto: 'r2.a', effects: [flag('r2_osana')] }),
+        opt('b', '전학생', { heroine: 'tenko', goto: 'r2.b' }),
+      ]),
+      label('r2.a'),
+      say('r2.a10', 'osana', 'a 반응', 'smile'),
+      say('r2.a20', 'osana', 'a 반응 2'),
+      goto('r2.join'),
+      label('r2.b'),
+      say('r2.b10', 'tenko', 'b 반응', 'shy'),
+      label('r2.join'),
+      when(isFlag('r2_osana'), 'r2.flagged'),
+      mono('r2.030', '플래그 없음'),
+      label('r2.flagged'),
+      decideRoute(),
+      routeBranch({ osana: 'ro', tenko: 'rt' }),
+    ]),
+    scene({ id: 'ro', title: '소꿉 루트', route: 'osana', part: 'main' }, [mono('ro.010', '소꿉 루트'), ending('ro.end', 'osana')]),
+    scene({ id: 'rt', title: '전학 루트', route: 'tenko', part: 'main' }, [mono('rt.010', '전학 루트'), ending('rt.end', 'tenko')]),
+  ];
+  return {
+    version: 'test',
+    start: 'r1',
     scenes: Object.fromEntries(scenes.map((s) => [s.id, s])),
     endings: {
       osana: { id: 'osana', heroine: 'osana', title: 'A' },

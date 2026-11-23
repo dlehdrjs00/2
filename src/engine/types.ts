@@ -297,6 +297,25 @@ export interface LogEntry {
   kind: 'say' | 'mono' | 'card' | 'choice';
 }
 
+/**
+ * 장면에 들어온 순간의 상태 스냅샷.
+ * 대본 수정으로 저장 위치를 잃었을 때 '장면 처음부터' 복구가 이 값으로 되돌린다
+ * (같은 장면의 선택 점수·효과가 두 번 들어가거나 무대가 비는 것을 막는다).
+ */
+export interface SceneEntry {
+  /** 스냅샷을 만든 장면(무결성 확인용) */
+  sceneId: string;
+  points: Record<HeroineId, number>;
+  lastHeroine: HeroineId | null;
+  route: HeroineId | null;
+  choices: Record<string, string>;
+  flags: Record<string, boolean | number | string>;
+  /** 장면 첫 지시가 실행되기 전 무대(이전 장면에서 물려받은 배경·음악·캐릭터) */
+  stage: StageState;
+  /** 진입 시점의 log 길이. log 앞부분이 LOG_LIMIT 로 잘리면 같은 만큼 줄어 항상 현재 log 기준 위치를 가리킨다 */
+  logLength: number;
+}
+
 export interface GameState {
   sceneId: string;
   stepId: string;
@@ -312,4 +331,6 @@ export interface GameState {
   log: LogEntry[];
   /** 이번 회차에 도달한 엔딩(엔딩 화면 표시 중인지 판단용) */
   endedWith: EndingId | null;
+  /** 현재 장면 진입 시점 스냅샷. newGameState·장면 이동 때 실행기가 채운다(저장 스키마 1 에는 없음) */
+  sceneEntry?: SceneEntry;
 }
