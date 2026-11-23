@@ -2,8 +2,10 @@
  * 작은 유리 카드: 게임 메뉴와 확인창(docs/UI_DESIGN.md 6.13)
  *
  * 메뉴 [data-panel=menu]
- *   머리줄 '✦ 메뉴' + ✕ → 3열 아이콘 타일(저장하기·불러오기·대화 기록·설정·전체화면·타이틀로) → '▶ 게임으로 돌아가기'
- *   data-action(save/load/log/settings/fullscreen/title/resume, close)은 테스트 훅이다.
+ *   머리줄 '✦ 메뉴' + ✕ → 3열 아이콘 타일(저장하기·불러오기·대화 기록·설정·전체화면·타이틀로)
+ *   → 맨 아래 줄 '▶ 게임으로 돌아가기'(타일 2칸) + '대사창 숨기기'(타일 1칸, 보조 버튼)
+ *   data-action(save/load/log/settings/fullscreen/title/resume/hide, close)은 테스트 훅이다.
+ *   숨기기는 빠른 메뉴가 4개만 남는 compact 단계와 키보드 없는 휴대폰에서 그림을 감상하는 터치 대안이다.
  * 확인창 [data-panel=confirm]
  *   .dialog-msg 에 메시지 전체를 담는다(테스트가 문구를 여기서 찾는다). 첫 줄은 strong.lead(제목처럼),
  *   나머지는 본문, 보충 줄은 small. 오른쪽 아래 취소·확인(data-action=cancel/ok, data-autofocus).
@@ -27,7 +29,7 @@ function smallPanel(name: string, panel: string): HTMLElement {
   return p;
 }
 
-export function buildMenu(items: MenuItem[], resume: () => void, close: () => void): HTMLElement {
+export function buildMenu(items: MenuItem[], resume: () => void, close: () => void, hide?: () => void): HTMLElement {
   const p = smallPanel('메뉴', 'menu');
   const head = el('div', 'panel-head');
   const x = button('', 'btn icon', close);
@@ -49,6 +51,14 @@ export function buildMenu(items: MenuItem[], resume: () => void, close: () => vo
   back.dataset.action = 'resume';
   back.append(ico('play'), '게임으로 돌아가기');
   list.append(back);
+  if (hide) {
+    const hb = button('', 'btn sub', hide);
+    hb.dataset.action = 'hide';
+    hb.title = '대사창 숨기기 (H)';
+    hb.append(ico('hide'), '대사창 숨기기');
+    list.append(hb);
+    list.classList.add('has-sub');
+  }
   p.append(head, list);
   return p;
 }

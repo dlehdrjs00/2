@@ -8,8 +8,8 @@
   "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#0f0c14",
-  "theme_color": "#17131d",
+  "background_color": "#dfeefb",
+  "theme_color": "#cfe6f8",
   "categories": ["games", "entertainment"],
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

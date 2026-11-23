@@ -383,7 +383,9 @@
     inset 0 1px 0 #fff;
   --name-1: var(--npc-1);
   --name-2: var(--npc-2);
-  /* 나타날 때는 페이드만 한다(위치를 옮기는 연출은 숨긴 동안·전환 중에 재는 배치 값을 흔들어서 뺐다) */
+  /* 나타날 때: 창(유리)은 페이드, 안쪽 장식선만 6px 아래에서 제자리로(아래 ::before).
+   * 창 자체를 옮기면 붙어 있는 빠른 메뉴 탭과 잠깐 벌어지고, 글자(.text)를 옮기면 넘침 측정(fit)이 흔들려서
+   * 측정에 쓰지 않는 장식선에만 이동을 준다 */
   transition:
     opacity 0.25s ease-out,
     --name-1 0.2s ease,
@@ -418,6 +420,10 @@
     var(--corner-tr) right -1px top -1px / 16px no-repeat,
     var(--corner-bl) left -1px bottom -1px / 16px no-repeat,
     var(--corner-br) right -1px bottom -1px / 16px no-repeat;
+  transition: transform 0.25s ease-out;
+}
+.textbox.hidden::before {
+  transform: translateY(6px);
 }
 /* 위 테두리: 화자 색 띠(왼쪽에서 오른쪽으로 사라짐) */
 .textbox::after {
@@ -716,11 +722,20 @@
 .vn[data-tone='night'] .qbar button {
   color: #e5ecfb;
 }
+/* 마우스 올림·누름 바탕은 꺼진 버튼에만. 켜진 [자동]·[스킵]은 커서가 위에 있어도 --grad-on 채움을 유지해
+ * 누른 직후 켜졌는지 바로 보이게 한다(밤 규칙이 낮의 켜짐 규칙보다 구체성이 높아 덮어쓰던 문제) */
 @media (hover: hover) {
-  .vn[data-tone='night'] .qbar button:hover {
+  .vn[data-tone='night'] .qbar button:not([aria-pressed='true']):hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.12);
   }
+}
+.vn[data-tone='night'] .qbar button:not([aria-pressed='true']):active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+}
+.vn[data-tone='night'] .qbar button[aria-pressed='true'] {
+  color: #fff;
 }
 .vn[data-tone='night'] .qbar button:not([data-q='log'])::before {
   background: rgba(170, 205, 255, 0.28);
@@ -746,16 +761,32 @@
   top: calc(var(--sy) + var(--sh) - var(--m) - var(--btn));
   opacity: 0.78;
 }
+/* 세로 대체 배치: 무대가 낮아(390×844 에서 약 220px) 캡슐이 일력을 덮는다. 무대 바로 아래 탭 띠 자리(무대와
+ * 대사창 사이 btn + 8 틈)에 그대로 두고, 카드는 무대 높이를 모두 쓴다 */
+.vn[data-layout='below'][data-frame='card'] .qbar {
+  top: calc(var(--ty) - var(--btn));
+}
 .vn[data-frame='card'] .qbar:hover,
 .vn[data-frame='card'] .qbar:focus-within {
   opacity: 1;
 }
 .vn[data-tone='night'][data-frame='card'] .qbar,
-.vn[data-tone='night']:has(> .textbox.hidden) .qbar {
+.vn[data-tone='night']:has(> .textbox.hidden) .qbar,
+.vn[data-frame='card']:has(> .stage > .card.on[data-tone='night']) .qbar {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.14),
     0 0 0 1px rgba(140, 190, 255, 0.28),
     0 6px 16px rgba(0, 6, 30, 0.3);
+}
+/* 밤 날짜 카드(카드 톤은 다음 배경 기준이라 #vn 톤보다 먼저 밤이 된다): 캡슐도 남색 유리로 */
+.vn[data-frame='card']:has(> .stage > .card.on[data-tone='night']) .qbar {
+  background: rgba(26, 38, 70, calc(var(--win-alpha) * 0.9));
+}
+.vn[data-frame='card']:has(> .stage > .card.on[data-tone='night']) .qbar button:not([aria-pressed='true']) {
+  color: #e5ecfb;
+}
+.vn[data-frame='card']:has(> .stage > .card.on[data-tone='night']) .qbar button:not([data-q='log'])::before {
+  background: rgba(170, 205, 255, 0.28);
 }
 
 /* =========================================================================
@@ -1072,7 +1103,7 @@
   align-items: center;
   justify-content: center;
   gap: calc(var(--fs) * 0.55);
-  /* 세로 가운데는 오른쪽 아래 빠른 메뉴 캡슐 위 영역 기준 */
+  /* 세로 가운데는 오른쪽 아래 빠른 메뉴 캡슐 위 영역 기준. 내용이 이 상자를 넘지 않게 stage.ts 가 data-fit 단계를 고른다 */
   padding: var(--m) 8% calc(var(--m) + var(--btn)) 8%;
   overflow: hidden;
   text-align: center;
@@ -1097,6 +1128,15 @@
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse 55% 55% at 50% 48%, rgba(255, 255, 255, 0.78), rgba(236, 246, 255, 0.6) 60%, rgba(214, 236, 252, 0.5) 100%);
+}
+/* 쓸 배경이 그림 없는 색(암전)일 때: 검정 위 흰 베일의 탁한 회색 대신 맑은 하늘 그라데이션 */
+.stage > .card .card-bg.plain {
+  background: linear-gradient(180deg, #a9d6f5 0%, #d3ebfb 45%, #f1f8ff 70%, #fde8f0 100%);
+  filter: none;
+}
+/* 세로 대체 배치: 빠른 메뉴 캡슐이 무대 아래 탭 띠에 있으므로 무대 높이를 모두 쓴다 */
+.vn[data-layout='below'] .stage > .card {
+  padding-bottom: var(--m);
 }
 .stage > .card .card-kicker {
   font: 700 max(16px, calc(var(--fs) * 0.68)) / 1 var(--font-ui);
@@ -1218,11 +1258,40 @@
   width: 0.8em;
   height: 0.8em;
 }
+/* 장식선 가운데의 월~금 점(무대가 낮아 아래 주간 점 알약을 뺄 때만 별 대신 보인다) */
+.cal-dots {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+.cal-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--sky-400);
+  background: #fff;
+}
+.cal-dots i.past {
+  background: var(--sky-300);
+  border-color: var(--sky-300);
+}
+.cal-dots i.now {
+  width: 10px;
+  height: 10px;
+  background: var(--pink-400);
+  border-color: var(--pink-400);
+  box-shadow: 0 0 0 3px rgba(247, 143, 180, 0.28);
+}
 .cal-sub {
   font: 400 max(16px, calc(var(--fs) * 0.95)) / 1.45 var(--font-text);
   color: var(--ink-2);
   letter-spacing: 0.04em;
   word-break: keep-all;
+  text-wrap: balance;
+}
+/* ' · ' 로 나뉜 부분은 덩어리째 줄바꿈(한 덩어리가 한 줄보다 길 때만 그 안에서 끊긴다) */
+.cal-sub-part {
+  display: inline-block;
 }
 /* 날짜 형식이 아닌 카드: 큰 숫자 대신 명조 문장 */
 .cal.text-only .cal-day {
@@ -1275,36 +1344,91 @@
   border-color: var(--pink-400);
   box-shadow: 0 0 0 4px rgba(247, 143, 180, 0.25);
 }
-/* 밤 카드: 남색 베일 + 남색 띠 */
-.stage[data-tone='night'] > .card .card-bg::after {
+/* 밤 카드(카드 톤 = 카드가 그리는 배경의 톤): 남색 베일 + 남색 띠 */
+.stage > .card[data-tone='night'] .card-bg::after {
   background: radial-gradient(ellipse 55% 55% at 50% 48%, rgba(60, 70, 120, 0.35), rgba(14, 22, 50, 0.7));
 }
-.stage[data-tone='night'] .cal-head {
+.stage > .card[data-tone='night'] .card-bg.plain {
+  background: linear-gradient(180deg, #16224a 0%, #26346a 55%, #4b3f7c 100%);
+}
+.stage > .card[data-tone='night'] .cal-head {
   background: linear-gradient(100deg, #2a3f7a, #3d4f95 60%, #6a5aa8);
 }
-.stage[data-tone='night'] > .card .week,
-.stage[data-tone='night'] > .card .card-kicker {
+.stage > .card[data-tone='night'] .week,
+.stage > .card[data-tone='night'] .card-kicker {
   background: rgba(24, 34, 64, 0.6);
   color: #e5ecfb;
   border-color: rgba(190, 220, 255, 0.35);
 }
-.stage[data-tone='night'] .week span.now {
+.stage > .card[data-tone='night'] .week span.now {
   color: var(--pink-200);
 }
-/* 낮은 화면: 일력이 무대 높이를 넘지 않게 숫자·간격을 줄인다 */
-@media (max-height: 420px) {
-  .stage > .card {
-    gap: calc(var(--fs) * 0.4);
-  }
-  .stage > .card .cal-day {
-    font-size: calc(var(--fs) * 3.2);
-  }
-  .stage > .card .cal.text-only .cal-day {
-    font-size: calc(var(--fs) * 1.35);
-  }
-  .stage > .card .cal-body {
-    padding-bottom: calc(var(--fs) * 0.6);
-  }
+
+/* 낮은 무대: 카드 묶음이 '무대 높이 − 위아래 여백 − 빠른 메뉴 캡슐' 안에 들어가게 한 단계씩 줄인다.
+ * 단계는 stage.ts fitCard 가 실제 높이를 재서 고른다(무대 크기·글자 크기 설정·글꼴 도착 때 다시 잰다).
+ * 글자는 줄여도 16px 아래로 내려가지 않는다(큰 날짜 숫자만 무대 높이에 맞춰 작아진다).
+ *   1: 숫자·간격 축소(휴대폰 가로 844×390·667×375)
+ *   2: 아래 주간 점 알약 → 일력 장식선 가운데 점(740×320·740×280)
+ *   3: 주 차 알약 숨김, 머리띠·여백 축소(세로 대체 배치 390×844·360×740)
+ *   4: 장식선 숨김, 최소 크기(지원 범위 밖의 아주 낮은 화면) */
+.stage > .card[data-fit]:not([data-fit='0']) {
+  gap: calc(var(--fs) * 0.4);
+}
+.stage > .card[data-fit]:not([data-fit='0']) .cal-day {
+  font-size: calc(var(--fs) * 3.2);
+}
+.stage > .card[data-fit]:not([data-fit='0']) .cal.text-only .cal-day {
+  font-size: max(16px, calc(var(--fs) * 1.35));
+}
+.stage > .card[data-fit]:not([data-fit='0']) .cal-body {
+  padding-bottom: calc(var(--fs) * 0.6);
+}
+.stage > .card:is([data-fit='2'], [data-fit='3'], [data-fit='4']) > .week {
+  display: none;
+}
+.stage > .card:is([data-fit='2'], [data-fit='3'], [data-fit='4']) .cal-line:has(.cal-dots) .ico {
+  display: none;
+}
+.stage > .card:is([data-fit='2'], [data-fit='3'], [data-fit='4']) .cal-dots {
+  display: flex;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) {
+  gap: 0;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) > .card-kicker {
+  display: none;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-head {
+  height: 34px;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-head::before {
+  top: 4px;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-body {
+  padding: calc(var(--fs) * 0.15) 0.9em calc(var(--fs) * 0.45);
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-day {
+  font-size: max(36px, calc(var(--fs) * 2.6));
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal.text-only .cal-day {
+  font-size: max(16px, calc(var(--fs) * 1.15));
+  line-height: 1.3;
+  padding: 0.2em 0 0;
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-line {
+  margin: calc(var(--fs) * 0.25) 0 calc(var(--fs) * 0.15);
+}
+.stage > .card:is([data-fit='3'], [data-fit='4']) .cal-sub {
+  line-height: 1.3;
+}
+.stage > .card[data-fit='4'] .cal-line:not(:has(.cal-dots)) {
+  display: none;
+}
+.stage > .card[data-fit='4'] .cal-day {
+  font-size: max(30px, calc(var(--fs) * 2.1));
+}
+.stage > .card[data-fit='4'] .cal-dow {
+  line-height: 1.05;
 }
 
 /* =========================================================================
@@ -1374,6 +1498,17 @@
   transform: translateX(-50%);
   max-width: calc(var(--tw) - var(--fs) * 2);
 }
+/* 대사창 숨김(선택지 화면 포함): 대사창 안 자리는 아래 가운데 안내 알약(.hide-hint)과 겹치므로
+ * 대사 때처럼 무대 오른쪽 위로 옮긴다(저장·퀵저장 직후 숨겨도 결과 알림은 읽히게) */
+.vn[data-mode='play'][data-hidewin='1']:not([data-layout='below']):not([data-overlay]) > .toast,
+.vn[data-mode='play'][data-hidewin='1']:not([data-layout='below'])[data-overlay='0'] > .toast {
+  top: calc(var(--sy) + var(--fs) * 0.7);
+  bottom: auto;
+  left: auto;
+  right: calc(100% - var(--sx) - var(--sw) + var(--fs) * 0.8);
+  transform: none;
+  max-width: calc(var(--sw) * 0.5);
+}
 /* 세로 대체 배치: 무대가 좁아 장소 표시와 겹치므로 대사창 바로 아래 가운데로 */
 .vn[data-mode='play'][data-layout='below']:not([data-overlay]) > .toast,
 .vn[data-mode='play'][data-layout='below'][data-overlay='0'] > .toast {
@@ -1410,6 +1545,7 @@
   .choice,
   .place-chip,
   .textbox,
+  .textbox::before,
   .qbar,
   .choice-veil,
   .toast {

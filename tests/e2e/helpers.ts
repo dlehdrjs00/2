@@ -199,3 +199,22 @@ export async function readSlot(page: Page, slot: string): Promise<{ summary: { t
     return raw ? JSON.parse(raw) : null;
   }, `ashita.save.${slot}`);
 }
+
+/**
+ * 요소들의 계산된 background-image 에 든 url() 을 실제로 받아 그림인지 확인한다.
+ * CSS 변수(--bg)에 상대 주소를 넣으면 빌드(base './')에서 var(--bg) 를 쓰는 CSS 파일 기준으로 풀려
+ * /assets/assets/… 처럼 되어 그림이 빠진다. vite preview 는 없는 주소에도 index.html(200)을 돌려주므로
+ * 상태 코드가 아니라 content-type 으로 판정한다. min: 적어도 이만큼의 url 이 있어야 한다.
+ */
+export async function expectCssImages(page: Page, selector: string, min = 1) {
+  const urls = await page.locator(selector).evaluateAll((els) =>
+    els.flatMap((e) => Array.from(getComputedStyle(e).backgroundImage.matchAll(/url\("?([^")]+)"?\)/g), (m) => m[1])),
+  );
+  const remote = [...new Set(urls)].filter((u) => !u.startsWith('data:'));
+  expect(remote.length, `${selector}: 배경 그림 url 개수`).toBeGreaterThanOrEqual(min);
+  for (const u of remote) {
+    const res = await page.request.get(u);
+    expect(res.status(), u).toBe(200);
+    expect(res.headers()['content-type'] ?? '', `${u} 는 그림이어야 함`).toMatch(/^image\//);
+  }
+}

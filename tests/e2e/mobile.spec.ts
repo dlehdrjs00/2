@@ -122,3 +122,42 @@ test('두 손가락으로 확대해도 배치가 다시 계산되지 않아 대�
   await page.waitForTimeout(200);
   expect(await vars()).toBe(before);
 });
+
+test('터치: 메뉴의 [대사창 숨기기]로 숨기고(빠른 메뉴가 4개뿐인 compact 단계 포함), 탭하면 복귀만 한다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  const land = page.viewportSize()!;
+  for (const vp of [land, { width: 740, height: 320 }]) {
+    await page.setViewportSize(vp);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const s0 = (await info(page)).step;
+    await openMenu(page);
+    await inViewport(page, '[data-panel=menu] [data-action=hide]');
+    const hb = (await page.locator('[data-panel=menu] [data-action=hide]').boundingBox())!;
+    await page.touchscreen.tap(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await expect(page.locator('#vn')).toHaveAttribute('data-hidewin', '1');
+    expect((await info(page)).overlays).toBe(0);
+    await page.waitForTimeout(650);
+    const st = (await page.locator('.stage').boundingBox())!;
+    await page.touchscreen.tap(st.x + st.width / 2, st.y + st.height * 0.35);
+    await expect(page.locator('#vn')).not.toHaveAttribute('data-hidewin', '1');
+    await page.waitForTimeout(450);
+    expect((await info(page)).step, `${vp.width}x${vp.height}: 복귀 탭이 대사를 넘김`).toBe(s0);
+  }
+  await expect(page.locator('#vn')).toHaveAttribute('data-qm', 'compact');
+});
+
+test('터치: 누른 자리 아래 버튼에 마우스 올림(hover) 모양이 남지 않는다', async ({ page }) => {
+  const land = page.viewportSize()!;
+  await page.setViewportSize({ width: land.height, height: land.width });
+  await boot(page);
+  expect(await page.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(false);
+  // 세로 안내의 [세로 화면으로 계속하기]를 누름 → 그 자리 아래 타이틀 버튼이 hover 로 밀려나지 않음.
+  // 휴대폰 브라우저는 탭한 자리에 :hover 를 붙여 두므로(끈끈한 hover), 같은 상태를 만드는 마우스 클릭으로 누른다
+  await page.locator('[data-action=keep-portrait]').click();
+  await expect(page.locator('.rotate')).toBeHidden();
+  await page.waitForTimeout(300);
+  const moved = await page.locator('.title-menu .btn').evaluateAll((bs) => bs.map((b) => getComputedStyle(b).translate).filter((t) => t !== 'none' && t !== '0px'));
+  expect(moved).toEqual([]);
+});

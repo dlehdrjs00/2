@@ -7,7 +7,7 @@
  * - 'END' 영문 대신 '아카네 엔딩' 배지를 쓴다.
  */
 import type { EndingId, HeroineId } from '../../engine/types';
-import { button, el } from '../dom';
+import { button, cssUrl, el } from '../dom';
 import { ico } from '../icons';
 import { HEROINE_COLORS } from './common';
 import { buildMotes } from './fx';
@@ -42,7 +42,7 @@ export function buildEnding(o: EndingOptions): HTMLElement {
   scr.style.setProperty('--c2', tone.c2);
 
   const bg = el('div', 'end-bg');
-  if (o.bgUrl) bg.style.setProperty('--bg', `url("${o.bgUrl}")`);
+  if (o.bgUrl) bg.style.setProperty('--bg', cssUrl(o.bgUrl));
   if (o.bgColor) bg.style.backgroundColor = o.bgColor;
   scr.append(bg);
   // 불꽃·빛망울은 늘 만들고, 설정에서 끄면 CSS([data-particles='0'])가 숨긴다

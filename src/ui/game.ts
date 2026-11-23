@@ -28,7 +28,7 @@ import { applyLayout, computeLayout, isPhonePortrait, measureSafeArea } from './
 import { StageView } from './stage';
 import { TextBox } from './textbox';
 import { createQuickBar, type QuickBar } from './qbar';
-import { button, el, withJosa } from './dom';
+import { button, cssUrl, el, withJosa } from './dom';
 import { isFullscreen, prefersReducedMotion, showFullscreenControl, splitDate, toggleFullscreen } from './screens/common';
 import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
@@ -335,6 +335,8 @@ export class Game {
 
   private onKey(e: KeyboardEvent) {
     if (e.isComposing) return;
+    // 오버레이(시트·메뉴·확인창) 안에서 Tab 포커스가 문서 밖(body·주소창)으로 빠지지 않게 처음↔끝을 잇는다
+    if (e.key === 'Tab' && this.trapTab(e)) return;
     // 키를 누르고 있을 때의 자동 반복은 모두 무시한다.
     // (Esc 반복으로 메뉴가 열렸다 닫혔다, A/S 반복으로 토글 반복, Enter 반복이 방금 열린 확인창의 기본 버튼을 누르는 일 방지)
     if (e.repeat) {
@@ -1185,7 +1187,7 @@ export class Game {
     if (!url) return miniStage('mini', stage, this.mini);
     const photo = miniStage('mini', undefined, this.mini);
     photo.classList.add('cg');
-    photo.style.setProperty('--bg', `url("${url}")`);
+    photo.style.setProperty('--bg', cssUrl(url));
     return photo;
   }
 
@@ -1217,6 +1219,7 @@ export class Game {
       this.inputLockUntil = performance.now() + 250;
       this.lockUi();
       this.syncInert();
+      this.placeToast();
       if (restoreTo && restoreTo.isConnected && !restoreTo.closest('[inert]')) restoreTo.focus({ preventScroll: true });
       if (!this.overlays.length) this.scheduleAuto();
     };
@@ -1242,11 +1245,43 @@ export class Game {
     this.overlayRoot.append(ov);
     this.root.dataset.overlay = String(this.overlays.length);
     this.syncInert();
+    this.placeToast();
     // 선택자 목록은 우선순위가 아니라 문서 순서로 고르므로 data-autofocus 를 먼저 따로 찾는다
     const focusable =
       panel.querySelector<HTMLElement>('[data-autofocus]') ?? panel.querySelector<HTMLElement>('button:not([disabled]), .btn');
     focusable?.focus({ preventScroll: true });
     return close;
+  }
+
+  /**
+   * 맨 위 오버레이 안에서 Tab 순환. 마지막 조작 요소에서 Tab → 처음, 처음에서 Shift+Tab → 마지막.
+   * 포커스가 오버레이 밖(body 등)에 있으면 처음(Shift+Tab 이면 마지막)으로 들여보낸다. 처리했으면 true.
+   */
+  private trapTab(e: KeyboardEvent): boolean {
+    const top = this.overlays[this.overlays.length - 1]?.el;
+    if (!top) return false;
+    const items = Array.from(
+      top.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'),
+    ).filter((x) => {
+      if (x.tabIndex < 0 || (x as HTMLButtonElement).disabled) return false;
+      if (x.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      if (!x.getClientRects().length) return false;
+      const cs = getComputedStyle(x);
+      return cs.visibility !== 'hidden' && cs.display !== 'none';
+    });
+    if (!items.length) return false;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const a = document.activeElement;
+    const inside = a instanceof HTMLElement && top.contains(a);
+    let to: HTMLElement | null = null;
+    if (e.shiftKey) {
+      if (!inside || a === first) to = last;
+    } else if (!inside || a === last) to = first;
+    if (!to) return false;
+    e.preventDefault();
+    to.focus();
+    return true;
   }
 
   /**
@@ -1332,7 +1367,12 @@ export class Game {
         });
       }
       items.push({ action: 'title', label: '타이틀로', icon: 'home', run: () => this.confirmToTitle() });
-      return buildMenu(items, close, close);
+      // 대사창 숨기기: compact 단계(빠른 메뉴 4개)와 키보드 없는 휴대폰에서도 그림을 감상할 수 있게 메뉴에도 둔다
+      const hide = () => {
+        close();
+        this.setHideWin(true);
+      };
+      return buildMenu(items, close, close, hide);
     });
   }
 
@@ -1514,6 +1554,46 @@ export class Game {
     });
   }
 
+  /**
+   * 시스템 시트가 맨 위에 열려 있으면 토스트를 머리줄의 빈칸(탭 줄과 닫기 사이)에 닫기 쪽으로 붙여 띄운다.
+   * 화면 아래 가운데에 두면 저장 카드(방금 저장한 칸의 펄스)·안내 줄을 가리고, 머리줄 아래에 두면 첫 줄 카드를 가린다.
+   * 빈칸이 모자라면 아래 안내 줄 위에, 안내 줄도 없으면 왼쪽(탭 쪽)으로 늘어난다. 토스트는 pointer-events: none 이라 아래 버튼은 그대로 눌린다.
+   * 시트가 닫히거나 화면 크기가 바뀌면 다시 부른다(시트가 없으면 play.css 의 기본 위치로 돌아간다).
+   */
+  private placeToast() {
+    const t = this.toastEl;
+    if (!t) return;
+    const top = this.overlays[this.overlays.length - 1]?.el;
+    const head = top?.classList.contains('sys') ? top.querySelector<HTMLElement>('.panel-head') : null;
+    const closeBtn = head?.querySelector<HTMLElement>('.close') ?? null;
+    if (!head || !closeBtn) {
+      t.classList.remove('in-sheet');
+      for (const k of ['--toast-top', '--toast-right', '--toast-maxw']) t.style.removeProperty(k);
+      return;
+    }
+    const rr = this.root.getBoundingClientRect();
+    const hr = head.getBoundingClientRect();
+    const cr = closeBtn.getBoundingClientRect();
+    const tabs = head.querySelector('.sys-tabs')?.getBoundingClientRect() ?? null;
+    const gap = 10;
+    t.classList.add('in-sheet');
+    t.style.setProperty('--toast-maxw', `${Math.max(160, Math.round(cr.left - gap - hr.left))}px`);
+    const w = t.getBoundingClientRect().width;
+    let y = cr.top + cr.height / 2;
+    let right = rr.right - cr.left + gap;
+    // 빈칸이 모자라면(세로 화면 등) 탭을 덮기보다 아래 안내 줄(.panel-hint, 조작 요소 없음) 위 가운데에 띄운다
+    const room = cr.left - gap - (tabs ? tabs.right + gap : hr.left);
+    if (w > room) {
+      const hint = top?.querySelector<HTMLElement>('.panel-hint')?.getBoundingClientRect();
+      if (hint && hint.height > 0 && hint.width >= w) {
+        y = hint.top + hint.height / 2;
+        right = rr.right - hint.right + (hint.width - w) / 2;
+      }
+    }
+    t.style.setProperty('--toast-top', `${Math.round(y - rr.top)}px`);
+    t.style.setProperty('--toast-right', `${Math.round(right)}px`);
+  }
+
   toast(msg: string, ms = 2200): void {
     this.toastEl?.remove();
     if (this.toastTimer) clearTimeout(this.toastTimer);
@@ -1522,6 +1602,7 @@ export class Game {
     t.setAttribute('role', 'status');
     this.root.append(t);
     this.toastEl = t;
+    this.placeToast();
     this.toastTimer = setTimeout(() => {
       t.remove();
       if (this.toastEl === t) this.toastEl = null;
@@ -1535,8 +1616,9 @@ export class Game {
   /** 레터박스(무대 바깥 흐린 배경)와 배경 톤(#vn[data-tone]) */
   private paintBackdrop(url: string | null, color: string | null, tone?: string) {
     const b = this.backdrop;
-    b.style.setProperty('--bg', url ? `url("${url}")` : 'none');
-    b.style.backgroundImage = url ? `url("${url}")` : 'none';
+    const bgValue = url ? cssUrl(url) : 'none';
+    b.style.setProperty('--bg', bgValue);
+    b.style.backgroundImage = bgValue;
     b.style.backgroundColor = color ?? '';
     // 검은 화면(그림 없음)은 앞 장면 톤을 유지한다(암전 동안 창 색이 깜빡이지 않게)
     if (tone) this.root.dataset.tone = tone;
@@ -1583,6 +1665,7 @@ export class Game {
       this.lastLayoutSize = { vw, vh };
       const L = computeLayout(vw, vh, measureSafeArea(this.safeProbe), { textScale: textScaleFactor(this.settings.textScale) });
       applyLayout(this.root, L);
+      this.placeToast();
     }
     const showRotate = isPhonePortrait(vw, vh) && !this.rotateDismissed;
     if (showRotate !== this.rotateShown) {

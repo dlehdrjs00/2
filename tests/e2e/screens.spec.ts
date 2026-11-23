@@ -3,7 +3,7 @@
  * 대화 기록 항목과 선택지의 분리, 설정(글자 크기·빛망울), 전체화면 메뉴, 타이틀 곡 지연.
  */
 import { expect, test } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readSlot, tapStage, waitChoicesArmed, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, expectCssImages, info, newGame, openMenu, pick, readSlot, tapStage, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '화면 구조 검사는 데스크톱에서(휴대폰 배치는 mobile.spec)');
@@ -295,4 +295,85 @@ test('타이틀을 바로 떠나면 타이틀 곡 파일을 받지 않는다', a
   await page.locator('[data-panel=confirm] [data-action=ok]').click();
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
   await expect.poll(async () => (await info(page)).bgm, { timeout: 5000 }).toBe('title');
+});
+
+test('빌드 결과에서도 화면 그림이 실제로 받아지고 시트·메뉴 뒤가 흐려진다', async ({ page }) => {
+  await boot(page);
+  // 타이틀 키 비주얼(배경)
+  await expectCssImages(page, '.title-screen');
+  await newGame(page);
+  await advanceOne(page);
+  // 메뉴(작은 유리 카드) 뒤 흐림: 빌드 압축기가 표준 backdrop-filter 를 지우지 않았는지
+  await openMenu(page);
+  expect(await page.locator('.overlay').first().evaluate((e) => getComputedStyle(e).backdropFilter)).not.toBe('none');
+  // 저장 → 썸네일(미니 무대 배경)
+  await page.locator('[data-panel=menu] [data-action=save]').click();
+  expect(await page.locator('.overlay.sys').evaluate((e) => getComputedStyle(e).backdropFilter)).toContain('blur');
+  await page.locator('[data-panel=save] .slot[data-slot="1"]').click();
+  await expect(page.locator('.toast')).toContainText('저장했어요');
+  await expectCssImages(page, '[data-panel=save] .slot[data-slot="1"] .slot-thumb');
+  // 설정 미리보기(교실 배경)
+  await page.locator('.sys-tabs [data-tab=settings]').click();
+  await expectCssImages(page, '[data-panel=settings] .preview-stage');
+});
+
+test('메뉴의 [대사창 숨기기]: 메뉴를 닫고 대사창을 숨기며, 다음 입력은 복귀만 한다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  const s0 = (await info(page)).step;
+  await openMenu(page);
+  await page.locator('[data-panel=menu] [data-action=hide]').click();
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  await expect(page.locator('#vn')).toHaveAttribute('data-hidewin', '1');
+  await page.waitForTimeout(650);
+  await tapStage(page);
+  await expect(page.locator('#vn')).not.toHaveAttribute('data-hidewin', '1');
+  await page.waitForTimeout(450);
+  expect((await info(page)).step).toBe(s0);
+});
+
+test('시트·메뉴·확인창: Tab 포커스가 오버레이 밖으로 빠지지 않고 처음↔끝으로 순환한다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  const inTop = () =>
+    page.evaluate(() => {
+      const ovs = document.querySelectorAll('.overlay');
+      const top = ovs[ovs.length - 1];
+      const a = document.activeElement;
+      return !!top && !!a && a !== document.body && top.contains(a);
+    });
+  // 설정 시트(조작 요소가 가장 많은 탭): 끝까지 Tab 을 눌러도 늘 시트 안
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-panel=menu]')).toBeVisible();
+  await page.locator('[data-panel=menu] [data-action=settings]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-panel=settings]')).toBeVisible();
+  const count = await page.locator('[data-panel=settings] button:visible, [data-panel=settings] input:visible').count();
+  for (let i = 0; i < count + 4; i++) {
+    await page.keyboard.press('Tab');
+    expect(await inTop(), `Tab ${i + 1}번째`).toBe(true);
+  }
+  // 처음에서 Shift+Tab → 마지막(닫기 계열 버튼)
+  await page.locator('.sys-tabs [aria-selected=true]').focus();
+  for (let i = 0; i < 3; i++) {
+    await page.keyboard.press('Shift+Tab');
+    expect(await inTop(), `Shift+Tab ${i + 1}번째`).toBe(true);
+  }
+  // 포커스가 body 로 빠져 있어도 Tab 한 번에 다시 시트 안으로
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Tab');
+  expect(await inTop()).toBe(true);
+  // 확인창(버튼 2개)
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-panel=menu]')).toBeVisible();
+  await page.locator('[data-panel=menu] [data-action=title]').click();
+  await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press('Tab');
+    expect(await inTop(), `확인창 Tab ${i + 1}번째`).toBe(true);
+  }
+  await page.locator('[data-panel=confirm] [data-action=cancel]').click();
+  await expect(page.locator('[data-panel=confirm]')).toHaveCount(0);
 });

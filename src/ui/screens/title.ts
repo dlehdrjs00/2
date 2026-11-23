@@ -7,7 +7,7 @@
  * - 히로인 위치는 .title-heroines .akane/.hina 클래스로만 잡는다(일러스트를 바꾸면 CSS 두 값만 조정).
  */
 import type { EndingId, HeroineId } from '../../engine/types';
-import { button, el } from '../dom';
+import { button, cssUrl, el } from '../dom';
 import { HEROINE_COLORS } from './common';
 import { buildMotes } from './fx';
 
@@ -85,7 +85,7 @@ function logo(title: string): HTMLElement {
 export function buildTitle(o: TitleOptions): HTMLElement {
   const scr = el('div', `title-screen${o.keyVisual ? ' kv' : ''}`);
   scr.dataset.noadvance = '';
-  if (o.bgUrl) scr.style.setProperty('--bg', `url("${o.bgUrl}")`);
+  if (o.bgUrl) scr.style.setProperty('--bg', cssUrl(o.bgUrl));
 
   const heroines = el('div', 'title-heroines');
   heroines.setAttribute('aria-hidden', 'true');

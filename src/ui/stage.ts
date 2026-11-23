@@ -8,8 +8,10 @@
  * - 빛망울(.motes)은 레이어 하나를 두고 화면 종류에 따라 개수를 바꾼다(대사 9 · 날짜 카드 16).
  *   설정 particles 를 끄면(setParticles(false)) 비운다. prefers-reduced-motion 이면 CSS 가 멈춘다.
  * - 날짜 카드는 .stage > .card 로 범위를 좁힌다(대화 기록 항목 .card 와 이름이 겹치던 결함, UI_DESIGN 부록 A).
+ *   카드는 다음 배경(bgAfterCard → showCard 의 nextBg)을 흐려 그리고 그 배경의 톤을 따른다(.card[data-tone]).
+ *   무대가 낮으면 카드 묶음이 무대를 넘지 않게 실제 높이를 재서 압축 단계(.card[data-fit] 0~4)를 고른다.
  */
-import type { BgFx, BgId, CgId, CharId, CharState, StageState } from '../engine/types';
+import type { BgFx, BgId, CgId, CharId, CharState, StageState, Step } from '../engine/types';
 import { BACKGROUNDS, type BgTone } from '../story/assets';
 import { CGS } from '../story/cg';
 import { DATES } from '../story/config';
@@ -36,6 +38,16 @@ const MOTE_COUNT = { play: 9, card: 16 } as const;
 const WEEKDAYS = ['월', '화', '수', '목', '금'] as const;
 const DATE_RE = /^(\d{1,2})월 (\d{1,2})일 ([월화수목금토일])요일$/;
 const DATE_PREFIX_RE = /^(\d{1,2})월 \d{1,2}일/;
+/**
+ * 날짜 카드 압축 단계(styles/play.css .stage > .card[data-fit]). 무대가 낮으면(세로 대체 배치, 740×280 등)
+ * 카드 묶음(주 차 알약·일력·주간 점)이 무대 높이를 넘지 않게 한 단계씩 줄인다.
+ * 0 그대로 · 1 숫자·간격 축소 · 2 주간 점을 일력 장식선 안으로 · 3 주 차 알약 숨김·머리띠 축소 · 4 장식선 숨김·최소 크기
+ */
+const CARD_FIT_MAX = 4;
+/** 일력의 −1.5° 기울임으로 늘어나는 높이 비율(sin 1.5° ≈ 0.026) + 반올림 여유 */
+const CAL_TILT = 0.027;
+/** 카드 묶음 위아래에 남길 최소 틈(글자 크기 배수) */
+const CARD_SPARE_FS = 1;
 
 // ---------------------------------------------------------------------------
 // 그림 해독(같은 주소는 한 번만, 해독한 Image 를 붙잡아 두어 다시 쓸 때 즉시 그려지게)
@@ -152,10 +164,31 @@ export function toneOfBg(id: string | undefined): BgTone {
 }
 
 /** 일력 머리띠의 날씨 아이콘: 비 배경은 비, 밤·축제는 달, 그 밖은 해 */
-function weatherOf(id: string | undefined, tone: BgTone): 'sun' | 'rain' | 'moon' {
+export function weatherOf(id: string | undefined, tone: BgTone): 'sun' | 'rain' | 'moon' {
   if (id && /_rain$/.test(id)) return 'rain';
   if (tone === 'night' || (id && (/night/.test(id) || /^festival/.test(id)))) return 'moon';
   return 'sun';
+}
+
+/** 카드 뒤에서 멈추는 스텝: 화면에 무언가를 보여 주며 입력을 기다리거나, 다른 곳으로 이동한다 */
+const CARD_LOOKAHEAD_STOP = new Set<Step['t']>(['say', 'card', 'choice', 'ending', 'goto', 'jump', 'if', 'decideRoute', 'routeBranch']);
+
+/**
+ * 날짜 카드 다음에 나올 배경. 카드 스텝 바로 뒤부터 다음 대사·카드·선택지·엔딩이나 이동(goto·jump·if·분기) 전까지의
+ * 첫 bg 명령을 찾는다. 대본은 흔히 카드 앞에서 암전(bg black)을 걸고 카드 뒤에서 새 장면 배경을 깔기 때문에,
+ * 카드는 '지금 배경'이 아니라 이 배경을 흐려서 그려야 한다(명세 6.8). 없으면 undefined(카드는 지금 배경을 쓴다).
+ * 화면 팀(game.ts present 의 card 단계)이 StageView.showCard 의 nextBg 로 넘긴다.
+ */
+export function bgAfterCard(steps: readonly Step[] | undefined, cardId: string): BgId | undefined {
+  if (!steps) return undefined;
+  const at = steps.findIndex((s) => s.id === cardId);
+  if (at < 0) return undefined;
+  for (let k = at + 1; k < steps.length; k++) {
+    const s = steps[k];
+    if (s.t === 'bg') return s.bg;
+    if (CARD_LOOKAHEAD_STOP.has(s.t)) return undefined;
+  }
+  return undefined;
 }
 
 /** 날짜 문구가 config.DATES 의 몇 주 차·몇 번째 날인지(공통 d1~d5 = 1주 차, 루트 r1~r5 = 2주 차) */
@@ -166,6 +199,34 @@ function weekOf(main: string): { week: number; day: number } | null {
     if (m) return { week: m[1] === 'd' ? 1 : 2, day: Number(m[2]) - 1 };
   }
   return null;
+}
+
+/**
+ * 월~금 점. 지난 날 past(하늘), 오늘 now(분홍 + 후광).
+ * labels 면 요일 글자 아래 점(카드 아래 .week 알약), 아니면 점만(일력 장식선 안 .cal-dots)
+ */
+function weekDots(cls: string, today: number, labels: boolean): HTMLElement {
+  const w = el(labels ? 'div' : 'span', cls);
+  w.setAttribute('aria-hidden', 'true');
+  WEEKDAYS.forEach((d, i) => {
+    const state = i < today ? 'past' : i === today ? 'now' : '';
+    w.append(labels ? el('span', state, d) : el('i', state));
+  });
+  return w;
+}
+
+/**
+ * 일력 부제. ' · ' 로 나뉜 부분('8월 8일 토요일 · 아사히 강 여름 축제')은 덩어리째 줄을 바꾼다
+ * ('아사히 / 강 여름 축제'처럼 낱말 중간에서 끊기지 않게). 읽는 글자는 원문 그대로다.
+ */
+function subLine(sub: string): HTMLElement {
+  const line = el('div', 'cal-sub');
+  const parts = sub.split(' · ');
+  parts.forEach((p, i) => {
+    if (i > 0) line.append(' ');
+    line.append(el('span', 'cal-sub-part', i < parts.length - 1 ? `${p} ·` : p));
+  });
+  return line;
 }
 
 type CharImg = HTMLImageElement;
@@ -197,6 +258,11 @@ export class StageView {
   private placeChip: HTMLElement;
   private placeTimer: ReturnType<typeof setTimeout> | null = null;
   private cardEl: HTMLElement;
+  /** 날짜 카드의 톤(카드가 그리는 배경 기준. 다음 배경을 받으면 그 배경의 톤) */
+  private cardTone: BgTone = 'day';
+  /** 무대 크기·일력 크기가 바뀌면 카드 압축 단계를 다시 고른다 */
+  private cardFitObserver: ResizeObserver | null = null;
+  private cardFitFrame = 0;
   private hideHint: HTMLElement;
   private hurryFns = new Set<() => void>();
   /** 배경이 실제로 바뀐 순간(해독 뒤) 알린다: 레터박스 그림·색과 톤(화면 팀이 #vn[data-tone] 갱신) */
@@ -234,6 +300,13 @@ export class StageView {
       this.veil,
     );
     this.renderMotes();
+    // 카드 압축 단계: 무대 크기(화면 회전·주소창), 글자 크기 설정, 늦게 도착한 글꼴 조각이 카드 높이를 바꾼다.
+    // ResizeObserver 콜백 안에서 배치를 바꾸면 'ResizeObserver loop' 경고가 나므로 다음 프레임으로 미룬다.
+    if (typeof ResizeObserver !== 'undefined') {
+      this.cardFitObserver = new ResizeObserver(() => this.scheduleCardFit());
+      this.cardFitObserver.observe(this.cardEl);
+    }
+    if (typeof document !== 'undefined') document.fonts?.addEventListener?.('loadingdone', () => this.scheduleCardFit());
   }
 
   /** 진행 중인 연출 대기를 즉시 끝낸다 */
@@ -539,10 +612,11 @@ export class StageView {
     this.renderMotes();
   }
 
-  /** 대사 화면이면 위쪽에 옅게 9개, 날짜 카드면 카드 안에 16개. 톤에 맞춘 색 */
+  /** 대사 화면이면 위쪽에 옅게 9개, 날짜 카드면 카드 안에 16개. 톤에 맞춘 색(카드 동안은 카드 톤) */
   private renderMotes() {
     const card = this.cardEl.classList.contains('on');
-    const key = `${card ? 'card' : 'play'}:${this.tone}:${this.particles ? 1 : 0}`;
+    const tone = card ? this.cardTone : this.tone;
+    const key = `${card ? 'card' : 'play'}:${tone}:${this.particles ? 1 : 0}`;
     if (key === this.motesKey) return;
     this.motesKey = key;
     // 카드 동안은 카드 안(흐린 배경 위, 일력 아래)으로 옮긴다
@@ -554,8 +628,8 @@ export class StageView {
       return;
     }
     fillMotes(this.motes, card ? MOTE_COUNT.card : MOTE_COUNT.play, {
-      night: this.tone === 'night',
-      evening: this.tone === 'evening',
+      night: tone === 'night',
+      evening: tone === 'evening',
       soft: !card,
       seed: card ? 7 : 11,
     });
@@ -597,14 +671,22 @@ export class StageView {
   /**
    * main 이 'M월 D일 X요일' 이면 달·날짜·요일로 나눠 일력 한 장으로 그리고, 아니면(.text-only) 문장 한 덩어리.
    * 주 차 배지와 월~금 점은 config.DATES(d1~d5 = 1주 차, r1~r5 = 2주 차)와 같은 날짜일 때만 붙인다.
+   *
+   * nextBg(선택): 카드 뒤에 깔릴 배경(bgAfterCard). 주면 카드의 흐린 배경·날씨 아이콘·톤(밤이면 남색 베일)을 그 배경으로 정한다.
+   * 주지 않으면 지금 배경을 쓴다. 쓸 배경이 그림 없는 색(암전 black·white)이면 탁한 회색 대신 하늘(밤 톤이면 밤하늘)
+   * 그라데이션을 깐다.
    */
-  showCard(main: string, sub: string | undefined, animate: boolean): void {
-    const bgId = this.bgId;
-    const bg = el('div', 'card-bg');
+  showCard(main: string, sub: string | undefined, animate: boolean, nextBg?: BgId | null): void {
+    const bgId = nextBg ?? this.bgId;
     const url = bgId ? this.resolver.bgUrl(bgId) : null;
-    const color = bgId ? this.resolver.bgColor(bgId) : null;
+    // 다음 배경이 그림이면 그 톤, 아니면(암전 등) 지금 톤을 잇는다
+    const tone: BgTone = nextBg && url ? this.toneOf(nextBg) : this.tone;
+    this.cardTone = tone;
+    this.cardEl.dataset.tone = tone;
+    const bg = el('div', url ? 'card-bg' : 'card-bg plain');
     // 사용자 정의 속성 안의 상대 url() 은 CSS 파일 기준으로 풀리므로(빌드는 base './') 문서 기준 절대 주소로 넣는다
     bg.style.setProperty('--bg', url ? `url("${absoluteUrl(url)}")` : 'none');
+    const color = url && bgId ? this.resolver.bgColor(bgId) : null;
     if (color) bg.style.backgroundColor = color;
 
     const parts: HTMLElement[] = [bg];
@@ -618,7 +700,7 @@ export class StageView {
     const subDate = DATE_PREFIX_RE.exec(sub ?? '');
     const month = date ? `${date[1]}월` : subDate ? `${subDate[1]}월` : '';
     const wx = el('span', 'ico');
-    wx.dataset.wx = weatherOf(bgId, this.tone);
+    wx.dataset.wx = weatherOf(url ? bgId : undefined, tone);
     wx.setAttribute('aria-hidden', 'true');
     head.append(el('span', 'cal-month', month), wx);
     const body = el('div', 'cal-body');
@@ -627,23 +709,20 @@ export class StageView {
       dow.dataset.dow = date[3];
       body.append(el('div', 'cal-day', date[2]), dow);
     } else body.append(el('div', 'cal-day', main));
-    if (sub) {
+    if (sub || wk) {
+      // ──✦── 장식선. 무대가 낮아 주간 점 알약을 뺄 때(data-fit ≥ 2)는 별 대신 월~금 점이 이 선 가운데에 들어간다
       const line = el('div', 'cal-line');
       const star = el('span', 'ico');
-      star.setAttribute('aria-hidden', 'true');
       line.append(star);
+      if (wk) line.append(weekDots('cal-dots', wk.day, false));
       line.setAttribute('aria-hidden', 'true');
-      body.append(line, el('div', 'cal-sub', sub));
+      body.append(line);
     }
+    if (sub) body.append(subLine(sub));
     cal.append(head, body);
     parts.push(cal);
 
-    if (wk) {
-      const week = el('div', 'week');
-      week.setAttribute('aria-hidden', 'true');
-      WEEKDAYS.forEach((d, i) => week.append(el('span', i < wk.day ? 'past' : i === wk.day ? 'now' : '', d)));
-      parts.push(week);
-    }
+    if (wk) parts.push(weekDots('week', wk.day, true));
 
     this.cardEl.replaceChildren(...parts);
     this.cardEl.classList.toggle('instant', !animate);
@@ -653,6 +732,47 @@ export class StageView {
     } else withoutTransition([this.cardEl], () => this.cardEl.classList.add('on'));
     this.motesKey = '';
     this.renderMotes();
+    // 일력의 크기는 글자 크기 설정·글꼴 도착에 따라 바뀐다: 일력도 지켜본다
+    this.cardFitObserver?.disconnect();
+    this.cardFitObserver?.observe(this.cardEl);
+    this.cardFitObserver?.observe(cal);
+    this.fitCard();
+  }
+
+  private scheduleCardFit() {
+    if (this.cardFitFrame || typeof requestAnimationFrame === 'undefined') return;
+    this.cardFitFrame = requestAnimationFrame(() => {
+      this.cardFitFrame = 0;
+      this.fitCard();
+    });
+  }
+
+  /**
+   * 카드 묶음(주 차 알약·일력·주간 점)이 카드의 내용 상자(무대 높이 − 위 여백 − 아래 여백·빠른 메뉴 캡슐)에
+   * 들어가는 가장 낮은 압축 단계를 고른다. 무대의 contain: paint 때문에 넘친 부분은 잘리고, 아래로 넘치면
+   * 오른쪽 아래 빠른 메뉴 캡슐과 겹친다. 배치가 없으면(숨김·jsdom) 0 단계로 둔다.
+   */
+  private fitCard() {
+    const card = this.cardEl;
+    const cal = card.querySelector<HTMLElement>(':scope > .cal');
+    if (!cal) return;
+    for (let fit = 0; fit <= CARD_FIT_MAX; fit++) {
+      card.dataset.fit = String(fit);
+      const cs = getComputedStyle(card);
+      const avail = card.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      if (!(avail > 0)) {
+        card.dataset.fit = '0';
+        return;
+      }
+      const kids = [...card.children].filter(
+        (k): k is HTMLElement => k instanceof HTMLElement && !k.classList.contains('card-bg') && !k.classList.contains('motes') && k.offsetHeight > 0,
+      );
+      const gap = parseFloat(cs.rowGap) || 0;
+      // 빠른 메뉴 캡슐·무대 끝에 바짝 붙지 않게 숨 쉴 틈(fs × 1)을 남긴다
+      const spare = (parseFloat(cs.getPropertyValue('--fs')) || 16) * CARD_SPARE_FS;
+      const total = kids.reduce((s, k) => s + k.offsetHeight, 0) + gap * Math.max(0, kids.length - 1) + Math.ceil(cal.offsetWidth * CAL_TILT);
+      if (total + spare <= avail || fit === CARD_FIT_MAX) return;
+    }
   }
 
   hideCard(animate: boolean): void {

@@ -26,6 +26,21 @@ export function button(text: string, className = 'btn', onClick?: (ev: MouseEven
   return b;
 }
 
+/**
+ * CSS 사용자 정의 속성(--bg 등)에 넣을 url() 값.
+ * 상대 주소를 그대로 넣으면 var(--bg) 를 쓰는 CSS 파일 기준으로 풀려(빌드에서는 /assets/assets/…) 그림이 빠진다.
+ * 그래서 문서 기준 절대 주소로 바꿔 넣는다(stage.ts absoluteUrl 과 같은 규칙).
+ */
+export function cssUrl(url: string): string {
+  let href = url;
+  try {
+    href = new URL(url, document.baseURI).href;
+  } catch {
+    /* 잘못된 주소는 그대로 둔다 */
+  }
+  return `url("${href.replace(/["\\]/g, '\\$&')}")`;
+}
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 export function formatDate(iso: string): string {

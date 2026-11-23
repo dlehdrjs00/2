@@ -7,7 +7,7 @@
  *   일러스트를 바꾸면 썸네일도 자동으로 새 그림이 된다. 무대 정보가 없는 저장(손상·구버전)은 배경색만 칠한다.
  */
 import type { CharId, CharState, StageState } from '../../engine/types';
-import { el } from '../dom';
+import { cssUrl, el } from '../dom';
 import { fillMotes, type MoteOptions } from '../stage';
 
 /** 빛망울 레이어(무대와 같은 배치 공식 — stage.ts fillMotes). n 은 상한 안에서 */
@@ -40,12 +40,12 @@ export function miniStage(cls: string, stage: StageState | undefined, r: MiniRes
   const cg = stage.cg ? r.cgThumbUrl?.(stage.cg) ?? null : null;
   if (cg) {
     box.classList.add('cg');
-    box.style.setProperty('--bg', `url("${cg}")`);
+    box.style.setProperty('--bg', cssUrl(cg));
     return box;
   }
   const url = r.bgUrl(stage.bg);
   const color = r.bgColor(stage.bg);
-  if (url) box.style.setProperty('--bg', `url("${url}")`);
+  if (url) box.style.setProperty('--bg', cssUrl(url));
   if (color) box.style.backgroundColor = color;
   const order = Array.isArray(stage.order) ? stage.order : [];
   for (const c of order) {

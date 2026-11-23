@@ -8,6 +8,9 @@ import {
   textBoxHeightFor,
   type Layout,
 } from '../../src/ui/layout';
+import { bgAfterCard, weatherOf } from '../../src/ui/stage';
+import type { Step } from '../../src/engine/types';
+import { STORY } from '../../src/story';
 
 const none = { t: 0, r: 0, b: 0, l: 0 };
 const notch = { t: 0, r: 47, b: 21, l: 47 }; // 아이폰 가로(노치) 대략값
@@ -153,5 +156,48 @@ describe('화면 배치', () => {
   it('가로 화면은 overlay, 세로 화면은 대사창을 무대 아래에 둔다', () => {
     expect(computeLayout(844, 390, none).mode).toBe('overlay');
     expect(computeLayout(390, 844, none).mode).toBe('below');
+  });
+});
+
+describe('날짜 카드: 카드가 그릴 다음 배경(bgAfterCard)과 날씨', () => {
+  const steps = (id: string) => STORY.scenes[id]?.steps;
+
+  it('카드 앞에서 암전하고 뒤에서 배경을 까는 대본은 그 다음 배경을 쓴다(축제 카드 → 밤 축제 거리·달)', () => {
+    expect(bgAfterCard(steps('o5_festival'), 'o5.010')).toBe('festival_street');
+    expect(bgAfterCard(steps('t5_festival'), 't5.010')).toBe('festival_street');
+    expect(weatherOf('festival_street', 'night')).toBe('moon');
+    // 카드 → hide → bg(hallway)
+    expect(bgAfterCard(steps('c5_gym'), 'c5.010')).toBe('hallway');
+  });
+
+  it('카드 뒤 첫 대사·이동 전까지 bg 가 없으면 undefined(지금 배경을 쓴다)', () => {
+    // 배경을 카드 앞에서 이미 깐 장면
+    expect(bgAfterCard(steps('o1_shop'), 'o1.010')).toBeUndefined();
+    expect(bgAfterCard(steps('t1_cats'), 't1.010')).toBeUndefined();
+    const s = (x: Partial<Step> & { id: string; t: Step['t'] }) => x as Step;
+    const flow: Step[] = [
+      s({ id: 'k', t: 'card', text: '7월 6일 월요일' }),
+      s({ id: 'a', t: 'say', who: null, text: '…' }),
+      s({ id: 'b', t: 'bg', bg: 'classroom_day' }),
+    ];
+    expect(bgAfterCard(flow, 'k')).toBeUndefined();
+    expect(bgAfterCard(flow, '없는 id')).toBeUndefined();
+    expect(bgAfterCard(undefined, 'k')).toBeUndefined();
+  });
+
+  it('대본의 모든 날짜 카드는 그림 배경(다음 배경, 없으면 카드 앞 배경)을 흐려 그린다(암전 색 회색 카드 없음)', () => {
+    let cards = 0;
+    for (const scene of Object.values(STORY.scenes)) {
+      scene.steps.forEach((st, i) => {
+        if (st.t !== 'card') return;
+        cards++;
+        const before = scene.steps.slice(0, i).reverse().find((x) => x.t === 'bg');
+        const drawn = bgAfterCard(scene.steps, st.id) ?? (before?.t === 'bg' ? before.bg : undefined);
+        // 장면 첫 스텝이 카드면 앞 장면 배경을 쓴다(c5_gym 은 다음 배경이 있다)
+        if (drawn === undefined) return;
+        expect(['black', 'white'], `${st.id} → ${drawn}`).not.toContain(drawn);
+      });
+    }
+    expect(cards).toBeGreaterThan(0);
   });
 });

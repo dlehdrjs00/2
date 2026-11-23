@@ -204,6 +204,39 @@ test('토스트는 대사창 글자와 선택지를 가리지 않는다', async 
   expect((await info(page)).skip).toBe(false);
 });
 
+test('저장 시트의 토스트는 저장 카드·안내 줄·닫기·고른 탭을 가리지 않고, 시트를 닫으면 제자리로 돌아간다', async ({ page }) => {
+  await boot(page);
+  await newGame(page);
+  let n = 0;
+  for (const [w, h] of [
+    [1280, 720],
+    [844, 390],
+    [667, 375],
+  ] as const) {
+    await relayoutTo(page, w, h);
+    await openMenu(page);
+    await page.locator('[data-panel=menu] [data-action=save]').click();
+    const slot = String(++n);
+    await page.locator(`[data-panel=save] .slot[data-slot="${slot}"]`).click();
+    await expect(page.locator('.toast')).toContainText(`슬롯 ${slot}`);
+    await expect(page.locator('.toast')).toHaveClass(/in-sheet/);
+    const toast = (await rects(page, '.toast'))[0];
+    expect(toast.left >= 0 && toast.top >= 0 && toast.right <= w && toast.bottom <= h, `${w}x${h}: 토스트가 화면 안`).toBe(true);
+    for (const c of await rects(page, '[data-panel=save] .slot-wrap')) expect(overlap(toast, c), `${w}x${h}: 토스트가 저장 카드를 가림`).toBe(false);
+    const [close] = await rects(page, '[data-panel=save] .panel-head .close');
+    expect(overlap(toast, close), `${w}x${h}: 토스트가 닫기를 가림`).toBe(false);
+    const [tab] = await rects(page, '[data-panel=save] .sys-tabs [aria-selected=true]');
+    expect(overlap(toast, tab), `${w}x${h}: 토스트가 고른 탭을 가림`).toBe(false);
+    const hint = page.locator('[data-panel=save] .panel-hint');
+    if (await hint.isVisible()) expect(overlap(toast, (await rects(page, '[data-panel=save] .panel-hint'))[0]), `${w}x${h}: 토스트가 안내 줄을 가림`).toBe(false);
+    // 시트·메뉴를 닫으면 토스트는 플레이 화면의 기본 자리(무대 오른쪽 위)로
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect.poll(async () => (await info(page)).overlays).toBe(0);
+    await expect(page.locator('.toast.in-sheet')).toHaveCount(0);
+  }
+});
+
 test('저장 슬롯: 삭제 버튼 밑에 날짜·장면·루트 글자가 깔리지 않는다', async ({ page }) => {
   await page.setViewportSize({ width: 667, height: 375 });
   await boot(page);

@@ -13,7 +13,7 @@
  * 처음부터 다시 타자하고, 다 쓰면 자동 진행 속도만큼 쉬고 반복한다. 스크린리더는 읽지 않는다(aria-hidden, live 없음).
  */
 import { autoDelayMs, charsPerSecond, textScaleFactor, type Settings } from '../../engine/settings';
-import { button, el } from '../dom';
+import { button, cssUrl, el } from '../dom';
 import { ico, type IconName } from '../icons';
 import { TextBox } from '../textbox';
 import type { SheetView } from './sheet';
@@ -276,7 +276,7 @@ export function buildSettings(o: SettingsOptions): SheetView {
   const cap = el('div', 'preview-cap');
   cap.append(ico('play'), '미리보기 · 지금 설정으로 글자가 나와요');
   const pstage = el('div', 'preview-stage');
-  if (o.previewBg) pstage.style.setProperty('--bg', `url("${o.previewBg}")`);
+  if (o.previewBg) pstage.style.setProperty('--bg', cssUrl(o.previewBg));
   if (o.previewSprite) {
     const img = el('img');
     img.alt = '';
