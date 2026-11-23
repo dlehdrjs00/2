@@ -229,3 +229,33 @@ describe('저장소·설정', () => {
     expect(loadSettings(store).autoSpeed).toBe(3);
   });
 });
+
+describe('퀵저장·수동 30칸·썸네일용 무대 요약', () => {
+  it('quick 슬롯과 30번 슬롯에 저장·불러오기가 되고, peek 이 무대 상태를 돌려준다', async () => {
+    const { MANUAL_SLOTS } = await import('../../src/engine/save');
+    expect(MANUAL_SLOTS).toBe(30);
+    const story = miniStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    const { state } = play(story, ['a'], 1);
+    expect(sm.write('quick', state, summary)).toBe(true);
+    expect(sm.write('30', state, summary)).toBe(true);
+    expect(sm.load('quick').status).toBe('ok');
+    const p = sm.peek('30');
+    expect(p.empty).toBe(false);
+    if (!p.empty) {
+      expect(p.stage?.bg).toBe('classroom_day');
+      expect(Object.keys(p.stage?.chars ?? {})).toEqual(expect.arrayContaining(['osana', 'tenko']));
+    }
+  });
+
+  it('새 설정 항목(글자 크기·빛망울)은 범위로 보정되고 기본값이 있다', () => {
+    const store = new MemoryStore(true);
+    store.set('ashita.settings', JSON.stringify({ textScale: 9, particles: -1, windowOpacity: 10 }));
+    const s = loadSettings(store);
+    expect(s.textScale).toBe(2);
+    expect(s.particles).toBe(0);
+    expect(s.windowOpacity).toBe(40);
+    expect(loadSettings(new MemoryStore(true))).toMatchObject({ textScale: 0, particles: 1 });
+  });
+});

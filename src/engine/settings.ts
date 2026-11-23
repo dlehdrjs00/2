@@ -10,8 +10,12 @@ export interface Settings {
   /** 음량 0~100 */
   bgmVolume: number;
   sfxVolume: number;
-  /** 대사창 불투명도 30~100 */
+  /** 대사창 불투명도 40~100 */
   windowOpacity: number;
+  /** 글자 크기 단계 0~2 (보통 / 크게 / 더 크게 → 배율 1 / 1.12 / 1.25) */
+  textScale: number;
+  /** 빛망울·햇살 효과 1=켬 0=끔 */
+  particles: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -20,6 +24,8 @@ export const DEFAULT_SETTINGS: Settings = {
   bgmVolume: 60,
   sfxVolume: 70,
   windowOpacity: 82,
+  textScale: 0,
+  particles: 1,
 };
 
 const RANGES: Record<keyof Settings, [number, number]> = {
@@ -27,8 +33,16 @@ const RANGES: Record<keyof Settings, [number, number]> = {
   autoSpeed: [1, 10],
   bgmVolume: [0, 100],
   sfxVolume: [0, 100],
-  windowOpacity: [30, 100],
+  windowOpacity: [40, 100],
+  textScale: [0, 2],
+  particles: [0, 1],
 };
+
+/** 글자 크기 단계 → 배율 */
+export const TEXT_SCALES = [1, 1.12, 1.25] as const;
+export function textScaleFactor(level: number): number {
+  return TEXT_SCALES[Math.min(2, Math.max(0, Math.round(level)))];
+}
 
 const KEY = `${KEY_PREFIX}settings`;
 

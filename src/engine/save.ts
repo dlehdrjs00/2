@@ -21,14 +21,20 @@ export const SAVE_SCHEMA = 2;
 export const GLOBAL_SCHEMA = 1;
 export const GAME_KEY = 'ashita-mo-issho';
 export const KEY_PREFIX = 'ashita.';
-export const MANUAL_SLOTS = 6;
-export type SlotId = 'auto' | `${number}`;
+/** 수동 저장 칸 수(저장 화면 5쪽 × 6칸) */
+export const MANUAL_SLOTS = 30;
+/** auto = 자동 저장, quick = 퀵저장(빠른 메뉴), 숫자 = 수동 저장 칸 */
+export type SlotId = 'auto' | 'quick' | `${number}`;
 
 export interface SaveSummary {
   sceneTitle: string;
   text: string;
   route: HeroineId | null;
 }
+
+export type SlotPeek =
+  | { empty: true }
+  | { empty: false; broken: boolean; savedAt?: string; summary?: SaveSummary; stage?: GameState['stage'] };
 
 export interface SaveData {
   schema: number;
@@ -235,12 +241,16 @@ export class SaveManager {
     return this.store.get(this.slotKey(slot)) !== null;
   }
 
-  /** 슬롯 목록 표시용 요약. 손상된 슬롯은 broken: true */
-  peek(slot: SlotId): { empty: true } | { empty: false; broken: boolean; savedAt?: string; summary?: SaveSummary } {
+  /**
+   * 슬롯 목록 표시용 요약. 손상된 슬롯은 broken: true.
+   * stage 는 저장 시점의 무대(배경·캐릭터) — 저장 화면 썸네일을 미니 무대로 다시 그리는 데 쓴다.
+   */
+  peek(slot: SlotId): SlotPeek {
     const raw = this.store.get(this.slotKey(slot));
     if (raw === null) return { empty: true };
     const r = this.parse(raw);
-    if (r.status === 'ok' || r.status === 'recoverable') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary };
+    if (r.status === 'ok') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary, stage: r.data.state.stage };
+    if (r.status === 'recoverable') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary };
     return { empty: false, broken: true };
   }
 

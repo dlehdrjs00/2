@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#cfe6f8" />
+    <title>내일도 같이 갈래? — UI 최종안</title>
+    <link rel="stylesheet" href="css/fonts.css" />
+    <link rel="stylesheet" href="css/final.css" />
+  </head>
+  <body>
+    <!-- 사용법: index.html (모든 화면 차례로) / index.html?s=title (한 화면만, 창 크기에 맞춤)
+         화면 id: title dialogue choice save load settings log card ending night menu confirm hide -->
+
+    <!-- ===================================================================== 타이틀 -->
+    <section class="screen" data-screen="title" data-label="타이틀">
+      <div class="vn" data-mode="title">
+        <div class="title-screen" data-noadvance style="--bg: url(assets/bg/title.svg)">
+          <div class="sunlight"></div>
+          <div class="leftveil"></div>
+          <div class="title-heroines" aria-hidden="true">
+            <img class="akane" src="assets/char/osana/uniform_default_smile.svg" alt="" />
+            <img class="hina" src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+          </div>
+          <div class="motes" data-n="26" data-seed="3"></div>
+          <div class="title-left">
+            <h1 class="logo" aria-label="내일도 같이 갈래?">
+              <svg class="contrail" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ct" x1="0" x2="1">
+                    <stop offset="0" stop-color="#fff" stop-opacity="0" />
+                    <stop offset="0.55" stop-color="#fff" stop-opacity="0.85" />
+                    <stop offset="1" stop-color="#fff" />
+                  </linearGradient>
+                </defs>
+                <path d="M-10 112 C 110 104, 250 74, 380 16" stroke="url(#ct)" stroke-width="6" fill="none" stroke-linecap="round" />
+                <path d="M-10 120 C 110 112, 250 82, 378 24" stroke="url(#ct)" stroke-width="2" fill="none" stroke-linecap="round" opacity=".6" />
+                <path d="M398 4 L372 13 L381 17 L384 27 Z" fill="#fff" stroke="#9fd3f6" stroke-width="1.5" stroke-linejoin="round" />
+              </svg>
+              <span class="l1" data-text="내일도" aria-hidden="true">내일도</span>
+              <span class="l2" data-text="같이 갈래?" aria-hidden="true">같이 갈래<span class="q">?</span></span>
+            </h1>
+            <p class="title-sub">여름이 오기 전, 우리 셋의 2주</p>
+            <div class="title-menu">
+              <button type="button" class="btn primary" data-action="new">새 게임</button>
+              <button type="button" class="btn" data-action="continue" aria-describedby="cont-sub">이어하기<span class="sub" id="cont-sub">7월 10일</span></button>
+              <button type="button" class="btn" data-action="load">불러오기</button>
+              <button type="button" class="btn" data-action="settings">설정</button>
+            </div>
+            <div class="title-foot">
+              <span class="badge got" style="--c: var(--akane-1)" data-ending="osana" data-reached="1">아카네 엔딩</span>
+              <span class="badge" data-ending="tenko" data-reached="0" title="아직 보지 못한 엔딩">히나 엔딩</span>
+            </div>
+          </div>
+          <span class="ver">v0.1 첫 플레이 버전 · 임시 그림</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 대사 -->
+    <section class="screen" data-screen="dialogue" data-label="대사 화면">
+      <div class="vn" data-mode="play" data-frame="say" data-tone="day">
+        <div class="backdrop" style="--bg: url(assets/bg/classroom_day.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/classroom_day.svg)"></div>
+          <div class="chars">
+            <img class="char pos-left" src="assets/char/osana/uniform_default_neutral.svg" alt="" />
+            <img class="char pos-right dim" src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+          </div>
+          <div class="sunwash"></div>
+          <div class="motes" data-n="9" data-seed="11" data-soft="1"></div>
+          <div class="place-chip on"><span class="ico" aria-hidden="true"></span>7월 6일 월요일<span class="sep"></span>1교시 후 쉬는 시간</div>
+        </div>
+        <div class="textbox done" data-who="osana">
+          <div class="name" aria-hidden="true">아카네</div>
+          <div class="text" aria-hidden="true">소우타, 다음 시간 음악실이잖아. 사쿠라이는 별관 가는 길 모를 텐데.</div>
+          <div class="next"></div>
+        </div>
+        <div class="qbar" data-noadvance role="toolbar" aria-label="빠른 메뉴"></div>
+        <div class="toast" role="status"><span class="ico" aria-hidden="true"></span>퀵저장했어요</div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 선택지 -->
+    <section class="screen" data-screen="choice" data-label="선택지">
+      <div class="vn" data-mode="play" data-frame="choice" data-tone="day">
+        <div class="backdrop" style="--bg: url(assets/bg/shoe_lockers_rain.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/shoe_lockers_rain.svg)"></div>
+          <div class="chars">
+            <img class="char pos-left dim" src="assets/char/osana/uniform_default_shy.svg" alt="" />
+            <img class="char pos-right dim" src="assets/char/tenko/uniform_ponytail_fluster.svg" alt="" />
+          </div>
+          <div class="choice-veil"></div>
+        </div>
+        <div class="textbox mono done">
+          <div class="name" aria-hidden="true"></div>
+          <div class="text" aria-hidden="true">우산은 두 개, 사람은 셋.</div>
+        </div>
+        <div class="choices" data-noadvance role="group" aria-label="선택지" data-armed="1">
+          <button type="button" class="choice hover" data-option="a" aria-keyshortcuts="1"><span class="num" aria-hidden="true">1</span>히나에게 우산을 빌려주고 아카네의 우산에 들어간다</button>
+          <button type="button" class="choice" data-option="b" aria-keyshortcuts="2"><span class="num" aria-hidden="true">2</span>같은 방향인 히나에게 같이 쓰자고 한다</button>
+        </div>
+        <div class="qbar" data-noadvance role="toolbar" aria-label="빠른 메뉴"></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 저장하기(플레이 중, 1쪽) -->
+    <section class="screen" data-screen="save" data-label="저장하기">
+      <div class="vn" data-mode="play" data-frame="say" data-overlay="1">
+        <div class="backdrop" style="--bg: url(assets/bg/classroom_day.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/classroom_day.svg)"></div>
+          <div class="chars">
+            <img class="char pos-left" src="assets/char/osana/uniform_default_neutral.svg" alt="" />
+            <img class="char pos-right" src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+          </div>
+        </div>
+        <div class="overlay sys" data-noadvance>
+          <div class="panel sys" role="dialog" aria-modal="true" aria-label="저장하기" data-panel="save">
+            <div class="panel-head">
+              <h2 class="sr-only">저장하기</h2>
+              <span class="head-star" aria-hidden="true"></span>
+              <div class="sys-tabs" role="tablist" aria-label="시스템 화면">
+                <button type="button" role="tab" aria-selected="true" data-tab="save"><span class="ico" style="--i: var(--i-qsave)" aria-hidden="true"></span>저장하기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="load"><span class="ico" style="--i: var(--i-qload)" aria-hidden="true"></span>불러오기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico" style="--i: var(--i-config)" aria-hidden="true"></span>설정</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="log"><span class="ico" style="--i: var(--i-log)" aria-hidden="true"></span>대화 기록</button>
+              </div>
+              <span class="grow"></span>
+              <button type="button" class="btn close" data-action="close" aria-label="닫기"><span class="ico" aria-hidden="true"></span><span class="lbl">닫기</span></button>
+            </div>
+            <div class="panel-body sl">
+              <nav class="rail" aria-label="쪽">
+                <button type="button" data-page="q"><span class="q">자동·퀵</span></button>
+                <button type="button" data-page="1" aria-current="page">1</button>
+                <button type="button" data-page="2">2</button>
+                <button type="button" data-page="3">3</button>
+                <button type="button" data-page="4">4</button>
+                <button type="button" data-page="5">5</button>
+              </nav>
+              <div class="slots">
+                <div class="slot-wrap">
+                  <button type="button" class="slot" data-slot="1">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/road_morning.svg)">
+                      <img src="assets/char/osana/uniform_default_pout.svg" alt="" style="left: 50%" />
+                      <span class="slot-no">01</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">7월 6일 · 등굣길</span><span class="slot-meta">11.20 21:14</span></span>
+                      <span class="slot-text">3분 늦었어.</span>
+                    </span>
+                  </button>
+                  <button type="button" class="slot-del" aria-label="슬롯 1 삭제"><span class="ico" aria-hidden="true"></span></button>
+                </div>
+                <div class="slot-wrap">
+                  <button type="button" class="slot" data-slot="2">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/classroom_day.svg)">
+                      <img src="assets/char/osana/uniform_default_neutral.svg" alt="" style="left: 27%" />
+                      <img src="assets/char/tenko/uniform_default_smile.svg" alt="" style="left: 73%" />
+                      <span class="slot-no">02</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">쉬는 시간 10분</span><span class="slot-meta">11.20 21:32</span></span>
+                      <span class="slot-text">소우타, 다음 시간 음악실이잖아. 사쿠라이는 별관 가는 길 모를 텐데.</span>
+                    </span>
+                  </button>
+                  <button type="button" class="slot-del" aria-label="슬롯 2 삭제"><span class="ico" aria-hidden="true"></span></button>
+                </div>
+                <div class="slot-wrap">
+                  <button type="button" class="slot" data-slot="3">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/shoe_lockers_rain.svg)">
+                      <img src="assets/char/osana/uniform_default_shy.svg" alt="" style="left: 27%" />
+                      <img src="assets/char/tenko/uniform_ponytail_fluster.svg" alt="" style="left: 73%" />
+                      <span class="slot-no">03</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">소나기와 우산</span><span class="slot-meta">11.21 08:05</span></span>
+                      <span class="slot-text">[선택지] 우산은 두 개, 사람은 셋.</span>
+                    </span>
+                  </button>
+                  <button type="button" class="slot-del" aria-label="슬롯 3 삭제"><span class="ico" aria-hidden="true"></span></button>
+                </div>
+                <div class="slot-wrap">
+                  <button type="button" class="slot latest" data-slot="4">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/shotengai.svg)">
+                      <img src="assets/char/osana/uniform_default_smile.svg" alt="" style="left: 50%" />
+                      <span class="slot-no">04</span>
+                      <span class="slot-route" style="--r: var(--akane-1)">아카네 루트</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-r" style="--r: var(--akane-1)"></span><span class="slot-name">방과 후 상점가</span><span class="slot-meta">11.22 23:47</span></span>
+                      <span class="slot-text">할머니가 아직도 우리 이름을 기억하셔. 제일 싼 과자만 사도 덤을 주시고.</span>
+                    </span>
+                  </button>
+                  <button type="button" class="slot-del" aria-label="슬롯 4 삭제"><span class="ico" aria-hidden="true"></span></button>
+                </div>
+                <div class="slot-wrap is-empty">
+                  <button type="button" class="slot empty can-save" data-slot="5">
+                    <span class="slot-thumb" data-empty="＋ 여기에 저장"><span class="slot-no">05</span></span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">여기에 저장</span></span>
+                      <span class="slot-text">비어 있는 칸</span>
+                    </span>
+                  </button>
+                </div>
+                <div class="slot-wrap is-empty">
+                  <button type="button" class="slot empty can-save" data-slot="6">
+                    <span class="slot-thumb" data-empty="＋ 여기에 저장"><span class="slot-no">06</span></span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">여기에 저장</span></span>
+                      <span class="slot-text">비어 있는 칸</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="panel-hint"><span class="ico" aria-hidden="true"></span>칸을 누르면 지금 장면을 저장해요. 자동 저장과 퀵저장은 [자동·퀵] 쪽에 있어요.<span class="grow"></span><span class="pageno">1 / 5쪽</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 불러오기(타이틀에서, 자동·퀵 쪽) -->
+    <section class="screen" data-screen="load" data-label="불러오기(타이틀에서)">
+      <div class="vn" data-mode="title" data-overlay="1">
+        <div class="title-screen" style="--bg: url(assets/bg/title.svg)"></div>
+        <div class="overlay sys" data-noadvance>
+          <div class="panel sys" role="dialog" aria-modal="true" aria-label="불러오기" data-panel="load">
+            <div class="panel-head">
+              <h2 class="sr-only">불러오기</h2>
+              <span class="head-star" aria-hidden="true"></span>
+              <div class="sys-tabs" role="tablist" aria-label="시스템 화면">
+                <button type="button" role="tab" aria-selected="true" data-tab="load"><span class="ico" style="--i: var(--i-qload)" aria-hidden="true"></span>불러오기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico" style="--i: var(--i-config)" aria-hidden="true"></span>설정</button>
+              </div>
+              <span class="grow"></span>
+              <button type="button" class="btn close" data-action="close" aria-label="닫기"><span class="ico" aria-hidden="true"></span><span class="lbl">닫기</span></button>
+            </div>
+            <div class="panel-body sl">
+              <nav class="rail" aria-label="쪽">
+                <button type="button" data-page="q" aria-current="page"><span class="q">자동·퀵</span></button>
+                <button type="button" data-page="1">1</button>
+                <button type="button" data-page="2">2</button>
+                <button type="button" data-page="3">3</button>
+                <button type="button" data-page="4">4</button>
+                <button type="button" data-page="5">5</button>
+              </nav>
+              <div class="slots">
+                <div class="slot-wrap">
+                  <button type="button" class="slot latest" data-slot="auto">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/classroom_evening.svg)">
+                      <img src="assets/char/osana/uniform_default_neutral.svg" alt="" style="left: 27%" />
+                      <img src="assets/char/tenko/uniform_default_smile.svg" alt="" style="left: 73%" />
+                      <span class="slot-no wide">자동</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">7월 10일 · 방과 후 교실</span><span class="slot-meta">11.23 18:55</span></span>
+                      <span class="slot-text">소우타 군, 주말에 카메라 들고 동네 돌아볼 건데 어디가 좋을까?</span>
+                    </span>
+                  </button>
+                </div>
+                <div class="slot-wrap">
+                  <button type="button" class="slot" data-slot="quick">
+                    <span class="slot-thumb" style="--bg: url(assets/bg/shoe_lockers_rain.svg)">
+                      <img src="assets/char/osana/uniform_default_shy.svg" alt="" style="left: 27%" />
+                      <img src="assets/char/tenko/uniform_ponytail_fluster.svg" alt="" style="left: 73%" />
+                      <span class="slot-no wide">퀵</span>
+                    </span>
+                    <span class="slot-info">
+                      <span class="slot-line1"><span class="slot-name">소나기와 우산</span><span class="slot-meta">11.21 08:05</span></span>
+                      <span class="slot-text">[선택지] 우산은 두 개, 사람은 셋.</span>
+                    </span>
+                  </button>
+                  <button type="button" class="slot-del" aria-label="퀵저장 삭제"><span class="ico" aria-hidden="true"></span></button>
+                </div>
+              </div>
+            </div>
+            <div class="panel-hint"><span class="ico" aria-hidden="true"></span>자동 저장은 대사가 바뀔 때마다, 퀵저장은 빠른 메뉴의 [퀵저장]·F5 로 기록돼요.<span class="grow"></span><span class="pageno">자동·퀵</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 설정 -->
+    <section class="screen" data-screen="settings" data-label="설정">
+      <div class="vn" data-mode="play" data-overlay="1">
+        <div class="backdrop" style="--bg: url(assets/bg/courtyard.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/courtyard.svg)"></div>
+        </div>
+        <div class="overlay sys" data-noadvance>
+          <div class="panel sys" role="dialog" aria-modal="true" aria-label="설정" data-panel="settings">
+            <div class="panel-head">
+              <h2 class="sr-only">설정</h2>
+              <span class="head-star" aria-hidden="true"></span>
+              <div class="sys-tabs" role="tablist" aria-label="시스템 화면">
+                <button type="button" role="tab" aria-selected="false" data-tab="save"><span class="ico" style="--i: var(--i-qsave)" aria-hidden="true"></span>저장하기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="load"><span class="ico" style="--i: var(--i-qload)" aria-hidden="true"></span>불러오기</button>
+                <button type="button" role="tab" aria-selected="true" data-tab="settings"><span class="ico" style="--i: var(--i-config)" aria-hidden="true"></span>설정</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="log"><span class="ico" style="--i: var(--i-log)" aria-hidden="true"></span>대화 기록</button>
+              </div>
+              <span class="grow"></span>
+              <button type="button" class="btn close" data-action="close" aria-label="닫기"><span class="ico" aria-hidden="true"></span><span class="lbl">닫기</span></button>
+            </div>
+            <div class="panel-body cfg">
+              <div class="tabs" role="tablist" aria-orientation="vertical" aria-label="설정 분류">
+                <button type="button" class="tab" role="tab" aria-selected="true" data-cfg="text"><span class="ico" style="--i: var(--i-text)" aria-hidden="true"></span>글자·대사창</button>
+                <button type="button" class="tab" role="tab" aria-selected="false" data-cfg="sound"><span class="ico" style="--i: var(--i-sound)" aria-hidden="true"></span>소리</button>
+                <button type="button" class="tab" role="tab" aria-selected="false" data-cfg="screen"><span class="ico" style="--i: var(--i-screen)" aria-hidden="true"></span>화면·조작</button>
+              </div>
+              <div class="cfg-pane" role="tabpanel" data-cfgpanel="text">
+                <div class="cfg-rows">
+                  <div class="setting">
+                    <label for="set-textSpeed">글자 속도</label>
+                    <input type="range" id="set-textSpeed" min="1" max="10" step="1" value="6" data-setting="textSpeed" />
+                    <output>6</output>
+                    <span class="scale" aria-hidden="true"><span>느리게</span><span>즉시</span></span>
+                  </div>
+                  <div class="setting">
+                    <label for="set-autoSpeed">자동 진행 속도</label>
+                    <input type="range" id="set-autoSpeed" min="1" max="10" step="1" value="5" data-setting="autoSpeed" />
+                    <output>5</output>
+                    <span class="scale" aria-hidden="true"><span>여유 있게</span><span>빠르게</span></span>
+                  </div>
+                  <div class="setting">
+                    <label for="set-windowOpacity">대사창 불투명도</label>
+                    <input type="range" id="set-windowOpacity" min="40" max="100" step="1" value="84" data-setting="windowOpacity" />
+                    <output>84%</output>
+                    <span class="scale" aria-hidden="true"><span>투명하게</span><span>선명하게</span></span>
+                  </div>
+                  <div class="setting choose">
+                    <span class="lab" id="lab-scale">글자 크기</span>
+                    <div class="seg" role="radiogroup" aria-labelledby="lab-scale" data-setting="textScale">
+                      <button type="button" role="radio" aria-checked="true">보통</button>
+                      <button type="button" role="radio" aria-checked="false">크게</button>
+                      <button type="button" role="radio" aria-checked="false">더 크게</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="preview" aria-hidden="true">
+                  <div class="preview-cap"><span class="ico"></span>미리보기 · 지금 설정으로 글자가 나와요</div>
+                  <div class="preview-stage" style="--bg: url(assets/bg/classroom_day.svg); --win-alpha: 0.84">
+                    <img src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+                    <div class="textbox" data-who="tenko">
+                      <div class="name">히나</div>
+                      <div class="text">이 정도 속도면 읽기 편해?<span class="caret"></span><span class="ghost"> 천천히 골라 봐.</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="panel-foot">
+              <span class="note">바꾼 설정은 바로 저장돼요.</span>
+              <button type="button" class="btn" data-action="reset">기본값으로</button>
+              <button type="button" class="btn primary" data-action="close-settings">닫기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 대화 기록 -->
+    <section class="screen" data-screen="log" data-label="대화 기록">
+      <div class="vn" data-mode="play" data-overlay="1">
+        <div class="backdrop" style="--bg: url(assets/bg/classroom_day.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/classroom_day.svg)"></div>
+          <div class="chars">
+            <img class="char pos-left" src="assets/char/osana/uniform_default_pout.svg" alt="" />
+            <img class="char pos-right" src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+          </div>
+        </div>
+        <div class="overlay sys" data-noadvance>
+          <div class="panel sys" role="dialog" aria-modal="true" aria-label="대화 기록" data-panel="log">
+            <div class="panel-head">
+              <h2 class="sr-only">대화 기록</h2>
+              <span class="head-star" aria-hidden="true"></span>
+              <div class="sys-tabs" role="tablist" aria-label="시스템 화면">
+                <button type="button" role="tab" aria-selected="false" data-tab="save"><span class="ico" style="--i: var(--i-qsave)" aria-hidden="true"></span>저장하기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="load"><span class="ico" style="--i: var(--i-qload)" aria-hidden="true"></span>불러오기</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="settings"><span class="ico" style="--i: var(--i-config)" aria-hidden="true"></span>설정</button>
+                <button type="button" role="tab" aria-selected="true" data-tab="log"><span class="ico" style="--i: var(--i-log)" aria-hidden="true"></span>대화 기록</button>
+              </div>
+              <span class="grow"></span>
+              <button type="button" class="btn close" data-action="close" aria-label="닫기"><span class="ico" aria-hidden="true"></span><span class="lbl">닫기</span></button>
+            </div>
+            <div class="panel-body log">
+              <div class="log-list">
+                <div class="log-item is-card">7월 6일 월요일 · 2학년 3반 조례</div>
+                <div class="log-item is-say k-npc"><span class="log-name">오카다 선생님</span><span class="log-text">자리는 창가 맨 뒤, 아오야마 옆이다. 아오야마, 교과서 좀 같이 보여 줘라.</span></div>
+                <div class="log-item is-say k-tenko"><span class="log-name">히나</span><span class="log-text">옆자리네. 이름 물어봐도 돼?</span></div>
+                <div class="log-item is-say k-tenko"><span class="log-name">히나</span><span class="log-text">아오야마 군. 아, 소우타 군이라고 불러도 돼? 이름으로 부르면 더 빨리 친해지잖아.</span></div>
+                <div class="log-item is-card">1교시 후 쉬는 시간</div>
+                <div class="log-item is-say k-npc"><span class="log-name">반 아이들</span><span class="log-text">전엔 어디 살았어? 동아리는? 그 머리, 매일 직접 하는 거야?</span></div>
+                <div class="log-item is-mono"><span class="log-text">사쿠라이는 웃으며 받아 넘겼다. 그런데 말이 끊길 때마다 짧게 숨을 고른다. 조금 지친 거다.</span></div>
+                <div class="log-item is-say k-osana"><span class="log-name">아카네</span><span class="log-text">소우타, 다음 시간 음악실이잖아. 사쿠라이는 별관 가는 길 모를 텐데.</span></div>
+                <div class="log-item is-choice"><span class="log-text">뒤돌아본 아카네에게 먼저 대답한다</span></div>
+                <div class="log-item is-say k-me"><span class="log-name">소우타</span><span class="log-text">맞다, 음악실. 같이 데려가자. 너 길 설명 잘하잖아.</span></div>
+                <div class="log-item is-say k-osana now"><span class="log-name">아카네</span><span class="log-text">딱히 친절해서 그러는 거 아니야. 첫날부터 지각하면 불쌍하잖아.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 시간 경과 카드(일력) -->
+    <section class="screen" data-screen="card" data-label="시간 경과 카드">
+      <div class="vn" data-mode="play" data-frame="card" data-tone="day">
+        <div class="backdrop" style="--bg: url(assets/bg/courtyard.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/courtyard.svg)"></div>
+          <div class="card on" style="--bg: url(assets/bg/courtyard.svg)">
+            <div class="card-bg"></div>
+            <div class="motes" data-n="16" data-seed="7"></div>
+            <div class="card-kicker">1주 차</div>
+            <div class="cal">
+              <div class="cal-head"><span class="cal-month">7월</span><span class="ico" data-wx="sun" aria-hidden="true"></span></div>
+              <div class="cal-body">
+                <div class="cal-day">9</div>
+                <div class="cal-dow" data-dow="목">목요일</div>
+                <div class="cal-line"><span class="ico" aria-hidden="true"></span></div>
+                <div class="cal-sub">체육이 있는 날</div>
+              </div>
+            </div>
+            <div class="week" aria-hidden="true"><span class="past">월</span><span class="past">화</span><span class="past">수</span><span class="now">목</span><span>금</span></div>
+          </div>
+        </div>
+        <div class="qbar" data-noadvance role="toolbar" aria-label="빠른 메뉴"></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 엔딩 -->
+    <section class="screen" data-screen="ending" data-label="엔딩">
+      <div class="vn" data-mode="ending">
+        <div class="ending-screen" data-noadvance data-ending="osana" style="--bg: url(assets/bg/riverbank_night.svg); --c1: var(--akane-1); --c2: var(--akane-2)">
+          <div class="end-bg"></div>
+          <span class="firework" style="--x: 12%; --y: 16%; --s: 22vh; --c: #ffd0e0; --dl: -1.2s"></span>
+          <span class="firework" style="--x: 48%; --y: 10%; --s: 15vh; --c: #a2d4f6; --dl: -2.6s"></span>
+          <span class="firework" style="--x: 84%; --y: 18%; --s: 20vh; --c: #ffe3a1; --dl: -0.4s"></span>
+          <div class="motes" data-n="22" data-seed="5" data-night="1"></div>
+          <div class="ending-layout">
+            <figure class="polaroid">
+              <span class="mini" style="--bg: url(assets/bg/riverbank_night.svg)"><img src="assets/char/osana/yukata_default_smile.svg" alt="" style="left: 50%" /></span>
+              <figcaption>8월 8일, 아사히 강 여름 축제</figcaption>
+            </figure>
+            <div class="ending-inner">
+              <div class="end-kicker">아카네 엔딩</div>
+              <h2 class="ending-title">「내일도, 그다음 날도」</h2>
+              <div class="end-line"><span class="ico" aria-hidden="true"></span></div>
+              <div class="end-progress">
+                <span class="medal got" style="--c1: var(--akane-1); --c2: var(--akane-2)">아카네</span>
+                <span class="medal">히나</span>
+                <span>엔딩 1 / 2 · 다른 이야기도 기다리고 있어요</span>
+              </div>
+              <button type="button" class="btn primary" data-action="to-title"><span class="ico" aria-hidden="true"></span>타이틀로</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 밤 톤 대사(축제) -->
+    <section class="screen" data-screen="night" data-label="밤 톤 대사 화면(자동 진행 켬)">
+      <div class="vn" data-mode="play" data-frame="say" data-tone="night">
+        <div class="backdrop" style="--bg: url(assets/bg/festival_street.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/festival_street.svg)"></div>
+          <div class="chars">
+            <img class="char pos-center" src="assets/char/tenko/yukata_ponytail_smile.svg" alt="" />
+          </div>
+          <div class="motes" data-n="12" data-seed="21" data-night="1"></div>
+          <div class="place-chip on"><span class="ico" aria-hidden="true"></span>8월 8일 토요일<span class="sep"></span>축제 거리</div>
+        </div>
+        <div class="textbox done" data-who="tenko">
+          <div class="name" aria-hidden="true">히나</div>
+          <div class="text" aria-hidden="true">소우타 군, 여기! 오래 기다렸어? 자, 어때?</div>
+          <div class="next"></div>
+        </div>
+        <div class="qbar" data-noadvance role="toolbar" aria-label="빠른 메뉴" data-state="auto"></div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 게임 메뉴 -->
+    <section class="screen" data-screen="menu" data-label="게임 메뉴(Esc) · 키보드 포커스 표시">
+      <div class="vn" data-mode="play" data-overlay="1">
+        <div class="backdrop" style="--bg: url(assets/bg/classroom_day.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/classroom_day.svg)"></div>
+          <div class="chars">
+            <img class="char pos-left" src="assets/char/osana/uniform_default_neutral.svg" alt="" />
+            <img class="char pos-right" src="assets/char/tenko/uniform_default_smile.svg" alt="" />
+          </div>
+        </div>
+        <div class="overlay" data-noadvance>
+          <div class="panel small menu" role="dialog" aria-modal="true" aria-label="메뉴" data-panel="menu">
+            <div class="panel-head">
+              <h2>메뉴</h2>
+              <button type="button" class="btn icon" data-action="close" aria-label="닫기"><span class="ico" style="--i: var(--i-close)" aria-hidden="true"></span></button>
+            </div>
+            <div class="menu-list">
+              <button type="button" class="btn focus-demo" data-action="save"><span class="ico" style="--i: var(--i-qsave)" aria-hidden="true"></span>저장하기</button>
+              <button type="button" class="btn" data-action="load"><span class="ico" style="--i: var(--i-qload)" aria-hidden="true"></span>불러오기</button>
+              <button type="button" class="btn" data-action="log"><span class="ico" style="--i: var(--i-log)" aria-hidden="true"></span>대화 기록</button>
+              <button type="button" class="btn" data-action="settings"><span class="ico" style="--i: var(--i-config)" aria-hidden="true"></span>설정</button>
+              <button type="button" class="btn" data-action="fullscreen"><span class="ico" style="--i: var(--i-full)" aria-hidden="true"></span>전체화면</button>
+              <button type="button" class="btn" data-action="title"><span class="ico" style="--i: var(--i-home)" aria-hidden="true"></span>타이틀로</button>
+              <button type="button" class="btn primary wide" data-action="resume"><span class="ico" style="--i: var(--i-play)" aria-hidden="true"></span>게임으로 돌아가기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 확인창 -->
+    <section class="screen" data-screen="confirm" data-label="확인창">
+      <div class="vn" data-mode="play" data-overlay="1">
+        <div class="backdrop" style="--bg: url(assets/bg/road_evening.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/road_evening.svg)"></div>
+          <div class="chars">
+            <img class="char pos-center" src="assets/char/osana/uniform_default_smile.svg" alt="" />
+          </div>
+        </div>
+        <div class="overlay" data-noadvance>
+          <div class="panel small" role="dialog" aria-modal="true" aria-label="확인" data-panel="confirm">
+            <h2 class="sr-only">확인</h2>
+            <p class="dialog-msg"><strong class="lead">타이틀로 돌아갈까요?</strong>지금 위치는 자동 저장되어 있어요.<small>타이틀의 [이어하기]로 여기서 다시 시작할 수 있어요.</small></p>
+            <div class="panel-foot">
+              <button type="button" class="btn" data-action="cancel">취소</button>
+              <button type="button" class="btn primary" data-action="ok" data-autofocus>타이틀로</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== 숨기기(H) -->
+    <section class="screen" data-screen="hide" data-label="대사창 숨기기(H)">
+      <div class="vn" data-mode="play" data-frame="say" data-tone="day" data-hidewin="1">
+        <div class="backdrop" style="--bg: url(assets/bg/road_evening.svg)"></div>
+        <div class="stage">
+          <div class="bg-layer" style="background-image: url(assets/bg/road_evening.svg)"></div>
+          <div class="chars">
+            <img class="char pos-center" src="assets/char/osana/uniform_default_smile.svg" alt="" />
+          </div>
+          <div class="place-chip on"><span class="ico" aria-hidden="true"></span>방과 후<span class="sep"></span>역 쪽으로</div>
+        </div>
+        <div class="textbox done" data-who="osana">
+          <div class="name" aria-hidden="true">아카네</div>
+          <div class="text" aria-hidden="true">내일도… 같이 갈래?</div>
+        </div>
+        <div class="qbar" data-noadvance role="toolbar" aria-label="빠른 메뉴"></div>
+        <div class="hide-hint" role="status"><span class="ico" aria-hidden="true"></span>화면을 누르면 대사창이 돌아와요</div>
+      </div>
+    </section>
+
+    <script src="js/mock.js"></script>
+  </body>
+</html>
