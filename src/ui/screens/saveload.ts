@@ -111,15 +111,16 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
     rail.append(b);
   }
 
-  /** 가장 최근 저장 칸(분홍 테). 저장 화면은 자동 저장을 빼고 고른다 */
+  /** 가장 최근 저장 칸(분홍 테). 저장 화면은 자동 저장을 빼고 고른다. 날짜로 읽을 수 없는 저장 시각은 건너뛴다 */
   function latestSlot(): SlotId | null {
     const cands: SlotId[] = ['quick'];
     if (o.kind === 'load') cands.push('auto');
     for (let i = 1; i <= MANUAL_SLOTS; i++) cands.push(String(i) as SlotId);
-    let best: { slot: SlotId; at: string } | null = null;
+    let best: { slot: SlotId; at: number } | null = null;
     for (const s of cands) {
-      const at = o.savedAt(s);
-      if (at && (!best || at > best.at)) best = { slot: s, at };
+      const raw = o.savedAt(s);
+      const at = raw ? Date.parse(raw) : NaN;
+      if (!Number.isNaN(at) && (!best || at > best.at)) best = { slot: s, at };
     }
     return best?.slot ?? null;
   }
@@ -182,11 +183,15 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
       }
       const date = formatSlotDate(info.savedAt ?? '');
       const title = s?.sceneTitle || name;
-      line1.append(el('span', 'slot-name', title), el('span', 'slot-meta', date));
-      infoEl.append(line1, el('span', 'slot-text', s?.text ?? ''));
+      const text = s?.text ?? '';
+      // 저장 시각·발췌를 읽을 수 없어도(일부 손상) 정보 줄 높이는 그대로 둔다(썸네일만 커지지 않게)
+      line1.append(el('span', 'slot-name', title), el('span', 'slot-meta', date || '날짜 모름'));
+      infoEl.append(line1, el('span', 'slot-text', text || '\u00a0'));
       b.append(thumb, infoEl);
       if (slot === latest) b.classList.add('latest');
-      label = `${name}: ${title}${route ? ` · ${o.heroineName(route)} 루트` : ''}, ${date}. ${s?.text ?? ''}`;
+      // 읽어 줄 이름: 빈 구절은 빼고 이어 붙인다('슬롯 5: 슬롯 5, . ' 처럼 읽히지 않게)
+      const what = [title !== name ? title : '', route ? `${o.heroineName(route)} 루트` : ''].filter(Boolean).join(' · ');
+      label = `${name}${what ? `: ${what}` : ''}${date ? `, ${date}` : ''}.${text ? ` ${text}` : ''}`;
     }
     b.setAttribute('aria-label', label);
 
@@ -226,7 +231,12 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
     const latest = latestSlot();
     grid.replaceChildren(...pageSlots(page).map((s) => card(s, latest)));
     grid.classList.toggle('q', page === 'q');
-    if (page === 'q') {
+    if (!o.saves.persistent) {
+      // 브라우저 저장소를 쓸 수 없음(사생활 보호 모드 등): 저장은 이 탭의 메모리에만 남는다
+      hint.classList.add('warn');
+      hintText.textContent = '지금은 브라우저 저장소를 쓸 수 없어, 이 탭을 닫거나 새로고침하면 저장이 사라져요.';
+      pageno.textContent = page === 'q' ? '자동·퀵' : `${page} / ${PAGES}쪽`;
+    } else if (page === 'q') {
       hintText.textContent =
         o.kind === 'save'
           ? '퀵저장 칸에 저장할 수 있어요. 자동 저장은 대사가 바뀔 때마다 따로 기록돼요.'

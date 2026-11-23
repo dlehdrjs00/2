@@ -3,6 +3,8 @@
  *  - 브라우저 자동재생 제한: 첫 사용자 입력에서 unlock() 해야 소리가 난다. 그 전의 음악 요청은 기억해 두었다가 재생.
  *  - 파일이 없거나 디코딩에 실패해도 예외를 밖으로 던지지 않는다(게임 진행 우선).
  *  - Web Audio 를 쓸 수 없는 환경이면 조용히 무음으로 동작.
+ *  - 음량이 0 이면 그 파일을 내려받지 않는다(느린 모바일 망에서 그림과 대역폭을 다투지 않게).
+ *    배경음은 어떤 곡을 틀어야 하는지만 기억해 두었다가, 음량을 올리는 순간 그 곡부터 받아 튼다.
  */
 export interface AudioSource {
   src: string;
@@ -16,7 +18,8 @@ export class AudioManager {
   private bgmBus: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private buffers = new Map<string, Promise<AudioBuffer | null>>();
-  private current: { id: string; src: AudioBufferSourceNode | null; gain: GainNode | null } | null = null;
+  /** deferred: 배경음 음량이 0 이라 받지 않고 미뤄 둔 곡(음량을 올리면 그때 받아 튼다) */
+  private current: { id: string; src: AudioBufferSourceNode | null; gain: GainNode | null; deferred?: boolean } | null = null;
   private wantedBgm: string | null = null;
   private bgmVol = 0.6;
   private sfxVol = 0.7;
@@ -78,6 +81,12 @@ export class AudioManager {
       this.bgmBus.gain.setTargetAtTime(this.bgmVol, t, 0.05);
       this.sfxBus.gain.setTargetAtTime(this.sfxVol, t, 0.05);
     }
+    // 음량 0 이라 미뤄 둔 곡: 음량을 올리면 이제 받아서 튼다
+    if (this.bgmVol > 0 && this.current?.deferred && this.isUnlocked) {
+      const id = this.current.id;
+      this.current = null;
+      this.startBgm(id);
+    }
   }
 
   /** null = 정지 */
@@ -94,6 +103,7 @@ export class AudioManager {
 
   playSfx(id: string): void {
     if (!this.isUnlocked || !this.ctx || !this.sfxBus) return;
+    if (this.sfxVol === 0) return; // 들리지 않는 소리는 내려받지도 않는다
     const now = performance.now();
     if ((this.sfxCooldown.get(id) ?? 0) > now) return; // 빠른 연속 입력 시 겹침 방지
     this.sfxCooldown.set(id, now + 60);
@@ -125,6 +135,11 @@ export class AudioManager {
     this.stopCurrent(0.9);
     if (!src || !this.ctx) {
       this.current = { id, src: null, gain: null };
+      return;
+    }
+    if (this.bgmVol === 0) {
+      // 들리지 않으니 받지 않는다. 어떤 곡인지만 기억(같은 곡 재요청은 playBgm 이 걸러 준다)
+      this.current = { id, src: null, gain: null, deferred: true };
       return;
     }
     const token = { id, src: null as AudioBufferSourceNode | null, gain: null as GainNode | null };

@@ -5,7 +5,8 @@
  *   node scripts/art/characters.mjs
  *
  * 출력: public/assets/placeholder/char/{osana|tenko}/{outfit}_{hair}_{expr}.svg (30개)
- * 최종 일러스트가 나오면 src/story/assets.ts 의 SPRITE_SETS 만 교체하면 된다.
+ * 지금은 사용자가 준 최종 일러스트(public/assets/char/, scripts/import-art.py)를 쓰므로 이 출력은 게임에 연결되지 않는다.
+ * 빌드에 쓸데없이 복사되지 않게 저장소에서는 지워 두었다. 임시 그림이 다시 필요할 때만 실행한다.
  *
  * 구성: 레이어 함수(뒷머리 → 몸/의상 → 얼굴 → 눈·입·홍조 → 앞머리 → 눈썹 → 액세서리 → 효과)를
  * 조합한다. 표정 레이어(눈·눈썹·입·홍조·효과)만 바뀌고 나머지는 모든 표정에서 바이트 단위로 같다.

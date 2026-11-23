@@ -15,11 +15,13 @@
  *  - 오버레이가 열려 있으면 그 밖의 화면은 inert 로 막아 Tab·Enter 로 아래 버튼을 누를 수 없다.
  *  - 키 자동 반복(e.repeat)은 모두 무시한다(메뉴 깜빡임, 자동/건너뛰기 토글 반복, 확인창 즉시 확정 방지).
  *  - 저장·불러오기·설정·기록은 탭 시트 하나(오버레이 하나)다. 탭을 바꿔도 본문만 바뀌어 Esc 한 번에 닫힌다.
+ *  - 추억 앨범(타이틀 시트의 탭)의 감상 화면은 시트 위에 겹친 오버레이다. 키 입력은 맨 위 오버레이의 onKey 가 먼저 받고
+ *    (←/→ 넘기기 등), 클릭은 오버레이 안에서 전파를 멈춘다. 닫으면 포커스는 연 칸 → 시트를 닫으면 [추억 앨범]으로 돌아간다.
  */
 import type { CgId, CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
 import { HEROINES } from '../engine/types';
 import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
-import { SaveManager, type LoadResult, type SaveSummary, type SlotId } from '../engine/save';
+import { KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotId } from '../engine/save';
 import { autoDelayMs, charsPerSecond, DEFAULT_SETTINGS, loadSettings, saveSettings, textScaleFactor, type Settings } from '../engine/settings';
 import type { KeyValueStore } from '../engine/storage';
 import { AudioManager } from '../engine/audio';
@@ -34,11 +36,12 @@ import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
 import { buildConfirm, buildMenu, type AskMessage, type AskOptions, type MenuItem } from './screens/menu';
-import { ImagePreloader, sceneImages, type PreloadResolver } from './screens/preload';
+import { buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
+import { ImagePreloader, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
 import { buildSaveLoad, type SaveLoadView, type SlotPage } from './screens/saveload';
 import { buildSettings, type CfgCat } from './screens/settings';
 import { buildSheet, type Sheet, type SheetPanel, type SheetTab, type SheetView } from './screens/sheet';
-import { buildTitle } from './screens/title';
+import { buildTitle, cancelTitleArt } from './screens/title';
 
 export interface GameContent {
   story: Story;
@@ -67,7 +70,17 @@ export interface GameContent {
   endingCg?(heroine: HeroineId): string | null;
   /** 타이틀 키 비주얼(두 히로인이 함께 그려진 한 장 그림). 있으면 배경 + 개별 스프라이트 대신 쓴다 */
   titleVisual?: string | null;
+  /** 키 비주얼의 작은 그림. 원본을 받는 동안 흐리게 깔아 둔다 */
+  titleVisualThumb?: string | null;
+  /** 추억 앨범에 놓을 이벤트 CG(표시 순서대로 id·제목·루트). 없거나 비면 타이틀에 [추억 앨범]을 두지 않는다 */
+  cgCatalog?: AlbumEntry[];
 }
+
+/** 오버레이 모양: small = 가운데 작은 카드(메뉴·확인창), sys = 화면 전체 시트, viewer = 화면 전체 그림 감상 */
+type OverlayKind = 'small' | 'sys' | 'viewer';
+
+/** 오버레이에 넣는 패널(시트 본문 갱신·정리, 감상 화면의 키 처리) */
+type OverlayPanel = SheetPanel & { onKey?: (e: KeyboardEvent) => boolean };
 
 type Mode = 'boot' | 'title' | 'play' | 'ending';
 
@@ -77,8 +90,11 @@ const UI_LOCK_MS = 400;
 const ECHO_MS = 500;
 /** 이어하기·새 게임 직후 대사 진행·선택 잠금 */
 const START_LOCK_MS = 400;
-/** 건너뛰기가 스스로 멈춘 직후 잠금(반사적인 '정지' 클릭이 처음 보는 대사를 넘기지 않게) */
-const SKIP_STOP_LOCK_MS = 300;
+/**
+ * 건너뛰기가 스스로 멈춘 직후 잠금(반사적인 '정지' 클릭이 처음 보는 대사를 넘기지 않게).
+ * 멈춘 것을 보고 누르는 사람의 반응 시간(약 250~400ms)을 덮도록 잡는다.
+ */
+const SKIP_STOP_LOCK_MS = 450;
 /** 선택지 준비 시간: 첫 버튼 등장 연출(0.35s) + 여유. 버튼마다 등장 지연(0.07s)만큼 더한다 */
 const CHOICE_ARM_MS = 500;
 const CHOICE_ARM_STAGGER_MS = 70;
@@ -90,6 +106,19 @@ const CHOICE_ARM_REDUCED_MS = 350;
 const TITLE_BGM_DELAY_MS = 600;
 /** 수정자 키만 눌렀을 때는 숨긴 대사창을 되돌리지 않는다 */
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock', 'Fn', 'OS']);
+/**
+ * 그림 미리 불러오기·대사 글꼴 받기는 타이틀 키 비주얼 원본이 그려진 뒤에 시작한다(느린 망에서 대역폭을 나누지 않게).
+ * 키 비주얼이 이보다 늦으면 기다리지 않고 시작한다. 게임을 시작하면 바로 시작한다.
+ */
+const TITLE_ART_WAIT_MS = 15000;
+/** 미리 불러오기 '가까운 묶음': 지금 위치에서 이만큼의 블로킹 스텝(대사·카드·선택지) 안에서 쓰는 그림 */
+const PRELOAD_NEAR_STEPS = 15;
+/**
+ * 미리 불러오기 우선순위 당김(스텝 수). CG·배경은 무대 전체를 덮고(CG 는 파일도 커서) 늦으면 빈 화면이 보인다.
+ * 그래서 같은 거리의 스프라이트보다 이만큼 먼저 받는다(CG 는 12스텝 뒤에 쓰여도 지금 쓰는 스프라이트만큼 급하다).
+ * 너무 크게 잡으면 바로 다음 몇 줄의 표정 그림이 CG 에 밀려 늦게 뜬다.
+ */
+const PRELOAD_LEAD: Record<PreloadKind, number> = { cg: 12, bg: 6, sprite: 0 };
 
 export class Game {
   readonly root: HTMLElement;
@@ -112,12 +141,12 @@ export class Game {
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private mini: MiniResolver;
   private preloader = new ImagePreloader();
-  private preloadScene: string | null = null;
 
   private state: GameState | null = null;
   private current: StepResult | null = null;
   private mode: Mode = 'boot';
-  private overlays: Array<{ el: HTMLElement; close: () => void; dismissable: boolean }> = [];
+  /** escape: Esc 를 눌렀을 때 할 일(없으면 dismissable 일 때 닫기) */
+  private overlays: Array<{ el: HTMLElement; close: () => void; dismissable: boolean; escape: (() => void) | null; panel: OverlayPanel }> = [];
   /** 열려 있는 시스템 시트(저장·불러오기·설정·기록) */
   private sheet: Sheet | null = null;
   private auto = false;
@@ -147,6 +176,12 @@ export class Game {
   /** 이번 세션에서 마지막으로 본 저장 쪽·설정 분류(메모리에만) */
   private lastSlotPage: SlotPage | null = null;
   private lastCfgCat: CfgCat | null = null;
+  /** 떠 있는 타이틀이 보여 주는 내용(엔딩·이어하기 날짜·앨범 수). 같으면 다시 그리지 않는다 */
+  private titleSig = '';
+  /** 타이틀 키 비주얼 원본이 그려졌는지(그 전에는 그림 미리 불러오기·대사 글꼴 받기를 미룬다) */
+  private titleArtReady = false;
+  private afterTitleArt: Array<() => void> = [];
+  private preloadStarted = false;
 
   constructor(mount: HTMLElement, content: GameContent, store: KeyValueStore) {
     this.c = content;
@@ -156,7 +191,12 @@ export class Game {
       hasBg: content.hasBg,
       hasSprite: content.hasSprite,
       hasBgm: content.hasBgm,
+      // 저장 데이터의 모르는 CG id 는 불러올 때 버린다(전역 기록·자동 저장에 남지 않게)
+      hasCg: content.cgUrl ? (id) => !!content.cgUrl!(id) : undefined,
     });
+    // 다른 탭이 전역 기록(엔딩·본 CG)이나 저장 칸을 바꾸면, 떠 있는 타이틀·저장 목록을 다시 그린다.
+    // (SaveManager 도 같은 알림으로 메모리 기록을 합치지만 화면은 여기서 갱신한다)
+    store.watch?.((key) => this.onStoreChanged(key));
     this.settings = loadSettings(store);
     this.audio = new AudioManager(content.bgmSrc, content.sfxSrc, '');
     this.audio.setVolumes(this.settings.bgmVolume, this.settings.sfxVolume);
@@ -220,11 +260,31 @@ export class Game {
   start(): void {
     this.showTitle();
     if (!this.saves.persistent) this.toast('브라우저 저장소를 쓸 수 없어 저장이 이 탭에서만 유지돼요.', 5000);
-    // 그림 미리 불러오기(백그라운드, 동시 3개·낮은 우선순위): 첫 장면 → 나머지 전부
-    setTimeout(() => {
-      this.preloadAround(this.story.start, null, null);
-      this.preloader.add(this.c.allImageUrls());
-    }, 300);
+    // 그림 미리 불러오기(백그라운드, 낮은 우선순위): 타이틀 키 비주얼이 그려진 뒤(늦어도 TITLE_ART_WAIT_MS 뒤) 첫 장면 → 나머지 전부
+    this.whenTitleArt(() => setTimeout(() => this.startPreload(), 300));
+    setTimeout(() => this.titleArtDone(), TITLE_ART_WAIT_MS);
+  }
+
+  /** 타이틀 키 비주얼 원본이 그려졌다(또는 기다림이 끝났다): 미뤄 둔 일을 시작한다 */
+  private titleArtDone() {
+    if (this.titleArtReady) return;
+    this.titleArtReady = true;
+    const fns = this.afterTitleArt;
+    this.afterTitleArt = [];
+    for (const fn of fns) fn();
+  }
+
+  private whenTitleArt(fn: () => void) {
+    if (this.titleArtReady) fn();
+    else this.afterTitleArt.push(fn);
+  }
+
+  /** 게임 전체 그림 미리 불러오기(한 번만). 데이터 절약 모드에서는 지금·다음 장면 그림만 받는다 */
+  private startPreload() {
+    if (this.preloadStarted) return;
+    this.preloadStarted = true;
+    if (this.mode !== 'play') this.preloadFrom(this.story.start, null, null, null);
+    if (!prefersDataSaving()) this.preloader.add(this.c.allImageUrls());
   }
 
   private setMode(m: Mode) {
@@ -235,6 +295,12 @@ export class Game {
     this.qbar.el.style.display = playing ? '' : 'none';
     this.setHideWin(false);
     if (m !== 'title') this.cancelTitleBgm();
+    // 타이틀을 떠나면 키 비주얼을 기다릴 까닭이 없다: 받던 원본은 그만 받고(게임 그림에 대역폭을 양보),
+    // 미뤄 둔 미리 불러오기·글꼴 받기를 시작한다
+    if (m === 'play') {
+      cancelTitleArt();
+      this.titleArtDone();
+    }
     if (!playing) {
       this.stopAuto();
       this.setSkip(false, true);
@@ -328,7 +394,11 @@ export class Game {
       if (document.hidden) {
         persist();
         this.clearAutoTimer();
-      } else this.scheduleAuto();
+      } else {
+        this.scheduleAuto();
+        // 다시 보일 때: 숨어 있는 동안 다른 탭이 바꾼 기록·저장을 타이틀에 반영한다(멈춰 있던 탭은 storage 알림을 놓칠 수 있다)
+        if (this.mode === 'title') this.onStoreChanged(null);
+      }
     });
 
     document.addEventListener('fullscreenchange', () => setTimeout(relayout, 50));
@@ -351,13 +421,16 @@ export class Game {
       this.setHideWin(false);
       return;
     }
+    // 맨 위 오버레이가 키를 직접 다루면(추억 앨범 감상 화면의 ←/→ 등) 먼저 넘긴다. Esc·Tab 은 아래 공통 처리
+    if (this.overlays[this.overlays.length - 1]?.panel.onKey?.(e)) return;
     const t = e.target as HTMLElement | null;
     const tag = t?.tagName;
     if (e.key === 'Escape') {
       e.preventDefault();
       const top = this.overlays[this.overlays.length - 1];
       if (top) {
-        if (top.dismissable) top.close();
+        if (top.escape) top.escape();
+        else if (top.dismissable) top.close();
       } else if (this.mode === 'play' && !this.rotateShown) this.openMenu();
       return;
     }
@@ -522,11 +595,8 @@ export class Game {
     const token = ++this.presentToken;
     const state = this.state!;
     this.current = res;
-    // 장면이 바뀌면 지금 장면·다음 장면 그림을 미리 불러오기 대기열 앞으로
-    if (state.sceneId !== this.preloadScene) {
-      this.preloadScene = state.sceneId;
-      this.preloadAround(state.sceneId, state.stage, state.route);
-    }
+    // 지금 위치에서 가까운 그림부터 미리 불러오기 대기열을 다시 세운다(스텝마다: 곧 볼 CG·배경이 먼저)
+    this.preloadFrom(state.sceneId, state.stepId, state.stage, state.route);
     // 표시 중인 스텝과 선택지 DOM 이 어긋나지 않게: 선택지가 아니면 남은 선택지를 항상 지운다
     if (res.step.t !== 'choice') this.hideChoices();
     // 건너뛰기는 읽은 대사만: 처음 보는 대사·선택지·엔딩에 닿으면 '그리기 전에' 멈춰서
@@ -549,11 +619,13 @@ export class Game {
     if (opts.fromLoad) {
       this.stage.renderSnapshot(state.stage);
       this.playBgm(state.stage.bgm);
-      if (state.stage.cg) this.saves.markCg(state.stage.cg);
     } else {
       await this.applyEvents(res.events, instant, token);
       if (token !== this.presentToken) return;
     }
+    // 지금 무대에 떠 있는 CG 는 본 것으로 기록한다(추억 앨범). cg 이벤트(applyVisual)·불러오기 직후·
+    // '장면 처음부터' 복구(장면 진입 무대에 이미 CG 가 있던 경우)·건너뛰기 중 모두 여기서 한 번 더 확인된다
+    if (state.stage.cg) this.markCg(state.stage.cg);
 
     const step = res.step;
     if (step.t !== 'card') this.stage.hideCard(!instant);
@@ -663,7 +735,7 @@ export class Game {
         case 'cg':
           // 이벤트 CG: 무대 가득(캐릭터 앞, 대사창 뒤). 본 CG 는 기록해 둔다(추억 앨범)
           this.stage.showCg(e.cg, !instant);
-          if (e.cg) this.saves.markCg(e.cg);
+          if (e.cg) this.markCg(e.cg);
           break;
         default:
           break;
@@ -935,7 +1007,7 @@ export class Game {
       return;
     }
     const latest = slot === 'auto' ? this.saves.latestManual() : null;
-    const hint = latest ? `\n수동 저장(슬롯 ${latest})에서 이어 할 수 있어요.` : '';
+    const hint = latest ? `\n수동 저장(슬롯 ${latest})에서 이어서 할 수 있어요.` : '';
     void this.ask(
       { lead: `${withJosa(slotName, '을')} 불러올 수 없어요`, body: `${r.message}${hint}`, note: '이 저장 데이터를 삭제할까요?' },
       { ok: '삭제', cancel: '닫기', danger: true },
@@ -989,7 +1061,16 @@ export class Game {
   private quickSave() {
     if (this.mode !== 'play' || !this.state || this.overlays.length) return;
     const ok = this.saves.write('quick', this.state, this.summary());
-    this.toast(ok ? '퀵저장했어요' : '저장 공간이 부족해 이 탭에서만 저장됐어요.');
+    this.toast(this.savedMessage(ok, '퀵저장했어요'), ok && this.saves.persistent ? undefined : 4000);
+  }
+
+  /**
+   * 저장 결과 안내. 브라우저 저장소를 쓸 수 없으면(메모리 저장) 성공해도 이 탭을 닫으면 사라진다는 사실을 함께 알린다.
+   * ok 가 false 면 용량 부족 등으로 이 탭의 메모리에만 남은 경우다.
+   */
+  private savedMessage(ok: boolean, done: string): string {
+    if (!ok) return '저장 공간이 부족해 이 탭에서만 저장됐어요.';
+    return this.saves.persistent ? done : `${done} · 이 탭을 닫으면 사라져요`;
   }
 
   /** 퀵로드(F9·빠른 메뉴): 비었으면 안내, 있으면 불러오기 확인 뒤 */
@@ -1043,29 +1124,50 @@ export class Game {
     this.setMode('title');
     this.state = null;
     this.current = null;
-    this.preloadScene = null;
+    // 미리 불러오기 순서를 첫 장면 기준으로 되돌린다(마지막으로 보던 위치의 그림이 계속 앞에 서 있지 않게)
+    if (this.preloadStarted) this.preloadFrom(this.story.start, null, null, null);
     this.root.dataset.frame = 'none';
     this.root.dataset.step = '';
     this.textbox.setVisible(false);
     this.stage.clearAll();
-    this.stage.setBgInstant('title');
+    // 키 비주얼이 있으면 무대 배경은 쓰이지 않으므로(타이틀 화면이 덮음) 검은 화면 그대로 둔다(title.svg 를 받지 않게)
+    if (!this.c.titleVisual) this.stage.setBgInstant('title');
     // 앞 화면의 곡은 멈추고, 타이틀 곡은 소리가 풀린 뒤 잠깐 기다렸다 튼다(바로 떠나면 받지 않음)
     this.playBgm(null);
     this.scheduleTitleBgm();
     this.renderTitle();
-    // 대사 글꼴(고운돋움)은 타이틀을 보는 동안 미리 받아 둔다(첫 대사에서 글꼴이 바뀌어 보이지 않게)
-    try {
-      void document.fonts?.load('16px "Gowun Dodum"').catch(() => undefined);
-    } catch {
-      /* 글꼴 API 없음: 무시 */
-    }
+    // 대사 글꼴(고운돋움)은 타이틀을 보는 동안 미리 받아 둔다(첫 대사에서 글꼴이 바뀌어 보이지 않게).
+    // 처음 열 때는 키 비주얼이 그려진 뒤에(느린 망에서 키 비주얼과 대역폭을 나누지 않게)
+    this.whenTitleArt(() => {
+      try {
+        void document.fonts?.load('16px "Gowun Dodum"').catch(() => undefined);
+      } catch {
+        /* 글꼴 API 없음: 무시 */
+      }
+    });
   }
 
-  /** 타이틀 화면을 (다시) 그린다. 열린 오버레이는 그대로 둔다 */
+  /**
+   * 타이틀 화면을 (다시) 그린다. 열린 오버레이는 그대로 둔다.
+   * 이미 떠 있는 타이틀은 보이는 내용(엔딩 배지·[이어하기] 날짜·앨범 수)이 바뀌었을 때만 등장 연출 없이 바꾸고,
+   * 포커스가 타이틀 버튼에 있었으면 새 화면의 같은 버튼으로 옮긴다.
+   */
   private renderTitle() {
     if (this.mode !== 'title') return;
     const reached = new Set(this.saves.endingsReached());
     const hasAuto = this.saves.exists('auto');
+    const autoDate = hasAuto ? this.autoDate() : '';
+    const album = this.hasAlbum() ? { seen: this.albumSeenCount(), total: this.c.cgCatalog!.length } : null;
+    const endings = Object.values(this.story.endings).map((e) => ({
+      id: e.id,
+      heroine: e.heroine,
+      name: this.c.heroineNames[e.heroine],
+      reached: reached.has(e.id),
+      title: this.t(e.title),
+    }));
+    const sig = JSON.stringify([endings.map((e) => e.reached), hasAuto, autoDate, album]);
+    if (this.screenEl && sig === this.titleSig) return;
+    this.titleSig = sig;
     const version = `${this.c.buildLabel}${this.c.placeholderNote ? ` · ${this.c.placeholderNote}` : ''}`;
     const kv = this.c.titleVisual ?? null;
     const scr = buildTitle({
@@ -1073,29 +1175,79 @@ export class Game {
       subtitle: this.c.subtitle,
       bgUrl: kv ?? this.c.bgUrl('title'),
       keyVisual: !!kv,
+      bgThumbUrl: kv ? this.c.titleVisualThumb ?? null : null,
+      onArtReady: () => this.titleArtDone(),
       heroines: kv ? [] : this.c.titleSprites.map((s) => ({ char: s.char, url: this.c.spriteUrl(s.char, s.outfit, s.hair, s.expr) })),
       hasAuto,
-      autoDate: hasAuto ? this.autoDate() : '',
-      endings: Object.values(this.story.endings).map((e) => ({
-        id: e.id,
-        heroine: e.heroine,
-        name: this.c.heroineNames[e.heroine],
-        reached: reached.has(e.id),
-        title: this.t(e.title),
-      })),
+      autoDate,
+      endings,
       version,
+      album,
       onNew: () => this.onNewGame(),
-      onContinue: () => this.handleLoadResult('auto', this.saves.load('auto')),
+      onContinue: () => this.onContinue(autoDate),
       onLoad: () => this.openSheet('load'),
+      onAlbum: () => this.openSheet('album'),
       onSettings: () => this.openSheet('settings'),
     });
-    if (this.screenEl) {
-      // 같은 타이틀을 다시 그릴 때(손상된 자동 저장 삭제 등)는 등장 연출 없이 바꾼다
+    const prev = this.screenEl;
+    const a = document.activeElement;
+    const focusAction = prev && a instanceof HTMLElement && prev.contains(a) ? a.dataset.action ?? null : null;
+    if (prev) {
+      // 같은 타이틀을 다시 그릴 때(손상된 자동 저장 삭제·다른 탭의 기록 등)는 등장 연출 없이 바꾼다
       scr.classList.add('instant');
-      this.screenEl.replaceWith(scr);
+      prev.replaceWith(scr);
     } else this.root.insertBefore(scr, this.overlayRoot);
     this.screenEl = scr;
     this.syncInert();
+    if (focusAction) this.focusTitleAction(focusAction);
+    if (!kv) this.titleArtDone();
+  }
+
+  /** 타이틀의 같은 역할 버튼으로 포커스(그 버튼이 꺼졌으면 [새 게임]) */
+  private focusTitleAction(action: string): boolean {
+    const scr = this.screenEl;
+    if (!scr || this.mode !== 'title' || scr.inert) return false;
+    const b = scr.querySelector<HTMLButtonElement>(`[data-action="${CSS.escape(action)}"]`);
+    const target = b && !b.disabled ? b : scr.querySelector<HTMLButtonElement>('[data-action=new]');
+    target?.focus({ preventScroll: true });
+    return !!target;
+  }
+
+  /**
+   * 다른 탭이 저장소를 바꿨을 때(storage 이벤트, key null = 전체 삭제).
+   * 전역 기록(엔딩·본 CG)이나 저장 칸이 바뀌면 떠 있는 타이틀과 열린 저장·불러오기 목록을 다시 그린다.
+   */
+  private onStoreChanged(key: string | null) {
+    const global = key === null || key === `${KEY_PREFIX}global`;
+    const slot = key === null || key.startsWith(`${KEY_PREFIX}save.`);
+    if (!global && !slot) return;
+    if (global) this.saves.syncFromStore();
+    if (this.mode === 'title') this.renderTitle();
+    const tab = this.sheet?.current();
+    if (slot && (tab === 'save' || tab === 'load')) this.refreshTopOverlay();
+  }
+
+  /**
+   * [이어하기]. 누른 시점의 자동 저장이 화면에 보이던 것과 다르면(다른 탭이 덮어쓰거나 지움) 타이틀을 다시 그리고,
+   * 바뀐 위치로 갈지 한 번 묻는다(확인 없이 다른 위치로 가거나, 활성 버튼이 '비어 있어요'만 띄우지 않게).
+   */
+  private onContinue(shownDate: string) {
+    const r = this.saves.load('auto');
+    if (r.status === 'empty') {
+      this.renderTitle();
+      this.toast('자동 저장이 없어요. 다른 창에서 엔딩을 보았거나 지웠을 수 있어요.');
+      return;
+    }
+    const now = r.status === 'ok' ? this.dateOf(r.data.state)?.md ?? '' : shownDate;
+    if (now !== shownDate) {
+      this.renderTitle();
+      void this.ask(
+        { lead: '자동 저장이 바뀌었어요', body: `다른 창에서 진행한 위치${now ? `(${now})` : ''}로 이어서 할까요?` },
+        { ok: '이어하기', cancel: '취소' },
+      ).then((yes) => yes && this.handleLoadResult('auto', this.saves.load('auto')));
+      return;
+    }
+    this.handleLoadResult('auto', r);
   }
 
   /** [이어하기] 옆에 보일 자동 저장 위치의 날짜('7월 10일') */
@@ -1202,19 +1354,29 @@ export class Game {
   // 오버레이
   // =========================================================================
 
-  /** sys: 화면 전체를 덮는 시스템 시트(.overlay.sys) */
-  private openOverlay(build: (close: () => void) => HTMLElement, dismissable = true, sys = false): () => void {
+  /**
+   * 오버레이를 연다. kind: small(가운데 카드) · sys(화면 전체 시트, .overlay.sys) · viewer(화면 전체 그림 감상, .overlay.viewer).
+   * onClosed: 닫히고 포커스까지 돌려준 뒤(Esc·닫기·배경 어느 쪽으로 닫혀도) 부른다.
+   * onEscape: Esc 를 눌렀을 때 닫기 대신 할 일(확인창 = 취소). dismissable(배경 눌러 닫기·Esc 닫기)과 따로 정한다.
+   */
+  private openOverlay(
+    build: (close: () => void) => HTMLElement,
+    opts: { dismissable?: boolean; kind?: OverlayKind; onClosed?: () => void; onEscape?: () => void } = {},
+  ): () => void {
+    const dismissable = opts.dismissable ?? true;
+    const kind = opts.kind ?? 'small';
     this.setHideWin(false);
     this.clearAutoTimer();
     if (this.skip) this.setSkip(false, true);
     this.lockUi();
-    // 키보드로 연 경우에만 닫을 때 원래 버튼으로 포커스를 돌려준다(마우스로 연 빠른 메뉴 버튼에 포커스가 남으면 Space/Enter 가 대사 대신 버튼을 누름)
+    // 플레이 중에는 키보드로 연 경우에만 닫을 때 원래 버튼으로 포커스를 돌려준다(마우스로 연 빠른 메뉴 버튼에 포커스가 남으면 Space/Enter 가 대사 대신 버튼을 누름).
+    // 타이틀(대사 진행이 없음)에서는 대화상자 관례대로 늘 연 버튼으로 돌려준다(예: 추억 앨범을 닫으면 [추억 앨범]).
     const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
-    const restoreTo = opener && isFocusVisible(opener) ? opener : null;
-    const ov = el('div', sys ? 'overlay sys' : 'overlay');
+    const restoreTo = opener && (isFocusVisible(opener) || this.mode === 'title') ? opener : null;
+    const ov = el('div', kind === 'small' ? 'overlay' : `overlay ${kind}`);
     ov.dataset.noadvance = '';
     let closed = false;
-    let panel: SheetPanel | null = null;
+    let panel: OverlayPanel | null = null;
     const close = () => {
       if (closed) return;
       closed = true;
@@ -1228,9 +1390,12 @@ export class Game {
       this.syncInert();
       this.placeToast();
       if (restoreTo && restoreTo.isConnected && !restoreTo.closest('[inert]')) restoreTo.focus({ preventScroll: true });
+      // 연 버튼이 그사이 다시 그려졌으면(다른 탭의 기록으로 타이틀 갱신 등) 새 화면의 같은 버튼으로
+      else if (restoreTo && !restoreTo.isConnected && restoreTo.dataset.action && !this.overlays.length) this.focusTitleAction(restoreTo.dataset.action);
       if (!this.overlays.length) this.scheduleAuto();
+      opts.onClosed?.();
     };
-    panel = build(close) as SheetPanel;
+    panel = build(close) as OverlayPanel;
     ov.append(panel);
     // 배경을 눌러 닫기: 누른 곳과 뗀 곳이 모두 배경일 때만(기록 글자를 드래그해 패널 밖에서 떼도 닫히지 않게).
     // 터치 탭도 같은 위치의 호환 mousedown/mouseup 이 오므로 그대로 동작한다.
@@ -1248,7 +1413,7 @@ export class Game {
       downOnBackdrop = upOnBackdrop = false;
       if (e.target === ov && fromBackdrop && dismissable) close();
     });
-    this.overlays.push({ el: ov, close, dismissable });
+    this.overlays.push({ el: ov, close, dismissable, escape: opts.onEscape ?? null, panel });
     this.overlayRoot.append(ov);
     this.root.dataset.overlay = String(this.overlays.length);
     this.syncInert();
@@ -1395,17 +1560,19 @@ export class Game {
   }
 
   // =========================================================================
-  // 시스템 시트(저장하기·불러오기·설정·대화 기록)
+  // 시스템 시트(저장하기·불러오기·설정·대화 기록 / 타이틀: 불러오기·추억 앨범·설정)
   // =========================================================================
 
   /**
-   * 탭 시트 하나를 연다. 플레이 중에는 탭 4개, 타이틀에서는 불러오기·설정 2개.
+   * 탭 시트 하나를 연다. 플레이 중에는 탭 4개, 타이틀에서는 불러오기·추억 앨범·설정 3개(앨범이 없으면 2개).
    * 메뉴에서 열면 메뉴 위에 겹쳐 열고(닫으면 메뉴로 돌아감), 빠른 메뉴·단축키에서는 바로 연다.
    */
   private openSheet(tab: SheetTab) {
     const playing = this.mode === 'play' && !!this.state;
     if (this.mode !== 'play' && this.mode !== 'title') return;
     if ((tab === 'save' || tab === 'log') && !playing) return;
+    // 추억 앨범은 타이틀에서만(플레이 중 메뉴·시트에는 넣지 않는다)
+    if (tab === 'album' && (this.mode !== 'title' || !this.hasAlbum())) return;
     // 이미 시트가 열려 있으면 탭만 바꾼다
     if (this.sheet) {
       this.sheet.select(tab);
@@ -1414,7 +1581,7 @@ export class Game {
     // 빠른 메뉴·단축키에서는 다른 오버레이가 없을 때만(메뉴 안 타일은 메뉴 위에 겹쳐 연다)
     const fromMenu = this.overlays.length === 1 && this.overlays[0].el.querySelector('[data-panel=menu]') !== null;
     if (this.overlays.length && !fromMenu) return;
-    const tabs: SheetTab[] = playing ? ['save', 'load', 'settings', 'log'] : ['load', 'settings'];
+    const tabs: SheetTab[] = playing ? ['save', 'load', 'settings', 'log'] : this.hasAlbum() ? ['load', 'album', 'settings'] : ['load', 'settings'];
     this.openOverlay(
       (close) => {
         const sheet = buildSheet({
@@ -1430,8 +1597,8 @@ export class Game {
         this.sheet = sheet;
         return sheet.panel;
       },
-      true,
-      true,
+      // 타이틀에서 연 시트를 닫으면 [추억 앨범] 수·엔딩 배지 등을 다시 맞춘다(앨범을 열 때 다른 탭의 기록을 합쳤을 수 있음)
+      { kind: 'sys', onClosed: () => this.renderTitle() },
     );
   }
 
@@ -1447,7 +1614,74 @@ export class Game {
           entries: this.state?.log ?? [],
           speakerOf: (name) => Object.entries(this.c.speakerNames).find(([, v]) => v === name)?.[0] ?? null,
         });
+      case 'album':
+        return this.renderAlbum();
     }
+  }
+
+  // =========================================================================
+  // 추억 앨범(이벤트 CG 갤러리)
+  // =========================================================================
+
+  private hasAlbum(): boolean {
+    return !!this.c.cgCatalog?.length;
+  }
+
+  /**
+   * 무대에 뜬 CG 를 본 것으로 기록한다. 추억 앨범 목록(없으면 CG 매니페스트)에 있는 id 만 남긴다
+   * (손상된 저장의 모르는 id 가 전역 기록에 영구로 쌓이지 않게).
+   */
+  private markCg(id: string) {
+    const catalog = this.c.cgCatalog;
+    const known = catalog?.length ? catalog.some((e) => e.id === id) : this.c.cgUrl ? !!this.c.cgUrl(id) : true;
+    if (known) this.saves.markCg(id);
+  }
+
+  /** 모은 추억 수(목록에 있는 CG 만 센다) */
+  private albumSeenCount(): number {
+    return (this.c.cgCatalog ?? []).filter((e) => this.saves.hasSeenCg(e.id)).length;
+  }
+
+  private renderAlbum(): SheetView {
+    // 다른 탭에서 본 CG 도 반영(전역 기록은 탭끼리 합집합)
+    this.saves.syncFromStore();
+    const view: AlbumView = buildAlbum({
+      catalog: this.c.cgCatalog ?? [],
+      seen: this.saves.cgsSeenList(),
+      heroineName: (h) => this.c.heroineNames[h],
+      thumbUrl: (id) => this.c.cgThumbUrl?.(id) ?? null,
+      view: (order, start) => this.openViewer(order, start, view),
+    });
+    return view;
+  }
+
+  /** 본 CG 를 화면 가득 감상한다(앨범 시트 위에 겹친 오버레이). 닫으면 마지막으로 본 칸을 앨범에서 보이게 한다 */
+  private openViewer(order: string[], start: number, album: AlbumView) {
+    if (this.mode !== 'title' || !this.sheet || this.overlays.length !== 1) return;
+    const byId = new Map((this.c.cgCatalog ?? []).map((e) => [e.id, e]));
+    const items = order.map((id) => byId.get(id)).filter((e): e is AlbumEntry => !!e);
+    if (!items.length) return;
+    let viewer: ViewerPanel | null = null;
+    this.openOverlay(
+      (close) => {
+        viewer = buildViewer({
+          items,
+          start,
+          url: (id) => this.c.cgUrl?.(id) ?? null,
+          thumbUrl: (id) => this.c.cgThumbUrl?.(id) ?? null,
+          heroineName: (h) => this.c.heroineNames[h],
+          close,
+        });
+        return viewer;
+      },
+      {
+        kind: 'viewer',
+        onClosed: () => {
+          const last = viewer?.current?.();
+          if (last) album.reveal(last);
+        },
+      },
+    );
   }
 
   private renderSaveLoad(kind: 'save' | 'load'): SaveLoadView {
@@ -1467,7 +1701,7 @@ export class Game {
         const doSave = () => {
           if (!this.state || this.mode !== 'play') return;
           const ok = this.saves.write(slot, this.state, this.summary());
-          this.toast(ok ? `${name}에 저장했어요.` : '저장 공간이 부족해 이 탭에서만 저장됐어요.');
+          this.toast(this.savedMessage(ok, `${name}에 저장했어요`), ok && this.saves.persistent ? undefined : 4000);
           // 다시 그린 직후 같은 자리 두 번째 클릭(예: 저장 더블클릭)이 새로 그려진 카드에 닿지 않게
           this.refreshTopOverlay();
           (this.sheet?.view() as SaveLoadView | null)?.pulse?.(slot);
@@ -1500,7 +1734,8 @@ export class Game {
     if (!raw) return null;
     try {
       const v = JSON.parse(raw) as { savedAt?: unknown };
-      return typeof v.savedAt === 'string' ? v.savedAt : null;
+      // 날짜로 읽을 수 없는 값('garbage' 등)은 '가장 최근' 비교에서 뺀다(문자열 비교로 맨 앞에 뽑히지 않게)
+      return typeof v.savedAt === 'string' && !Number.isNaN(Date.parse(v.savedAt)) ? v.savedAt : null;
     } catch {
       return null;
     }
@@ -1546,18 +1781,27 @@ export class Game {
     this.stage.setParticles(on);
   }
 
-  /** 확인 대화상자 */
+  /**
+   * 확인 대화상자. 배경을 눌러서는 닫히지 않고(실수로 닫히지 않게), Esc 는 [취소]와 같다(일반 대화상자 관례).
+   * Esc 자동 반복은 onKey 가 먼저 무시하므로 Esc 를 누르고 있어도 메뉴를 연 직후의 확인창이 곧바로 취소되지 않는다.
+   */
   ask(message: AskMessage, o: AskOptions): Promise<boolean> {
     return new Promise((resolve) => {
       let answered = false;
-      this.openOverlay((close) => {
-        return buildConfirm(message, o, (v) => {
-          if (answered) return;
-          answered = true;
-          close();
-          resolve(v);
-        });
-      }, false);
+      let closeIt: () => void = () => undefined;
+      const answer = (v: boolean) => {
+        if (answered) return;
+        answered = true;
+        closeIt();
+        resolve(v);
+      };
+      this.openOverlay(
+        (close) => {
+          closeIt = close;
+          return buildConfirm(message, o, answer);
+        },
+        { dismissable: false, onEscape: () => answer(false) },
+      );
     });
   }
 
@@ -1695,18 +1939,37 @@ export class Game {
   // 그림 미리 불러오기
   // =========================================================================
 
-  /** 장면과 바로 다음 장면의 그림을 미리 불러오기 대기열 앞으로 */
-  private preloadAround(sceneId: string, stage: StageState | null, route: string | null) {
+  /**
+   * 지금 위치(sceneId·stepId 다음 스텝부터, 무대 stage)에서 지금 장면 끝 + 바로 다음 장면까지의 그림을
+   * '지금 위치에서의 거리 - 종류별 당김(PRELOAD_LEAD)' 순으로 줄 세워 미리 불러오기 대기열에 넣는다.
+   * PRELOAD_NEAR_STEPS 안의 그림은 가까운 묶음(받는 동안 다른 그림은 새로 시작하지 않음), 나머지는 곧 쓸 그림.
+   * stepId 가 null 이면 장면 처음부터(빈 무대).
+   */
+  private preloadFrom(sceneId: string, stepId: string | null, stage: StageState | null, route: string | null) {
     const r: PreloadResolver = {
       bgUrl: (id) => this.c.bgUrl(id),
       spriteUrl: (char, s) => this.c.spriteUrl(char, s.outfit, s.hair, s.expr),
       cgUrl: (id) => this.c.cgUrl?.(id) ?? null,
     };
     try {
-      const cur = sceneImages(this.story, sceneId, stage, r, route);
-      const urls = [...cur.urls];
-      for (const next of cur.next) urls.push(...sceneImages(this.story, next, cur.end, r, route).urls);
-      this.preloader.add(urls, true);
+      const loc = stepId ? findStep(this.story, sceneId, stepId) : null;
+      // 지금 스텝의 그림은 무대가 직접 받고 있으므로 다음 스텝부터
+      const cur = sceneImages(this.story, sceneId, stage, r, route, loc ? loc.index + 1 : 0);
+      const items: PreloadItem[] = [...cur.items];
+      for (const next of cur.next) {
+        for (const it of sceneImages(this.story, next, cur.end, r, route).items) items.push({ ...it, at: it.at + cur.steps });
+      }
+      const rank = new Map<string, number>();
+      for (const it of items) {
+        const p = it.at - PRELOAD_LEAD[it.kind];
+        const old = rank.get(it.url);
+        if (old === undefined || p < old) rank.set(it.url, p);
+      }
+      const ordered = [...rank.entries()].sort((a, b) => a[1] - b[1]);
+      this.preloader.plan(
+        ordered.filter(([, p]) => p <= PRELOAD_NEAR_STEPS).map(([u]) => u),
+        ordered.filter(([, p]) => p > PRELOAD_NEAR_STEPS).map(([u]) => u),
+      );
     } catch {
       /* 미리 불러오기는 실패해도 게임에 영향 없음 */
     }

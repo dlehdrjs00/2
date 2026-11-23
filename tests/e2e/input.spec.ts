@@ -264,6 +264,32 @@ test('확인창: 기본 버튼에 포커스가 가고, Tab 으로 확인창 밖 
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
 });
 
+test('확인창: Esc 는 [취소]와 같다(퀵로드·타이틀로 확인에서 아무것도 바뀌지 않고, 아래 메뉴는 남는다)', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop');
+  await boot(page);
+  await newGame(page);
+  await advanceOne(page);
+  await page.keyboard.press('F5');
+  await expect(page.locator('.toast')).toContainText('퀵저장');
+  await advanceOne(page);
+  const at = (await info(page)).step;
+  await page.keyboard.press('F9');
+  await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  expect((await info(page)).step).toBe(at);
+  // 메뉴 → [타이틀로] 확인창에서 Esc: 확인창만 닫히고 메뉴는 그대로
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-panel=menu]')).toBeVisible();
+  await page.locator('[data-panel=menu] [data-action=title]').click();
+  await expect(page.locator('[data-panel=confirm]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(1);
+  await expect(page.locator('[data-panel=menu]')).toBeVisible();
+  expect((await info(page)).mode).toBe('play');
+  expect((await info(page)).step).toBe(at);
+});
+
 test('기록 시트: 글자를 드래그해 빈 곳에서 떼도 닫히지 않고, 메뉴 패널은 배경을 눌렀다 뗄 때만 닫힌다', async ({ page }, ti) => {
   test.skip(ti.project.name !== 'desktop');
   await boot(page);

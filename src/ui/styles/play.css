@@ -127,6 +127,23 @@
 .vn[data-frame='choice'] .char {
   filter: brightness(0.9) saturate(0.78) contrast(0.95) drop-shadow(0 6px 16px rgba(24, 60, 110, 0.2));
 }
+/* 무대 톤별 인물 보정(stage.ts 가 .stage[data-tone] 을 넣음): 낮 색 그대로면 밤 배경 위에서 오려 붙인 듯 떠 보인다.
+ * 밤은 조금 어둡고 덜 진하게 + 남색 그림자, 노을은 아주 옅게 따뜻하게. 말하지 않는 인물(dim)·선택지 중 바램은
+ * 톤 규칙(0,3,0)이 .char.dim(0,2,0)을 덮지 않게 톤별로 다시 건다. filter 전환(0.35s)으로 배경 크로스페이드와 같이 바뀐다 */
+.stage[data-tone='night'] .char {
+  filter: brightness(0.86) saturate(0.88) contrast(0.98) drop-shadow(0 6px 16px rgba(10, 20, 60, 0.35));
+}
+.stage[data-tone='night'] .char.dim,
+.vn[data-frame='choice'] .stage[data-tone='night'] .char {
+  filter: brightness(0.78) saturate(0.7) contrast(0.95) drop-shadow(0 6px 16px rgba(10, 20, 60, 0.3));
+}
+.stage[data-tone='evening'] .char {
+  filter: sepia(0.08) brightness(0.97) drop-shadow(0 6px 16px rgba(110, 50, 40, 0.26));
+}
+.stage[data-tone='evening'] .char.dim,
+.vn[data-frame='choice'] .stage[data-tone='evening'] .char {
+  filter: sepia(0.08) brightness(0.88) saturate(0.78) contrast(0.95) drop-shadow(0 6px 16px rgba(110, 50, 40, 0.2));
+}
 
 /* 무대 위 햇살(오른쪽 위 빛 번짐) — 낮은 하늘빛, 노을은 살구빛, 밤은 없음 */
 .sunwash {
@@ -244,12 +261,13 @@
   }
 }
 
-/* 이벤트 CG: 캐릭터·햇살·빛망울 앞, 대사창 뒤에 무대 가득(stage.ts showCg). 해독한 뒤 크로스페이드 */
+/* 이벤트 CG: 캐릭터·햇살·빛망울 앞, 대사창 뒤에 무대 가득(stage.ts showCg). 그림 해독이 끝난 뒤에만 켜고 크로스페이드.
+ * 바탕색을 칠하지 않는다(그림이 늦으면 단색 판이 무대 전체를 덮던 결함 — 켜지는 건 해독 뒤라 비칠 일도 없다) */
 .cg-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: #cfe6f8 center / cover no-repeat;
+  background: transparent center / cover no-repeat;
   opacity: 0;
   visibility: hidden;
   transition:
@@ -259,6 +277,19 @@
 .cg-layer.on {
   opacity: 1;
   visibility: visible;
+}
+/* 낮은 가로 화면(#vn[data-cgfit=low], layout.ts: 탭 띠 위끝이 무대 높이의 66% 보다 위 — 휴대폰 가로 등)에서
+ * 대사의 핵심이 빠른 메뉴 탭·대사창 위끝에 가리는 CG 만 확대해 아래 기준으로 붙여 위로 올린다(위쪽이 조금 잘림).
+ * 무대와 CG 가 모두 16:9 라 background-position 만으로는 움직이지 않으므로 크기를 키운다.
+ *  - shutter_tenko(t6.220): 웃는 입(원본 세로 0.60~0.68)이 탭 위끝(0.58~0.63) 아래 → 무대 0.48~0.58 로(리본·정수리 일부 잘림)
+ *  - cats_tenko(t1.140~): 히나 옆에 앉은 다이후쿠(원본 세로 0.55~0.62)의 머리가 '기록·자동' 탭 뒤 → 탭 위로(히나 얼굴은 남음) */
+.vn[data-cgfit='low'] .cg-layer[data-cg='shutter_tenko'] {
+  background-size: 130% auto;
+  background-position: 30% 100%;
+}
+.vn[data-cgfit='low'] .cg-layer[data-cg='cats_tenko'] {
+  background-size: 115% auto;
+  background-position: 50% 100%;
 }
 
 /* 선택지 중 무대 베일: 가운데는 밝게, 가장자리는 하늘 남색으로 살짝 눌러 선택지 리본이 떠 보이게 */
@@ -314,6 +345,32 @@
 .place-chip.on {
   opacity: 1;
   transform: none;
+}
+/* 세로 대체 배치: 무대가 낮아(390×844 에서 약 220px) 알약이 가운데 인물 머리를 가리므로 #vn 으로 옮겨
+ * (stage.placeHintIn) 무대 바로 위 빈 곳에 띄운다. 위쪽 여백이 모자라면(안전 영역 아래로는 안 올라감) 무대 위끝에 걸친다 */
+.vn[data-layout='below'] > .place-chip {
+  z-index: 3;
+  left: calc(var(--sx) + var(--fs) * 0.8);
+  top: max(calc(var(--safe-t, 0px) + 8px), calc(var(--sy) - 8px - 2.3em));
+  max-width: calc(var(--sw) - var(--fs) * 1.6);
+}
+.vn[data-layout='below'][data-tone='night'] > .place-chip {
+  background: rgba(24, 34, 64, 0.72);
+  border-color: rgba(190, 220, 255, 0.35);
+  color: #eef3ff;
+  box-shadow:
+    0 0 0 1px rgba(140, 190, 255, 0.22),
+    0 6px 18px rgba(0, 6, 30, 0.3);
+}
+.vn[data-layout='below'][data-tone='night'] > .place-chip .ico {
+  --i: var(--i-moon);
+  color: var(--sun);
+}
+.vn[data-layout='below'][data-tone='evening'] > .place-chip .ico {
+  color: #e0743a;
+}
+.vn[data-layout='below'][data-tone='night'] > .place-chip .sep {
+  background: rgba(170, 205, 255, 0.45);
 }
 /* 무대가 작은 화면(세로 대체 배치·낮은 가로)에서는 선택지 첫 줄과 겹치지 않게 선택지 동안 감춘다 */
 .vn[data-layout='below'][data-frame='choice'] .place-chip.on,
@@ -554,6 +611,35 @@
   color: #d6e0f5;
 }
 
+/* 이벤트 CG 가 떠 있는 동안(stage.ts 가 무대에 data-cg): 대사창 유리를 옅고 덜 흐리게 해 아래 그림(맞잡은 손,
+ * 주고받는 노트 등 CG 의 핵심 동작이 대사창 높이에 있는 경우가 많다)이 비치게 한다. 글자는 번짐을 키워 읽힘을 지킨다.
+ * 불투명도는 설정(--win-alpha 0.4~1)을 따르되 CG 용으로 낮춘다: 기본 0.82 → 약 0.52, 100% → 0.78, 40% → 0.3.
+ * 무대의 형제(#vn > .stage ~ .textbox)로 고르므로 :has() 가 필요 없고, 설정 미리보기 대사창은 건드리지 않는다 */
+.vn > .stage[data-cg] ~ .textbox,
+.vn > .stage[data-cg] ~ .qbar {
+  --cg-a: clamp(0.3, calc(var(--win-alpha) * var(--win-alpha) * 0.78), 0.8);
+}
+.vn > .stage[data-cg] ~ .textbox {
+  background: linear-gradient(180deg, rgba(255, 255, 255, var(--cg-a)) 0%, rgba(244, 250, 255, min(1, calc(var(--cg-a) * 1.1))) 100%);
+  -webkit-backdrop-filter: blur(3px) saturate(1.1);
+  backdrop-filter: blur(3px) saturate(1.1);
+}
+.vn > .stage[data-cg] ~ .textbox .text {
+  text-shadow:
+    0 0 2px #fff,
+    0 0 6px rgba(255, 255, 255, 0.9),
+    0 0 14px rgba(255, 255, 255, 0.6);
+}
+.vn[data-tone='night'] > .stage[data-cg] ~ .textbox {
+  background: linear-gradient(180deg, rgba(26, 38, 70, var(--cg-a)), rgba(18, 26, 52, min(1, calc(var(--cg-a) * 1.1))));
+}
+.vn[data-tone='night'] > .stage[data-cg] ~ .textbox .text {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(4, 10, 32, 0.75),
+    0 0 16px rgba(4, 10, 32, 0.45);
+}
+
 /* =========================================================================
  * 5. 빠른 메뉴 탭(.qbar): 대사창 위 테두리 오른쪽에 붙은 유리 탭 (qbar.ts)
  *    - 이름표 탭(왼쪽)과 같은 높이 띠(--btn)를 나눠 쓴다. 아랫변 = 대사창 윗변(--tb-grow 로 같이 올라감).
@@ -744,6 +830,33 @@
 .vn[data-tone='night'] .qbar button:not([data-q='log'])::before {
   background: rgba(170, 205, 255, 0.28);
 }
+/* 이벤트 CG 중: 대사창과 같이 옅게(아랫변 색 = 대사창 윗변 색이라 탭 이음새가 그대로 이어진다). 글자는 번짐으로 읽히게 */
+.vn > .stage[data-cg] ~ .qbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, calc(var(--cg-a) * 0.94)), rgba(255, 255, 255, var(--cg-a)));
+  -webkit-backdrop-filter: blur(3px) saturate(1.1);
+  backdrop-filter: blur(3px) saturate(1.1);
+}
+.vn > .stage[data-cg] ~ .qbar::before,
+.vn > .stage[data-cg] ~ .qbar::after {
+  background: radial-gradient(circle at var(--cx0) 0, transparent 9.5px, rgba(255, 255, 255, var(--cg-a)) 10px);
+}
+.vn > .stage[data-cg] ~ .qbar button:not([aria-pressed='true']) {
+  text-shadow:
+    0 0 2px #fff,
+    0 0 6px rgba(255, 255, 255, 0.9);
+}
+.vn[data-tone='night'] > .stage[data-cg] ~ .qbar {
+  background: linear-gradient(180deg, rgba(30, 42, 78, calc(var(--cg-a) * 0.94)), rgba(26, 38, 70, var(--cg-a)));
+}
+.vn[data-tone='night'] > .stage[data-cg] ~ .qbar::before,
+.vn[data-tone='night'] > .stage[data-cg] ~ .qbar::after {
+  background: radial-gradient(circle at var(--cx0) 0, transparent 9.5px, rgba(26, 38, 70, var(--cg-a)) 10px);
+}
+.vn[data-tone='night'] > .stage[data-cg] ~ .qbar button:not([aria-pressed='true']) {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(4, 10, 32, 0.7);
+}
 
 /* 대사창이 없는 동안(날짜 카드, 암전 연출): 이음새를 떼고 둥근 캡슐로.
  * 날짜 카드는 창이 없으니 무대 오른쪽 아래로 옮기고 옅게(누르거나 포커스하면 선명하게) */
@@ -846,6 +959,49 @@
 @keyframes hint-out {
   to {
     opacity: 0;
+  }
+}
+
+/* 그림을 오래 기다릴 때(느린 네트워크, 1.2초 넘게) 무대 가운데에 뜨는 알약(stage.ts ready·veilOut). 암전 막 위에도 보인다 */
+.stage-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55em;
+  max-width: calc(100% - 24px);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font: 600 16px/1.3 var(--font-ui);
+  color: var(--ink-2);
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 0 1px var(--glass-edge),
+    0 6px 16px rgba(28, 72, 124, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s;
+}
+.stage-loading.on {
+  opacity: 1;
+  visibility: visible;
+}
+.stage-loading .ico {
+  --i: var(--i-star);
+  color: var(--pink-400);
+  animation: loading-spin 1.2s linear infinite;
+}
+@keyframes loading-spin {
+  to {
+    rotate: 1turn;
   }
 }
 
@@ -1300,9 +1456,22 @@
   word-break: keep-all;
   text-wrap: balance;
 }
-/* ' · ' 로 나뉜 부분은 덩어리째 줄바꿈(한 덩어리가 한 줄보다 길 때만 그 안에서 끊긴다) */
+/* ' · ' 로 나뉜 부분은 덩어리째 줄바꿈(한 덩어리가 한 줄보다 길 때만 그 안에서 끊긴다).
+ * 한 줄에 다 들어가지 않으면(stage.ts fitSubLine 이 data-wrap) 덩어리마다 한 줄씩 놓고 구분점은 화면에서만 감춘다
+ * ('8월 8일 토요일 ·' 처럼 줄 끝에 점이 홀로 남지 않게. 읽는 글자에는 남는다) */
 .cal-sub-part {
   display: inline-block;
+}
+.cal-sub[data-wrap] .cal-sub-part {
+  display: block;
+}
+.cal-sub[data-wrap] .cal-sub-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 /* 날짜 형식이 아닌 카드: 큰 숫자 대신 명조 문장 */
 .cal.text-only .cal-day {
@@ -1564,6 +1733,7 @@
     animation-duration: 0.01s !important;
   }
   .motes i,
+  .stage-loading .ico,
   .textbox.done .next,
   .card.on .cal,
   .stage.shake {
@@ -1599,5 +1769,9 @@
   }
   .place-chip {
     background: rgba(255, 255, 255, 0.92);
+  }
+  .vn > .stage[data-cg] ~ .textbox,
+  .vn > .stage[data-cg] ~ .qbar {
+    --cg-a: clamp(0.4, calc(var(--win-alpha) * var(--win-alpha) * 0.78 + 0.1), 0.9);
   }
 }

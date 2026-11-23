@@ -3,7 +3,7 @@
  * 대화 기록 항목과 선택지의 분리, 설정(글자 크기·빛망울), 전체화면 메뉴, 타이틀 곡 지연.
  */
 import { expect, test } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, expectCssImages, info, newGame, openMenu, pick, readSlot, tapStage, waitChoicesArmed, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, expectCssImages, info, newGame, openMenu, pick, readSlot, tapStage, toTitle, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '화면 구조 검사는 데스크톱에서(휴대폰 배치는 mobile.spec)');
@@ -167,7 +167,8 @@ test('저장 시트: 쪽을 옮겨 저장하면 그 쪽이 유지되고, 타이�
   await page.locator('[data-action=load]').click();
   await expect(page.locator('[data-panel=load] .rail [data-page=q]')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('[data-panel=load] .slot[data-slot=auto]')).toBeEnabled();
-  await expect(page.locator('[data-panel=load] .sys-tabs [role=tab]')).toHaveCount(2); // 타이틀에서는 불러오기·설정
+  // 타이틀에서는 불러오기·추억 앨범·설정(플레이 중 탭 4개에는 추억 앨범이 없다)
+  await expect(page.locator('[data-panel=load] .sys-tabs [role=tab]')).toHaveText(['불러오기', '추억 앨범', '설정']);
   await page.keyboard.press('Escape');
 
   await page.locator('[data-action=continue]').click();
@@ -297,10 +298,37 @@ test('타이틀을 바로 떠나면 타이틀 곡 파일을 받지 않는다', a
   await expect.poll(async () => (await info(page)).bgm, { timeout: 5000 }).toBe('title');
 });
 
+test('타이틀: 키 비주얼 원본을 그리기 전에는 그림 미리 불러오기를 시작하지 않고, 쓰지 않는 무대 배경(title.svg)은 받지 않는다', async ({ page }) => {
+  const reqs: string[] = [];
+  page.on('request', (r) => reqs.push(r.url()));
+  // 느린 망 흉내: 키 비주얼 원본만 늦게 온다(작은 그림은 바로)
+  await page.route('**/assets/cg/kv.webp', async (route) => {
+    await new Promise((r) => setTimeout(r, 2500));
+    await route.continue();
+  });
+  await boot(page);
+  await expect(page.locator('.title-screen.kv .art-lo')).toBeVisible();
+  await page.waitForTimeout(1000);
+  const early = await page.locator('.title-screen.kv-ready').count();
+  if (early === 0) {
+    // 원본이 오기 전: 흐린 작은 그림만 깔려 있고, 스프라이트·배경 미리 불러오기는 아직 없다
+    expect(reqs.filter((u) => /assets\/(char|placeholder\/bg)\//.test(u))).toEqual([]);
+    expect(await page.locator('.title-art .art-hi').evaluate((e) => getComputedStyle(e).opacity)).toBe('0');
+  }
+  await expect(page.locator('.title-screen.kv-ready')).toHaveCount(1, { timeout: 15_000 });
+  await expect.poll(() => reqs.filter((u) => /assets\/char\//.test(u)).length, { timeout: 10_000 }).toBeGreaterThan(0);
+  expect(reqs.filter((u) => u.includes('placeholder/bg/title.svg'))).toEqual([]);
+  // 다시 그린 타이틀(엔딩 배지 등)은 원본을 바로(페이드 없이) 보인다
+  await newGame(page);
+  await toTitle(page);
+  await expect(page.locator('.title-screen.kv-ready.kv-instant')).toHaveCount(1);
+});
+
 test('빌드 결과에서도 화면 그림이 실제로 받아지고 시트·메뉴 뒤가 흐려진다', async ({ page }) => {
   await boot(page);
-  // 타이틀 키 비주얼(배경)
-  await expectCssImages(page, '.title-screen');
+  // 타이틀 키 비주얼: 작은 그림(흐림)과, 해독이 끝난 뒤 띄운 원본 두 겹이 모두 실제 그림이다
+  await expect(page.locator('.title-screen.kv.kv-ready')).toHaveCount(1);
+  await expectCssImages(page, '.title-screen .title-art > div', 2);
   await newGame(page);
   await advanceOne(page);
   // 메뉴(작은 유리 카드) 뒤 흐림: 빌드 압축기가 표준 backdrop-filter 를 지우지 않았는지

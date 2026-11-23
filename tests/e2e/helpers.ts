@@ -177,6 +177,30 @@ export async function doubleTap(page: Page, x: number, y: number, gapMs = 120) {
   }
 }
 
+/**
+ * 무대 빈 곳(tapStage 와 같은 자리)을 '입력이 일어난 시각'을 정해 누른다. atEpochMs: Date.now() 기준 ms.
+ * 게임은 입력 판정을 처리 시각이 아니라 입력 시각(e.timeStamp)으로 하므로, 테스트 도구 왕복·병렬 실행 부하로
+ * 전달이 늦어져도 사람이 그 시각에 누른 것과 같게 판정된다(doubleTap 과 같은 방식, CDP 로 직접 보냄).
+ */
+export async function tapStageAt(page: Page, atEpochMs: number) {
+  const box = await page.locator('.stage').boundingBox();
+  if (!box) throw new Error('stage not visible');
+  const x = Math.round(box.x + box.width * 0.5);
+  const y = Math.round(box.y + box.height * 0.35);
+  const t = atEpochMs / 1000;
+  const cdp = await page.context().newCDPSession(page);
+  if (test.info().project.use.hasTouch) {
+    const pt = [{ x, y }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt, timestamp: t - 0.04 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [], timestamp: t });
+  } else {
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, timestamp: t - 0.06 });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1, timestamp: t - 0.04 });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1, timestamp: t });
+  }
+  await cdp.detach();
+}
+
 /** 요소 가운데를 빠르게 두 번 누른다 */
 export async function doubleTapOn(page: Page, selector: string, gapMs = 120) {
   const box = await page.locator(selector).boundingBox();
@@ -217,4 +241,41 @@ export async function expectCssImages(page: Page, selector: string, min = 1) {
     expect(res.status(), u).toBe(200);
     expect(res.headers()['content-type'] ?? '', `${u} 는 그림이어야 함`).toMatch(/^image\//);
   }
+}
+
+/**
+ * 원하는 위치(장면·스텝)에서 [이어하기]로 시작한다(긴 진행 없이 특정 화면에 서기).
+ * 새 게임의 자동 저장을 받아 위치·루트·무대만 바꿔 넣는다. 무대 기본값은 암전(bg black) — 대본이 날짜 카드·장면 전환 앞에서 거는 상태.
+ * 장면 진입 스냅샷(sceneEntry)은 다른 장면 것이라 지운다(정확한 위치로 불러오므로 쓰지 않음).
+ */
+export async function continueAt(
+  page: Page,
+  at: { sceneId: string; stepId: string; route?: string | null; stage?: Record<string, unknown> },
+) {
+  await newGame(page);
+  await toTitle(page);
+  await page.evaluate((at) => {
+    const d = JSON.parse(localStorage.getItem('ashita.save.auto')!);
+    d.state.sceneId = at.sceneId;
+    d.state.stepId = at.stepId;
+    d.state.route = at.route ?? null;
+    d.state.stage = at.stage ?? { bg: 'black', bgm: null, chars: {}, order: [], cg: null };
+    delete d.state.sceneEntry;
+    const raw = JSON.stringify(d);
+    localStorage.setItem('ashita.save.auto', raw);
+    // 같은 탭의 쓰기에는 storage 알림이 오지 않으므로, 다른 탭이 쓴 것처럼 알려 타이틀([이어하기] 날짜)을 맞춘다.
+    // (알리지 않으면 게임은 '자동 저장이 바뀌었어요' 확인을 먼저 띄운다 — storage.spec 에서 따로 확인)
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ashita.save.auto', newValue: raw, storageArea: localStorage }));
+  }, at);
+  await page.locator('[data-action=continue]').click();
+  const changed = page.locator('[data-panel=confirm] [data-action=ok]');
+  if (await changed.isVisible().catch(() => false)) await changed.click();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'play');
+  await waitSettled(page);
+  await expect.poll(async () => (await info(page)).step).toBe(at.stepId);
+}
+
+/** 전역 기록(읽은 대사·엔딩·본 CG, src/engine/save.ts GLOBAL_KEY 'ashita.global') */
+export async function readGlobal(page: Page): Promise<{ schema: number; read: string[]; endings: string[]; cgs?: string[] }> {
+  return page.evaluate(() => JSON.parse(localStorage.getItem('ashita.global') ?? '{"schema":1,"read":[],"endings":[],"cgs":[]}'));
 }

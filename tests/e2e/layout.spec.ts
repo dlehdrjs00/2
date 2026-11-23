@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { LINE_MAX_CHARS, OPTION_MAX_CHARS } from '../../src/engine/validate';
-import { advanceToStop, boot, info, newGame, openMenu, waitChoicesArmed, waitSettled } from './helpers';
+import { advanceToStop, boot, continueAt, info, newGame, openMenu, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '뷰포트를 직접 정하는 배치 검사(desktop 프로젝트에서만)');
@@ -319,6 +319,73 @@ test('스크린리더: 게임 전체가 아니라 대사창 문장만 한 번씩
   expect(r.live).toHaveLength(1);
   expect(r.live[0]).toContain(r.text!);
 });
+
+/**
+ * 날짜 카드 묶음(주 차 알약·일력·주간 점, 보이는 것만)이 무대 사각형 안에 있고 빠른 메뉴 캡슐과 겹치지 않는다.
+ * 세로 대체 배치(390×844)는 캡슐이 무대 아래 탭 띠에, 아주 낮은 가로(740×280)는 무대 오른쪽 아래에 있다.
+ */
+async function expectCardInStage(page: Page, where: string) {
+  // resize → 배치 → ResizeObserver(카드 맞춤 data-fit) 반영까지
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
+  const r = await page.evaluate(() => {
+    const box = (e: Element) => {
+      const b = e.getBoundingClientRect();
+      return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+    };
+    const visible = (e: Element) => {
+      const cs = getComputedStyle(e);
+      const b = e.getBoundingClientRect();
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0 && b.width > 0 && b.height > 0;
+    };
+    const card = document.querySelector('.stage > .card.on');
+    const parts = card
+      ? [...card.querySelectorAll(':scope > .card-kicker, :scope > .cal, :scope > .week, .cal-dots')].filter(visible).map((e) => ({ cls: e.classList[0], ...box(e) }))
+      : [];
+    const qbar = document.querySelector('.qbar')!;
+    return { stage: box(document.querySelector('.stage')!), qbar: visible(qbar) ? box(qbar) : null, parts, fit: card?.getAttribute('data-fit') ?? null };
+  });
+  expect(r.parts.map((p) => p.cls), `${where}: 일력이 보임`).toContain('cal');
+  for (const p of r.parts) {
+    const at = `${where}: .${p.cls} (fit ${r.fit})`;
+    expect(p.left, at).toBeGreaterThanOrEqual(r.stage.left - 0.5);
+    expect(p.top, at).toBeGreaterThanOrEqual(r.stage.top - 0.5);
+    expect(p.right, at).toBeLessThanOrEqual(r.stage.right + 0.5);
+    expect(p.bottom, at).toBeLessThanOrEqual(r.stage.bottom + 0.5);
+    if (r.qbar) expect(overlap(p, r.qbar), `${at}: 빠른 메뉴와 겹침`).toBe(false);
+  }
+}
+
+for (const at of [
+  { sceneId: 'c5_gym', stepId: 'c5.010', route: null, night: false, what: '공통 날짜 카드' },
+  { sceneId: 'o5_festival', stepId: 'o5.010', route: 'osana', night: true, what: '아카네 루트 축제 카드' },
+]) {
+  test(`날짜 카드(${at.stepId} ${at.what}): 세로 390×844·낮은 가로 740×280 에서도 무대 안에 있고 빠른 메뉴와 겹치지 않는다`, async ({ page }) => {
+    await boot(page);
+    await continueAt(page, at);
+    const i = await info(page);
+    expect(i.frame).toBe('card');
+    await expect(page.locator('.stage > .card.on')).toBeVisible();
+    if (at.night) {
+      // 축제 카드는 '다음 배경(축제 거리, 밤)'으로 그린다(game.ts bgAfterCard): 남색 밤 톤 + 달 아이콘
+      await expect(page.locator('.stage > .card.on')).toHaveAttribute('data-tone', 'night');
+      await expect(page.locator('.stage > .card.on .cal-head .ico[data-wx]')).toHaveAttribute('data-wx', 'moon');
+    }
+    // 세로 대체 배치(터치 화면이면 세로 안내를 넘긴 뒤)
+    await relayoutTo(page, 390, 844);
+    const keep = page.locator('[data-action=keep-portrait]');
+    if (await keep.isVisible()) await keep.click();
+    await expect(page.locator('.rotate')).toBeHidden();
+    await expect(page.locator('#vn')).toHaveAttribute('data-layout', 'below');
+    await expectCardInStage(page, `${at.stepId} @390x844`);
+    // 아주 낮은 가로(안드로이드 크롬 주소창 + 360dp 폰)
+    await relayoutTo(page, 740, 280);
+    await expect(page.locator('#vn')).toHaveAttribute('data-layout', 'overlay');
+    await expectCardInStage(page, `${at.stepId} @740x280`);
+    // 배치만 바뀌고 진행은 그대로, 밤 톤도 유지
+    expect((await info(page)).step).toBe(at.stepId);
+    if (at.night) await expect(page.locator('.stage > .card.on')).toHaveAttribute('data-tone', 'night');
+  });
+}
 
 test.describe('터치 화면', () => {
   test.use({ viewport: { width: 740, height: 320 }, hasTouch: true, isMobile: true });

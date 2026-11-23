@@ -1,8 +1,14 @@
 /**
  * 무대 렌더러: 배경, 캐릭터, 화면 효과, 햇살·빛망울, 장소 표시, 날짜 카드(일력), 선택지 베일, 숨기기 안내
  *
- * - 배경·스프라이트는 바꿀 그림을 먼저 해독(img.decode, 최대 1.2초)한 뒤 보여 준다.
- *   그림이 늦게 튀어나오거나 크로스페이드 도중 빈 화면이 끼지 않게 한다. 해독이 늦거나 실패해도 1.2초 뒤에는 진행한다.
+ * - 배경·스프라이트·이벤트 CG 는 바꿀 그림을 먼저 해독(img.decode)한 뒤에만 보여 준다. 느린 네트워크에서
+ *   덜 받은 그림(위에서부터 띠 모양으로 그려지는 그림)이 무대에 붙지 않게, 해독이 끝날 때까지는 앞 그림을 그대로 둔다
+ *   (새 인물은 .entering 으로 숨긴 채, 표정 교체는 이전 그림, 배경은 이전 배경, CG 는 무대 그대로).
+ *   해독에 실패한 그림(파일 없음·손상)은 배경·인물은 그대로 붙이고(오류 처리는 각자), CG 는 띄우지 않는다.
+ * - 화면 팀이 대사를 그리기 전에 무대 준비를 기다릴 수 있게 ready(ms) 를 둔다(최대 ms, 누르면 hurry 로 즉시 끝).
+ *   1.2초가 넘게 기다리면 무대 가운데에 '불러오는 중' 알약을 띄운다. 암전 막(veilOut)도 같은 방식으로 기다린다.
+ * - 이벤트 CG 가 떠 있는 동안 무대에 data-cg 를 단다(styles/play.css 가 대사창·빠른 메뉴 유리를 옅게 해 그림이 비치게).
+ *   #vn[data-cgfit=low](layout.ts: 탭 띠가 무대 높이의 66% 보다 위)이면 CG 마다 정한 확대·위치로 얼굴·동작을 탭 위로 올린다.
  * - 배경 톤(낮·노을·밤)은 에셋 매니페스트(BACKGROUNDS[id].tone)로 정하고, 그림이 실제로 바뀌는 순간
  *   onBackdrop(url, color, tone) 으로 알린다(화면 팀이 #vn[data-tone] 을 갱신). 무대 자신도 data-tone 을 가진다.
  * - 빛망울(.motes)은 레이어 하나를 두고 화면 종류에 따라 개수를 바꾼다(대사 9 · 날짜 카드 16).
@@ -31,8 +37,14 @@ export interface StageResolver {
 }
 
 const DUR = { fade: 550, veil: 380, char: 350, card: 500, cg: 550 };
-/** 그림 해독을 기다리는 최대 시간 */
+/** 그림 해독을 이 시간 넘게 기다리면 '불러오는 중' 표시를 띄운다(보통 네트워크에서는 보이지 않음) */
 const DECODE_MAX_MS = 1200;
+/** 암전 막 뒤에서 새 무대 그림을 기다리는 최대 시간(누르면 바로 걷힌다) */
+const VEIL_WAIT_MS = 8000;
+/** ready() 기본 대기 상한 */
+const READY_MAX_MS = 8000;
+/** 연출 없이(animate=false) 그리라는 그림이 이보다 늦게 준비되면 툭 튀어나오지 않게 페이드로 보인다 */
+const LATE_MS = 150;
 /** 빛망울 개수 상한(명세 8장): 대사 9, 날짜 카드 16 */
 const MOTE_COUNT = { play: 9, card: 16 } as const;
 const WEEKDAYS = ['월', '화', '수', '목', '금'] as const;
@@ -55,39 +67,35 @@ const CARD_SPARE_FS = 1;
 
 const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<boolean> }>();
 
-/** 해독 결과: 성공 true, 실패(파일 없음·손상) false */
+/**
+ * 해독 결과: 성공 true, 실패(파일 없음·손상) false. 시간 상한 없이 해독(또는 실패)이 끝나야 풀린다.
+ * decode() 가 거절돼도 그림 자체는 받아졌으면(load 이벤트) 성공으로 본다(일부 브라우저가 SVG·큰 그림의 decode 를 거절).
+ */
 function decodeOnce(url: string): Promise<boolean> {
   let hit = decodeCache.get(url);
   if (!hit) {
     const img = new Image();
     img.decoding = 'async';
+    // load·error 를 놓치지 않게 src 보다 먼저 듣는다
+    const loaded = new Promise<boolean>((resolve) => {
+      img.addEventListener('load', () => resolve(true), { once: true });
+      img.addEventListener('error', () => resolve(false), { once: true });
+    });
     img.src = url;
     const done =
       typeof img.decode === 'function'
         ? img.decode().then(
             () => true,
-            () => false,
+            () => loaded,
           )
-        : new Promise<boolean>((resolve) => {
-            img.onload = () => resolve(true);
-            img.onerror = () => resolve(false);
-          });
+        : loaded;
     hit = { img, done };
     decodeCache.set(url, hit);
   }
   return hit.done;
 }
 
-/** 그림이 해독될 때까지(최대 ms). 실패하거나 늦어도 resolve 한다 */
-export function whenImageReady(url: string | null, ms = DECODE_MAX_MS): Promise<void> {
-  if (!url) return Promise.resolve();
-  return Promise.race([decodeOnce(url).then(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, ms))]);
-}
-
-/** 그림을 쓸 수 있는지(해독 성공). 최대 ms 안에 끝나지 않으면 일단 true(늦게라도 그려지게) */
-function imageUsable(url: string, ms = DECODE_MAX_MS): Promise<boolean> {
-  return Promise.race([decodeOnce(url), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), ms))]);
-}
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 // ---------------------------------------------------------------------------
 // 빛망울
@@ -217,16 +225,32 @@ function weekDots(cls: string, today: number, labels: boolean): HTMLElement {
 
 /**
  * 일력 부제. ' · ' 로 나뉜 부분('8월 8일 토요일 · 아사히 강 여름 축제')은 덩어리째 줄을 바꾼다
- * ('아사히 / 강 여름 축제'처럼 낱말 중간에서 끊기지 않게). 읽는 글자는 원문 그대로다.
+ * ('아사히 / 강 여름 축제'처럼 낱말 중간에서 끊기지 않게). 구분점은 따로 둔 .cal-sub-sep 이라,
+ * 한 줄에 다 들어가지 않으면(fitSubLine 이 data-wrap 을 닮) 덩어리마다 한 줄씩 놓고 점은 화면에서만 감춘다
+ * (줄 끝에 '·' 가 홀로 남지 않게). 읽는 글자(textContent)는 원문 그대로다.
  */
 function subLine(sub: string): HTMLElement {
   const line = el('div', 'cal-sub');
-  const parts = sub.split(' · ');
-  parts.forEach((p, i) => {
-    if (i > 0) line.append(' ');
-    line.append(el('span', 'cal-sub-part', i < parts.length - 1 ? `${p} ·` : p));
+  sub.split(' · ').forEach((p, i) => {
+    if (i > 0) line.append(' ', el('span', 'cal-sub-sep', '·'), ' ');
+    line.append(el('span', 'cal-sub-part', p));
   });
   return line;
+}
+
+/** 부제 덩어리가 여러 줄로 나뉘었는지 재서 data-wrap 을 단다(늘 '한 줄' 상태에서 재므로 단 뒤에 흔들리지 않는다) */
+function fitSubLine(line: HTMLElement | null): void {
+  if (!line) return;
+  const parts = line.querySelectorAll<HTMLElement>(':scope > .cal-sub-part');
+  delete line.dataset.wrap;
+  if (parts.length < 2) return;
+  const top = parts[0].offsetTop;
+  for (const p of parts) {
+    if (Math.abs(p.offsetTop - top) > 1) {
+      line.dataset.wrap = '1';
+      return;
+    }
+  }
 }
 
 type CharImg = HTMLImageElement;
@@ -238,13 +262,22 @@ export class StageView {
   /** 마지막으로 요청한 배경(해독을 기다리는 중이어도 이 값) */
   private bgId: BgId | undefined;
   private bgToken = 0;
-  /** 마지막 배경 요청이 화면에 나타날 준비가 되면 풀리는 약속 */
+  /** 마지막 배경 요청이 화면에 나타날 준비(해독)가 되면 풀리는 약속 */
   private bgReady: Promise<void> = Promise.resolve();
+  /** 해독을 기다리는 배경 적용 함수(암전 막을 걷어야 하는데 아직이면 flushBg 가 바로 그린다) */
+  private bgPending: (() => void) | null = null;
   private bgFadeTimer: ReturnType<typeof setTimeout> | null = null;
   private tone: BgTone = 'day';
   private charsEl: HTMLElement;
   private chars = new Map<CharId, CharImg>();
   private charTokens = new Map<CharId, number>();
+  /** 인물별로 해독을 기다리는 새 그림(다 붙이면 지운다) */
+  private charReady = new Map<CharId, Promise<void>>();
+  /** 마지막 CG 요청이 해독(또는 실패)으로 끝나면 풀리는 약속 */
+  private cgReady: Promise<void> = Promise.resolve();
+  /** '불러오는 중' 알약과, 그것을 띄워 달라는 대기 수 */
+  private loadingEl: HTMLElement;
+  private loadingWaits = 0;
   private sunwash: HTMLElement;
   private motes: HTMLElement;
   private motesKey = '';
@@ -285,6 +318,12 @@ export class StageView {
     const eye = el('span', 'ico');
     eye.setAttribute('aria-hidden', 'true');
     this.hideHint.append(eye, '화면을 누르면 대사창이 돌아와요');
+    // 그림을 오래 기다릴 때(느린 네트워크) 무대 가운데에 뜨는 알약. 암전 막 위에도 보이게 맨 뒤에 둔다
+    this.loadingEl = el('div', 'stage-loading');
+    this.loadingEl.setAttribute('role', 'status');
+    const spin = el('span', 'ico');
+    spin.setAttribute('aria-hidden', 'true');
+    this.loadingEl.append(spin, el('span', 'sl-text', '그림을 불러오는 중…'));
     this.el = el('div', 'stage');
     this.el.dataset.tone = this.tone;
     this.el.append(
@@ -298,6 +337,7 @@ export class StageView {
       this.cardEl,
       this.hideHint,
       this.veil,
+      this.loadingEl,
     );
     this.renderMotes();
     // 카드 압축 단계: 무대 크기(화면 회전·주소창), 글자 크기 설정, 늦게 도착한 글꼴 조각이 카드 높이를 바꾼다.
@@ -360,15 +400,29 @@ export class StageView {
     this.onBackdrop(this.resolver.bgUrl(id), this.resolver.bgColor(id), this.tone);
   }
 
-  /** 배경 요청 공통: 해독을 기다린 뒤(최대 1.2초) apply. 그사이 새 요청이 오면 버린다 */
+  /**
+   * 배경 요청 공통: 그림 해독이 끝난 뒤 apply(덜 받은 그림을 붙이지 않는다. 그동안은 이전 배경이 그대로 보인다).
+   * 그사이 새 요청이 오면 버린다. 배경이 바뀌면 이전 장소 표시는 걷는다(같은 묶음의 place 가 뒤따르면 다시 뜬다).
+   */
   private requestBg(id: BgId, apply: () => void) {
     const token = ++this.bgToken;
+    if (id !== this.bgId) this.hidePlace();
     this.bgId = id;
-    const ready = whenImageReady(this.resolver.bgUrl(id));
+    const url = this.resolver.bgUrl(id);
+    const run = () => {
+      if (token !== this.bgToken || this.bgPending !== run) return;
+      this.bgPending = null;
+      apply();
+    };
+    this.bgPending = run;
+    const ready = url ? decodeOnce(url).then(() => undefined) : Promise.resolve();
     this.bgReady = ready;
-    void ready.then(() => {
-      if (token === this.bgToken) apply();
-    });
+    void ready.then(run);
+  }
+
+  /** 해독을 기다리는 배경을 지금 붙인다(암전 막을 걷는데 아직 받는 중이면, 앞 장면 배경보다 받는 중인 새 배경이 낫다) */
+  private flushBg() {
+    this.bgPending?.();
   }
 
   /**
@@ -380,12 +434,19 @@ export class StageView {
   }
 
   /**
-   * 숨기기 안내 알약을 둘 곳. null 이면 무대 안(기본). 세로 배치(below)는 무대가 낮아 알약이 인물을 가리므로
-   * 게임 루트(#vn)로 옮겨 비어 있는 대사창 자리에 띄운다(무대는 contain: paint 라 무대 밖으로는 못 나간다).
+   * 숨기기 안내 알약과 장소 표시 알약을 둘 곳. null 이면 무대 안(기본). 세로 배치(below)는 무대가 낮아(390×844 에서
+   * 약 220px) 알약이 인물을 가리므로 게임 루트(#vn)로 옮긴다(무대는 contain: paint 라 무대 밖으로는 못 나간다).
+   * 숨기기 안내는 비어 있는 대사창 자리에, 장소 표시는 무대 바로 위 빈 곳에 띄운다(styles/play.css).
    */
   placeHintIn(host: HTMLElement | null): void {
     const target = host ?? this.el;
     if (this.hideHint.parentElement !== target) target.append(this.hideHint);
+    if (this.placeChip.parentElement !== target) {
+      // 무대 안에서는 원래 자리(선택지 베일 뒤, 날짜 카드 앞)로 되돌린다
+      if (!host) this.el.insertBefore(this.placeChip, this.cardEl);
+      else if (host === this.el.parentElement) this.el.after(this.placeChip);
+      else host.append(this.placeChip);
+    }
   }
 
   currentBg(): string | undefined {
@@ -442,11 +503,43 @@ export class StageView {
     await this.wait(DUR.veil);
   }
 
-  /** 막 뒤에서 바꾼 배경이 해독될 때까지(최대 1.2초) 기다렸다가 걷는다 */
+  /**
+   * 막 뒤에서 바꾼 무대(배경·인물·CG)가 해독될 때까지 기다렸다가 걷는다(최대 8초, 1.2초가 넘으면 '불러오는 중',
+   * 누르면 hurry 로 바로). 그때까지 배경이 덜 받아졌으면 받는 중인 새 배경을 붙이고 걷는다.
+   */
   async veilOut(): Promise<void> {
-    await this.waitFor(this.bgReady, DECODE_MAX_MS);
+    await this.ready(VEIL_WAIT_MS);
+    this.flushBg();
     this.veil.classList.remove('on');
     await this.wait(DUR.veil);
+  }
+
+  /**
+   * 지금 요청된 배경·인물·이벤트 CG 그림이 모두 해독될 때까지 기다린다. 최대 ms, hurry() 가 불리면 바로 끝난다.
+   * 1.2초 넘게 걸리면 무대 가운데에 '그림을 불러오는 중…' 알약을 띄운다(끝나면 걷음).
+   * 화면 팀용: 장면 진입·이어하기·CG 가 바뀌는 스텝에서 대사를 그리기 전에 await 하면 대사가 그림보다 먼저 나오지 않는다
+   * (이 동안 transitioning 으로 두어 클릭이 hurry 가 되게). 다 준비됐으면 true, 시간 초과·hurry 면 false.
+   */
+  async ready(ms = READY_MAX_MS): Promise<boolean> {
+    let settled = false;
+    const all = Promise.all([this.bgReady, this.cgReady, ...this.charReady.values()]).then(() => {
+      settled = true;
+    });
+    let shown = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      shown = true;
+      this.setLoading(+1);
+    }, DECODE_MAX_MS);
+    await this.waitFor(all, ms);
+    clearTimeout(timer);
+    if (shown) this.setLoading(-1);
+    return settled;
+  }
+
+  private setLoading(delta: number) {
+    this.loadingWaits = Math.max(0, this.loadingWaits + delta);
+    this.loadingEl.classList.toggle('on', this.loadingWaits > 0);
   }
 
   clearVeilInstant(): void {
@@ -481,14 +574,20 @@ export class StageView {
 
     const token = (this.charTokens.get(char) ?? 0) + 1;
     this.charTokens.set(char, token);
+    const started = now();
     const apply = () => {
       if (this.charTokens.get(char) !== token || this.chars.get(char) !== target) return;
+      this.charReady.delete(char);
       if (url && target.getAttribute('src') !== url) target.src = url;
-      if (target.classList.contains('entering')) this.revealChar(target, animate);
+      // 연출 없이 그리라는 등장(불러오기·건너뛰기)이라도 그림이 늦게 준비됐으면 툭 튀어나오지 않게 페이드로
+      if (target.classList.contains('entering')) this.revealChar(target, animate || now() - started > LATE_MS);
     };
-    // 같은 그림이면 바로, 새 그림(표정·옷 교체 포함)은 해독한 뒤 바꿔 끼워 빈 프레임·늦은 등장을 막는다
-    if (!url || target.getAttribute('src') === url) apply();
-    else void whenImageReady(url).then(apply);
+    // 같은 그림이면 바로, 새 그림(표정·옷 교체 포함)은 해독이 끝난 뒤에만 바꿔 끼운다. 그때까지 새 인물은 .entering
+    // 으로 숨기고, 이미 보이는 인물은 이전 그림을 유지한다(느린 네트워크에서 위쪽만 그려진 그림이 뜨지 않게)
+    if (!url || target.getAttribute('src') === url) {
+      this.charReady.delete(char);
+      apply();
+    } else this.charReady.set(char, decodeOnce(url).then(apply));
   }
 
   private revealChar(img: CharImg, animate: boolean) {
@@ -505,6 +604,7 @@ export class StageView {
     if (!img) return;
     this.chars.delete(char);
     this.charTokens.delete(char);
+    this.charReady.delete(char);
     if (!animate) {
       img.remove();
       return;
@@ -569,31 +669,37 @@ export class StageView {
   }
 
   /**
-   * 이벤트 CG 를 무대 가득(캐릭터 앞, 대사창 뒤) 보여 주거나(null 이면) 걷는다. 해독한 뒤 0.55s 페이드.
-   * 그림 파일이 없거나 깨졌으면 보여 주지 않는다(무대가 그대로 보임).
+   * 이벤트 CG 를 무대 가득(캐릭터 앞, 대사창 뒤) 보여 주거나(null 이면) 걷는다. 그림 해독이 끝난 뒤에만 켠다(0.55s 페이드).
+   * 해독 전에는 무대(배경·인물)를 그대로 두고, 그림 파일이 없거나 깨졌으면 끝내 켜지 않는다(덜 받은 그림·단색 화면 방지).
+   * 켜져 있는 동안 무대에 data-cg(=id)를 단다(대사창·빠른 메뉴 유리를 옅게, 낮은 화면의 CG 별 구도).
    */
   showCg(id: CgId | null, animate: boolean): void {
     if (id === this.cgId) return;
     this.cgId = id;
     const token = ++this.cgToken;
     const layer = this.cgLayer;
-    const set = (on: boolean) => {
-      if (animate) {
+    const set = (on: boolean, fade = animate) => {
+      if (on && id) this.el.dataset.cg = id;
+      else delete this.el.dataset.cg;
+      if (fade) {
         void layer.offsetWidth;
         layer.classList.toggle('on', on);
       } else withoutTransition([layer], () => layer.classList.toggle('on', on));
     };
     if (!id) {
+      this.cgReady = Promise.resolve();
       set(false);
       delete layer.dataset.cg;
       return;
     }
     const url = this.cgUrlOf(id);
     if (!url) {
+      this.cgReady = Promise.resolve();
       set(false);
       return;
     }
-    void imageUsable(url).then((ok) => {
+    const started = now();
+    this.cgReady = decodeOnce(url).then((ok) => {
       if (token !== this.cgToken) return;
       if (!ok) {
         set(false);
@@ -601,7 +707,8 @@ export class StageView {
       }
       layer.style.backgroundImage = `url("${url}")`;
       layer.dataset.cg = id;
-      set(true);
+      // 연출 없이 켜라는 CG(불러오기·건너뛰기)라도 늦게 준비됐으면 페이드로
+      set(true, animate || now() - started > LATE_MS);
     });
   }
 
@@ -767,8 +874,11 @@ export class StageView {
     const card = this.cardEl;
     const cal = card.querySelector<HTMLElement>(':scope > .cal');
     if (!cal) return;
+    const sub = cal.querySelector<HTMLElement>('.cal-sub');
     for (let fit = 0; fit <= CARD_FIT_MAX; fit++) {
       card.dataset.fit = String(fit);
+      // 단계마다 글자 크기가 달라 부제 줄바꿈(구분점 감춤)도 다시 정한다
+      fitSubLine(sub);
       const cs = getComputedStyle(card);
       const avail = card.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
       if (!(avail > 0)) {

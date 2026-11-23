@@ -318,7 +318,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
   - 아래에 1px 하늘→분홍 선을 긋는다.
 - `.sys-tabs[role=tablist]`:
   - 탭은 알약 세그먼트다. 버튼 높이 44px, 아이콘 + 글자.
-  - 플레이 중에는 저장하기·불러오기·설정·대화 기록 4개, 타이틀에서는 불러오기·설정 2개다.
+  - 플레이 중에는 저장하기·불러오기·설정·대화 기록 4개, 타이틀에서는 불러오기·추억 앨범·설정 3개다(추억 앨범은 타이틀에서만, 6.17).
   - 선택된 탭은 흰 알약, 800 굵기, 아래 2px `--pink-300` 안쪽 선, 분홍 아이콘이다.
   - **탭을 바꿔도 오버레이는 하나다.** 같은 패널의 본문만 다시 그리고 `p.dataset.panel`을 바꾼다. 그래서 Esc 한 번에 닫히고 inert·포커스 복귀 로직도 유지된다.
   - 폭 760px 이하에서는 아이콘을 숨긴다. 600px 이하에서는 가로 스크롤한다.
@@ -430,7 +430,10 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
   - 세로 메뉴 `.title-menu`:
     - 폭 `clamp(232px, 24vw, 300px)`, 버튼 높이 `clamp(44px, 7.4vh, 56px)`, 간격 `clamp(6px, 1.3vh, 12px)`.
     - 버튼은 **`.btn` 클래스를 유지**한다(테스트 `.title-menu .btn`). 흰 유리 알약에 왼쪽 하늘 마름모를 단다.
+    - 순서는 새 게임 · 이어하기 · 불러오기 · 추억 앨범 · 설정(`data-action=new/continue/load/album/settings`).
     - `새 게임`은 `.primary`(`--grad-primary`)다.
+    - [추억 앨범] 오른쪽에는 모은 수 `<span class="sub">3 / 11</span>`(이어하기 날짜와 같은 모양, `aria-describedby`)를 둔다.
+    - 높이 540px 이하에서는 [추억 앨범]·[설정](`.half`)을 한 줄에 반씩 나란히 놓아 메뉴가 4줄을 넘지 않게 한다(모은 수는 숨김). 높이 360px 이하에서는 부제를 접고 로고·간격을 줄인다.
     - 마우스를 올리면 오른쪽으로 6px 이동하고 하늘 테가 생기며 마름모가 분홍으로 커진다.
     - 비활성은 회색 마름모. 글자는 줄바꿈하지 않는다.
   - **이어하기 옆 날짜** `<span class="sub">7월 10일</span>`(16px `--sky-700`, `aria-describedby`): `saves.peek('auto').summary.sceneTitle`에서 날짜 부분만 쓴다.
@@ -460,6 +463,23 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 - `.seg`(세그먼트): 하늘 55% 바탕 알약. 선택된 버튼(`aria-selected=true`·`aria-checked=true`)은 흰 알약에 `--sky-700`.
 - **포커스**(모든 조작 요소, `:focus-visible`): `outline: 3px solid var(--focus); outline-offset: 2px; box-shadow: 0 0 0 6px rgba(255,255,255,.85)`. 밝은 바탕과 어두운 바탕 모두에서 보인다.
 - 세로 안내 `.rotate`: 흰 유리 카드에 하늘 휴대폰 그림, `세로 화면으로 계속하기`(.btn)를 둔다. 문구는 지금 것을 그대로 쓴다.
+
+### 6.17 추억 앨범 `[data-panel=album]`(타이틀 시트의 탭)·감상 `[data-panel=viewer]`
+- 목적: 플레이 중 본 이벤트 CG(전역 기록 `cgs`, 새 게임을 해도 남음)를 다시 본다. 플레이 중 메뉴·시트에는 넣지 않는다.
+- 본문 `.panel-body.album[data-seen][data-total]`(스크롤은 이 요소 하나, 남는 높이는 위아래로 나눠 가운데):
+  - `.album-sum`: "✦ 모은 추억"(주아) + `.album-total`(`3 / 11`, 숫자는 `--sky-700` 800, 다 모으면 `--pink-700`) + 진행 막대 `.album-bar[role=progressbar]`(하늘→분홍) + 안내 한 줄(0장 / 일부 / 전부에 따라 문구가 바뀜).
+  - 묶음 `section.album-group[data-route=osana|tenko]`: 머리 `.album-head` = 이름 알약 `h3.album-name`(이름표와 같은 인물 색 칠) + `.album-count`(`1 / 5`) + 옅어지는 선. 소나기 CG(`rain_*`)는 각 히로인 줄에 들어간다(`CGS[id].route`). 루트가 없는 CG 는 맨 뒤 '공통' 묶음.
+  - 그리드 `ul.album-grid`: 넓은 화면은 한 줄 6칸(히로인 한 명 = 한 줄), 좁으면 칸 최소 폭(168px, 높이 540px 이하 136px)에 맞춰 줄어든다(844×390 → 5칸, 667×375 → 4칸, 세로 → 2칸, 세로 스크롤).
+  - 칸 `button.cg-card[data-cg][data-seen]` = **폴라로이드**: 흰 테 7px + 16:9 작은 그림(`cgThumbUrl`, lazy, 받으면 페이드) + 제목(고운바탕 700 16px, 두 줄까지 균형 줄바꿈). −1.1°~1° 번갈아 기울이고 위 가운데에 테이프 한 조각(하늘·분홍 번갈아). 올리면 똑바로 서며 하늘 2px 테.
+  - 못 본 칸 `.locked[aria-disabled=true]`: 기울이지 않은 점선 빈 칸 + 하늘 사선 무늬 + 자물쇠, 제목 `???`. 누르면 자물쇠만 흔들린다(아무것도 열지 않음).
+  - 아래 안내 `.panel-hint`: 크게 보기·넘기기·숨기기 안내 + `3 / 11장`.
+- 감상 `.overlay.viewer > .viewer[role=dialog][aria-modal][aria-label=추억 보기][data-cg][data-ui=on|off]`(앨범 시트 위에 겹친 오버레이):
+  - 원본(`cgUrl`)을 `object-fit: contain`으로 화면 가득, 바깥은 같은 그림(작은 그림)을 레터박스와 같은 배합으로 밝게 흐린다. 원본은 해독(`decode()`)한 뒤 0.38s 페이드, 넘길 때는 새 장을 해독한 뒤 겹쳐 떠오른다. 다음·이전 원본은 미리 받아 둔다.
+  - 조작: 오른쪽 위 `닫기`(✕ + 글자, 700px 이하 아이콘만), 좌우 가운데 52px 둥근 유리 버튼(세로 화면에서는 그림을 가리지 않게 아래 줄 캡션 양옆), 아래 가운데 캡션 `.vw-cap`(인물 알약 · 제목 고운바탕 · `2 / 4`, `aria-live=polite`).
+  - ←/→·PageUp/PageDown·Home/End·좌우 버튼·스와이프(48px 이상 가로로 밀기)로 '본 그림' 사이를 오간다(끝에서 처음으로 돈다). Enter·Space(버튼 밖)는 다음 그림.
+  - Esc·닫기·그림 밖 빈 곳(흐린 바탕) 클릭으로 닫는다. 그림을 누르거나 H·오른쪽 클릭이면 글자·버튼을 숨기고, 숨긴 동안에는 아무 클릭·키(화살표·Esc 제외)로 다시 보인다.
+- 입력 안전: 오버레이는 `[data-noadvance]`이고 클릭은 안에서 전파를 멈춘다. 키는 game.ts `onKey`가 맨 위 오버레이 패널의 `onKey`에 먼저 넘긴다. 감상 중 아래 시트·타이틀은 `inert`. 타이틀에서 연 오버레이는 닫히면 늘 연 버튼으로 포커스를 돌려준다(감상 → 마지막으로 본 칸, 앨범 → [추억 앨범]).
+- 기록: game.ts 는 무대에 CG 가 뜰 때마다(`cg` 이벤트, 불러오기 직후, 장면 처음부터 복구, 건너뛰기 중 모두) `saves.markCg`로 전역 기록에 남긴다.
 
 ---
 
@@ -714,9 +734,10 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
 | `.textbox`, `.textbox .text`(`aria-hidden=true`, `.hidden-char`), `.textbox` role 없음 | 그대로 |
 | `.choices`(`.on`, `data-armed`, `.locked`), `.choice[data-option]` | 그대로. 번호는 `span.num[aria-hidden]` |
 | `.toast` | 위치만 바뀜(무대 오른쪽 위 / 선택지 중 대사창 아래쪽 / 세로는 대사창 아래) |
-| `[data-action=new/continue/load/settings]`, `.title-menu .btn` | 타이틀 버튼은 `.btn` 클래스 유지 |
+| `[data-action=new/continue/load/album/settings]`, `.title-menu .btn` | 타이틀 버튼은 `.btn` 클래스 유지. [추억 앨범]의 모은 수는 `#vn-album-count` |
 | `.title-screen [data-ending][data-reached]`, `.ending-screen[data-ending] [data-action=to-title]` | 그대로 |
-| `[data-panel=menu|save|load|settings|log|confirm]` | 시트 탭을 바꾸면 값이 바뀐다 |
+| `[data-panel=menu|save|load|settings|log|album|confirm|viewer]` | 시트 탭을 바꾸면 값이 바뀐다 |
+| `[data-panel=album] .album-total`, `.album-group[data-route]`, `.cg-card[data-cg][data-seen]`(잠긴 칸 `aria-disabled`), `[data-panel=viewer][data-cg][data-ui]`, `.vw-nav.prev/.next`, `.vw-close`, `.vw-count` | 추억 앨범·감상(6.17) |
 | `[data-panel=menu] [data-action=save/load/log/settings/fullscreen/title/resume/close]` | 그대로 |
 | `[data-panel=confirm] [data-action=ok/cancel]`, `.dialog-msg`(메시지 전체), `data-autofocus` | 그대로 |
 | `.slot[data-slot]`(`1`~`30`, `auto`, `quick`), `.slot-wrap > .slot + .slot-del`, `.slot-meta`, `.slot-name`, `.slot-text`, `.broken`, 빈 슬롯 `disabled`(불러오기) | 1쪽이 기본. 처음 쪽 규칙(6.10)이 기존 테스트 흐름과 맞는다 |

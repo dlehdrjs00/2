@@ -8,7 +8,7 @@ import { Game, type GameContent } from './ui/game';
 import { openStore } from './engine/storage';
 import { STORY } from './story';
 import { BACKGROUNDS, BGM, SFX, SPRITE_SETS, allSpritePaths, spritePath } from './story/assets';
-import { CGS, ENDING_CG, KEY_VISUAL } from './story/cg';
+import { CGS, CG_ORDER, ENDING_CG, KEY_VISUAL } from './story/cg';
 import { BUILD_LABEL, GAME_SUBTITLE, GAME_TITLE, NAMES, SPEAKER_NAMES, TEXT_VARS } from './story/config';
 
 const BASE = import.meta.env.BASE_URL;
@@ -42,9 +42,11 @@ const content: GameContent = {
   hasBg: (id) => id in BACKGROUNDS,
   hasSprite: (char, outfit, hair, expr) => spritePath(char as CharId, outfit as Outfit, hair as Hair, expr as Expr) !== null,
   hasBgm: (id) => id in BGM,
+  // 미리 불러오기 전체 목록. 타이틀 배경(title)은 키 비주얼이 있으면 어디에도 쓰이지 않으므로 받지 않는다
   allImageUrls: () => [
-    ...Object.values(BACKGROUNDS)
-      .map((b) => b.src)
+    ...Object.entries(BACKGROUNDS)
+      .filter(([id]) => !(id === 'title' && KEY_VISUAL.src))
+      .map(([, b]) => b.src)
       .filter((s): s is string => !!s)
       .map(url),
     ...allSpritePaths().map(url),
@@ -58,8 +60,11 @@ const content: GameContent = {
     return a ? url(a.thumb) : null;
   },
   endingCg: (heroine) => ENDING_CG[heroine] ?? null,
+  // 추억 앨범: CG_ORDER 순서, 제목·루트는 매니페스트(CGS) 그대로
+  cgCatalog: CG_ORDER.map((id) => ({ id, title: CGS[id].title, route: CGS[id].route })),
   // 타이틀: 두 히로인이 함께 그려진 키 비주얼(없으면 배경 + 스프라이트 두 장)
   titleVisual: KEY_VISUAL.src ? url(KEY_VISUAL.src) : null,
+  titleVisualThumb: KEY_VISUAL.thumb ? url(KEY_VISUAL.thumb) : null,
   titleSprites: [
     { char: 'osana', outfit: 'uniform', hair: 'default', expr: 'smile' },
     { char: 'tenko', outfit: 'uniform', hair: 'default', expr: 'smile' },

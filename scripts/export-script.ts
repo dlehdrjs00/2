@@ -32,7 +32,8 @@ const report = validateStory(STORY, manifestChecker((p) => existsSync(resolve(ro
 w(`# 《${GAME_TITLE}》 대본 — 검토용`);
 w();
 w('> 이 문서는 `npm run export-script` 로 스토리 데이터(`src/story/scenes/*.ts`)에서 자동 생성된다. 직접 고치지 말고 장면 파일을 고친 뒤 다시 생성할 것.');
-w(`> 이름·학교·날짜는 임시값(\`src/story/config.ts\`). 대괄호 안의 \`c1.010\` 같은 값은 문장 고유 id(저장·읽음 기록용).`);
+w(`> 이름·학교·날짜는 임시값(\`src/story/config.ts\`). 줄 끝의 \`c1.010\` 같은 값은 문장 고유 id(저장·읽음 기록용).`);
+w('> 🖼 **[이벤트 CG]** 줄부터 그 CG 가 화면 가득 떠 있다. `〔이벤트 CG 걷기〕` 또는 배경 전환(자동으로 걷힘)에서 사라진다. CG 파일·표시 구간 목록은 `docs/ASSETS.md`.');
 w();
 w('## 등장인물(임시 이름)');
 w();
@@ -110,6 +111,19 @@ if (report.paths.length) {
   w();
 }
 
+// 이벤트 CG 가 장면 끝까지 떠 있는지(다음 장면 첫 배경 전환에서 걷힘 표시용). 장면 안은 위에서부터 차례로 본다
+const cgAtEnd = new Set<string>();
+for (const id of SCENE_ORDER) {
+  let up = false;
+  for (const st of STORY.scenes[id].steps) {
+    if (st.t === 'cg') up = !!st.cg;
+    if (st.t === 'bg') up = false;
+  }
+  if (up) cgAtEnd.add(id);
+}
+const cgCarriedInto = new Set<string>();
+for (const id of cgAtEnd) for (const st of STORY.scenes[id].steps) if (st.t === 'jump') cgCarriedInto.add(st.scene);
+
 // ---- 대본 ----
 w('## 대본');
 w();
@@ -130,9 +144,17 @@ for (const id of SCENE_ORDER) {
 function writeScene(s: Scene) {
   w(`### \`${s.id}\` ${t(s.title)}`);
   w();
+  let cgUp = cgCarriedInto.has(s.id);
   for (const st of s.steps) {
-    const line = fmt(st);
+    let line = fmt(st);
+    if (st.t === 'cg') cgUp = !!st.cg;
+    if (st.t === 'bg' && cgUp) {
+      line += ' — 이벤트 CG 자동으로 걷힘';
+      cgUp = false;
+    }
     if (line !== null) w(line);
+    // 무조건 이동 뒤에 나열된 줄은 위에서 이어지지 않는다(다른 분기) → CG 상태를 모른다고 보고 표시하지 않음
+    if (st.t === 'goto' || st.t === 'jump' || st.t === 'ending') cgUp = false;
   }
   w();
 }
@@ -180,7 +202,7 @@ function fmt(st: Step): string | null {
     case 'sfx':
       return `- 〔효과음: ${SFX[st.sound].desc}〕`;
     case 'cg':
-      return st.cg ? `- 🖼 **[이벤트 CG: ${CGS[st.cg].title}]** ${CGS[st.cg].desc}` : '- 〔이벤트 CG 걷기〕';
+      return st.cg ? `- 🖼 **[이벤트 CG \`${st.cg}\`: 「${CGS[st.cg].title}」]** ${CGS[st.cg].desc}` : '- 〔이벤트 CG 걷기〕';
     case 'fx':
       return `- 〔화면 효과: ${st.fx === 'shake' ? '흔들림' : '번쩍임'}〕`;
     case 'place':

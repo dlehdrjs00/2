@@ -53,8 +53,12 @@ export const KEY_VISUAL = {
   desc: '타이틀 키 비주얼 — 여름 하늘 아래 등굣길의 두 히로인',
 } as const;
 
-/** 엔딩 화면 폴라로이드에 넣을 대표 CG */
+/**
+ * 엔딩 화면 폴라로이드에 넣을 대표 CG.
+ * 두 엔딩 모두 히로인의 얼굴이 크게 보이는 그림으로 고른다(작은 폴라로이드에서도 표정이 읽히게).
+ * 아카네는 엔딩 직전 장면 o7 의 「처음 바래다주는 길」(돌아보며 웃는 얼굴, 맞잡은 손).
+ */
 export const ENDING_CG: Record<HeroineId, CgId> = {
-  osana: 'fireworks_osana',
+  osana: 'homeward_osana',
   tenko: 'polaroid_tenko',
 };

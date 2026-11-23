@@ -47,7 +47,7 @@ export interface Layout {
   fs: number;
   /** 무대 안 여백 max(8, sh × 0.022) */
   m: number;
-  /** 이름표·빠른 메뉴 탭 높이(터치 40~44px) */
+  /** 이름표·빠른 메뉴 탭 높이(터치 44~48px) */
   btn: number;
   /** 탭 띠의 위끝(= ty − btn) */
   hy: number;
@@ -55,7 +55,16 @@ export interface Layout {
   hr: number;
   /** 빠른 메뉴 폭 단계: 아이콘+글자 8개 / 글자 8개 / 4개 */
   qm: QuickMenuWidth;
+  /**
+   * 이벤트 CG 구도. 'low' = 대사창이 무대에 겹치고 탭 띠 위끝이 무대 높이의 CG_LOW_BAND 보다 위(휴대폰 가로 등).
+   * 이때 styles/play.css 가 CG 마다 정한 확대·위치로 얼굴·동작을 탭 띠 위로 올린다. 그 밖(넓은 화면·세로 배치)은 'full'
+   */
+  cgfit: CgFit;
 }
+
+export type CgFit = 'full' | 'low';
+/** 탭 띠 위끝 / 무대 높이가 이보다 작으면 CG 구도를 'low' 로(667×375 0.58 · 844×390 0.60 · 932×430 0.63 · 1280×720 0.70) */
+export const CG_LOW_BAND = 0.66;
 
 export type QuickMenuWidth = 'icons' | 'full' | 'compact';
 
@@ -82,8 +91,12 @@ export const CHOICE_MIN_H = 48;
 export const CHOICE_DENSE_MIN_H = 44;
 export const CHOICE_GAP_EM = 0.75;
 export const CHOICE_DENSE_GAP_EM = 0.4;
-/** 탭 띠(이름표·빠른 메뉴)와 선택지 목록 사이 간격 */
-const CHOICE_CLEAR = 4;
+/**
+ * 탭 띠(이름표·빠른 메뉴)와 선택지 목록 사이 간격. 목록 안쪽 여백(CHOICE_PAD_Y 4px)과 합쳐 버튼과 탭 사이는 6px 이상
+ * (포커스 테 3px + 간격 2px 보다 넓다). 탭이 44px 로 커진 만큼(4px)의 절반을 여기서 돌려받아 740×320 의 촘촘한
+ * 3단 세로 배치(dense 1)를 지킨다
+ */
+const CHOICE_CLEAR = 2;
 /** 빠른 메뉴 폭 단계 경계(대사창 폭, px). 실측 탭 폭: 아이콘+글자 약 616px, 글자만 약 429px */
 const QM_ICONS_MIN_TW = 900;
 const QM_FULL_MIN_TW = 620;
@@ -109,9 +122,11 @@ function choiceDensity(space: number, fs: number): Density {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** 탭 높이: 글자에 비례하되 터치 40px 이상, 무대를 덜 가리게 44px 이하 */
+/** 탭 높이: 글자에 비례하되 터치 44px 이상(휴대폰 가로에서 탭을 빗나가 대사가 넘어가지 않게), 무대를 덜 가리게 48px 이하 */
+export const TAB_MIN = 44;
+export const TAB_MAX = 48;
 function tabHeight(fs: number): number {
-  return clamp(fs * 1.75, 40, 44);
+  return clamp(fs * 1.75, TAB_MIN, TAB_MAX);
 }
 
 function quickMenuWidth(tw: number): QuickMenuWidth {
@@ -178,6 +193,7 @@ export function computeLayout(vw: number, vh: number, safe: Insets, opts: Layout
       // 탭 오른쪽 = 대사창 오른쪽 끝에서 모서리 반경(fs×0.55) + 오목 이음새 폭(10px) 안쪽
       hr: vw - (tx + tw) + fs * 0.55 + 10,
       qm: quickMenuWidth(tw),
+      cgfit: (hy - sy) / sh < CG_LOW_BAND ? 'low' : 'full',
     };
   }
 
@@ -231,6 +247,8 @@ export function computeLayout(vw: number, vh: number, safe: Insets, opts: Layout
     hy,
     hr: vw - (tx + tw) + fs * 0.55 + 10,
     qm: quickMenuWidth(tw),
+    // 대사창이 무대 아래에 있어 CG 를 가리지 않는다
+    cgfit: 'full',
   };
 }
 
@@ -265,6 +283,7 @@ export function applyLayout(root: HTMLElement, L: Layout): void {
   root.dataset.layout = L.mode;
   root.dataset.dense = String(L.dense);
   root.dataset.qm = L.qm;
+  root.dataset.cgfit = L.cgfit;
 }
 
 /** 휴대폰 세로 화면인지(태블릿·PC 의 세로 창은 안내하지 않음) */

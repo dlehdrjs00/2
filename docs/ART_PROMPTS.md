@@ -1,10 +1,12 @@
 # 캐릭터 그림 생성용 프롬프트 — 《내일도 같이 갈래?》
 
+> **상태: 모두 받아 적용 완료 — 스프라이트 30장 · 이벤트 CG 11장 · 타이틀 키 비주얼.** (`scripts/import-art.py` 로 WebP 변환해 `public/assets/char/`, `public/assets/cg/` 에 연결. 다시 그려 바꿀 때의 넣는 곳·변환 방법은 아래 1장과 [docs/ASSETS.md](ASSETS.md) '그림 교체 파이프라인')
+
 외부 이미지 생성 도구(ChatGPT 이미지, Midjourney/niji, NovelAI, Stable Diffusion 등)로 캐릭터 그림을 만들 때 쓰는 프롬프트 모음입니다.
 프롬프트는 대부분의 도구가 가장 정확하게 따르는 **영어**로 적었고, 설명은 한국어입니다.
 
 - **필수:** 캐릭터 스프라이트 30장(표정 6종 × 의상·헤어 5조합) — 게임 화면에 서 있는 그림
-- **선택:** 이벤트 CG 10장 + 타이틀 키 비주얼 1장 — 주요 장면을 한 장의 그림으로 보여 주는 연출(받으면 엔진에 CG 표시 기능을 붙여 넣겠습니다)
+- **선택:** 이벤트 CG 10장 + 타이틀 키 비주얼 1장 — 주요 장면을 한 장의 그림으로 보여 주는 연출(엔진의 CG 표시 기능에 연결 완료. 실제로는 히나 t6 `shutter_tenko` 1장이 더해져 CG 11장)
 
 ---
 
@@ -34,20 +36,21 @@
 | 여백 | 머리 꼭대기 위 약 5%, 인물은 가로 중앙 |
 | 배경 | 투명 또는 단색 #00B140, 바닥 그림자 없음 |
 | 파일 형식 | PNG (JPG 도 가능하지만 PNG 권장) |
-| 게임 표시 | 화면 높이의 약 116% 크기로 하단이 조금 잘려 표시됩니다. 얼굴·상반신이 가장 중요합니다 |
+| 게임 표시 | 무대 높이의 116% 크기로, 그림 아래 끝이 무대 아래로 22% 내려가 캔버스 아래쪽 약 19%가 잘려 표시됩니다. 얼굴·상반신이 가장 중요하고, 휴대폰 가로 화면에서 대사창에 가리지 않으려면 얼굴이 캔버스 위쪽 약 45% 안에 있어야 합니다(실측 표는 docs/ASSETS.md) |
 
 ### 파일 이름과 넣을 곳
 
-받은 그림은 **이 대화에 그대로 첨부**해 주시거나 저장소의 `art-inbox/` 폴더에 아래 이름으로 넣어 주시면, 제가 배경 제거·정렬·WebP 변환·게임 연결까지 처리합니다. 첨부하실 때 파일 이름이 다르면 "아카네 교복 부끄러움"처럼 알려 주셔도 됩니다.
+받은 그림은 **이 대화에 그대로 첨부**해 주시거나 저장소의 `art-inbox/char/` 폴더(캐릭터별 하위 폴더)에 아래 이름으로 넣어 주시면, `scripts/import-art.py` 로 배경 제거·정렬·WebP 변환까지 처리해 게임에 연결합니다(`art-inbox/` 는 `.gitignore` 대상이라 원본은 저장소에 들어가지 않습니다). 첨부하실 때 파일 이름이 다르면 "아카네 교복 부끄러움"처럼 알려 주셔도 됩니다.
 
 ```
-art-inbox/osana/uniform_default_neutral.png   (아카네 교복)
-art-inbox/osana/yukata_default_neutral.png    (아카네 유카타)
-art-inbox/tenko/uniform_default_neutral.png   (히나 교복·긴 머리)
-art-inbox/tenko/uniform_ponytail_neutral.png  (히나 교복·포니테일)
-art-inbox/tenko/yukata_ponytail_neutral.png   (히나 유카타·포니테일)
+art-inbox/char/osana/uniform_default_neutral.png   (아카네 교복)
+art-inbox/char/osana/yukata_default_neutral.png    (아카네 유카타)
+art-inbox/char/tenko/uniform_default_neutral.png   (히나 교복·긴 머리)
+art-inbox/char/tenko/uniform_ponytail_neutral.png  (히나 교복·포니테일)
+art-inbox/char/tenko/yukata_ponytail_neutral.png   (히나 유카타·포니테일)
 ```
-`neutral` 자리에 `smile` `fluster` `shy` `pout` `sad` 를 넣어 표정별로 6장씩, 총 30장입니다.
+`neutral` 자리에 `smile` `fluster` `shy` `pout` `sad` 를 넣어 표정별로 6장씩, 총 30장입니다. PNG 가 가장 좋고 WebP·JPG 도 받습니다.
+넣은 뒤 `python3 scripts/import-art.py --dry-run --strict` 로 검사하고 `python3 scripts/import-art.py` 로 변환합니다(캐릭터만이면 `--only char`).
 
 ---
 
@@ -106,6 +109,8 @@ summer festival yukata: deep navy blue yukata with red goldfish pattern swimming
 red obi sash with a small yellow obijime cord, same half-up hairstyle with the dark ribbon,
 pose: holding a round paper uchiwa fan near her chest with one hand, other hand lightly holding the yukata sleeve
 ```
+
+> 받은 최종 그림(`osana/yukata_default_*`, CG `fireworks_osana`·`homeward_osana`)은 위 지시와 달리 **리본 없이 뒤로 틀어 올린 올림머리(경단)+한쪽으로 늘어뜨린 머리, 분홍 핀**이다. 그림을 기준으로 대본(o5.030·o5.045)과 `src/story/assets.ts` 설명을 맞췄다. 다시 그릴 때는 이 올림머리를 유지한다(`hair` 값은 그대로 `default`).
 
 ### 3-2. 전학생 — 히나 (디자인 시트 A·B, 동일 인물)
 
@@ -172,7 +177,7 @@ pose: holding a small white instant camera at her chest with both hands
 | 1 | 아카네 | 교복 | `osana/uniform_default_` | 공통 전체, 아카네 루트 본편, 히나 루트의 친구 장면 |
 | 2 | 아카네 | 유카타 | `osana/yukata_default_` | 아카네 루트 축제 후일담(o5~o7) |
 | 3 | 히나 | 교복 / 긴 웨이브 | `tenko/uniform_default_` | 대부분의 학교 장면 |
-| 4 | 히나 | 교복 / 포니테일 | `tenko/uniform_ponytail_` | 체육이 있는 날(공통 c5·c6, o3, t2) |
+| 4 | 히나 | 교복 / 포니테일 | `tenko/uniform_ponytail_` | 체육이 있는 날(매주 수·목: 공통 c5·c6, o3, t2·t3) |
 | 5 | 히나 | 유카타 / 포니테일 | `tenko/yukata_ponytail_` | 히나 루트 축제 후일담(t5~t7) |
 
 각 줄마다 `neutral → smile → fluster → shy → pout → sad` 6장. 우선순위는 **1·3 → 4 → 2·5** 순서가 좋습니다(1·3번이 플레이 시간의 대부분을 차지).
@@ -214,7 +219,8 @@ Keep the pose, hands, clothes, hair, body size, position, framing and the green 
 스프라이트만으로도 게임은 완성되지만, 아래 장면에 CG 가 있으면 상용 비주얼노벨 같은 몰입감이 크게 올라갑니다.
 받으시면 엔진에 CG 표시 명령을 추가하고 해당 대사 위치에 연결하겠습니다.
 
-**규격:** 가로 **16:9, 1920×1080 이상**, 배경 포함 완성 그림, 아래쪽 약 25%는 대사창이 반투명하게 덮으므로 얼굴은 화면 위쪽 2/3 안에.
+**규격:** 가로 **16:9, 1920×1080 이상**, 배경 포함 완성 그림, 아래쪽 약 28~41%(휴대폰 가로 화면에서 가장 큼)는 대사창·탭이 반투명하게 덮으므로 얼굴은 화면 위쪽 약 3/5 안에.
+**넣을 곳:** `art-inbox/cg/{id}.png` (아래 표의 이름). 변환은 `python3 scripts/import-art.py --only cg` → `public/assets/cg/{id}.webp` + 썸네일 `public/assets/cg/thumb/{id}.webp`.
 **공통 스타일(앞에 붙이기):**
 
 ```text
@@ -230,19 +236,20 @@ short black hair, summer school uniform: white short-sleeved shirt and dark navy
 ```
 축제 장면에서는 `wearing a simple dark navy jinbei` 로 바꿔 주세요.
 
-| 번호 | 파일 이름 | 장면(대본 위치) | 구도·내용 |
+| 번호 | 넣을 곳(파일 이름) | 장면(대본 위치) | 구도·내용 |
 |---|---|---|---|
-| KV | `cg/kv_title.png` | 타이틀 화면 | 맑은 여름 하늘 아래 학교 앞 언덕길, 교복 차림의 아카네(왼쪽, 허리에 손)와 히나(오른쪽, 손 흔들기)가 화면을 보며 웃음. **위쪽 1/3 또는 왼쪽에 로고 넣을 빈 하늘** |
-| 01 | `cg/cg01_rain_osana.png` | 공통 c6 소나기 — 아카네 우산을 함께 쓴 경우 | 비 오는 주택가, 작은 남색 접이식 우산 하나를 주인공과 아카네가 함께 씀. 우산이 주인공 쪽으로 기울어 아카네 어깨가 젖음. 아카네는 부끄러워 옆을 봄. 앞쪽에 빌린 우산을 쓴 포니테일 히나가 뒤돌아보며 미소 |
-| 02 | `cg/cg02_rain_tenko.png` | 공통 c6 소나기 — 히나와 우산을 함께 쓴 경우 | 같은 길, 우산이 히나 쪽으로 기울어 주인공 어깨가 젖음. 포니테일 히나가 올려다보며 볼을 붉힘("그런 것까지 보고 있었어?"). 옆에 자기 우산을 쓴 아카네 |
-| 03 | `cg/cg03_door_osana.png` | 아카네 루트 o2 감기 문병 | 맨션 현관문이 체인 길이만큼 열린 틈. 마스크를 쓰고 잠옷 위에 카디건을 걸친 아카네가 눈을 돌린 채 노트를 받음. 따뜻한 실내등과 저녁 복도의 대비 |
-| 04 | `cg/cg04_promise_osana.png` | 아카네 루트 o4 노을 강변 약속 | 노을 진 강변 둑에서 라무네 병을 든 교복 아카네가 웃음을 터뜨림("내일 토요일이거든"). 강물에 비친 노을, 철교 실루엣 |
-| 05 | `cg/cg05_confession_osana.png` | 아카네 루트 o6 고백 직후 첫 불꽃 | 밤 강변 둑, 유카타 아카네가 주인공 소매를 꼭 쥔 채 눈가가 촉촉하게 웃음. 하늘에 첫 불꽃, 강물에 반사. 아래에서 올려다보는 구도 |
-| 06 | `cg/cg06_homeward_osana.png` | 아카네 루트 o7 귀갓길 | 가로등이 이어진 밤길, 손을 잡고 걷는 두 사람의 뒷모습(아카네는 유카타). 아카네가 작은 수첩을 들고 돌아보며 장난스럽게 웃음 |
-| 07 | `cg/cg07_cats_tenko.png` | 히나 루트 t1 신사 돌계단 | 노을 진 이끼 낀 돌계단, 교복 히나(긴 머리)가 계단에 앉아 있고 통통한 흰 고양이가 옆에 털썩 붙어 앉음. 놀람과 기쁨이 섞인 순수한 웃음, 손에 흰 즉석카메라. 주변에 다른 고양이 2~3마리 |
-| 08 | `cg/cg08_invite_tenko.png` | 히나 루트 t4 언덕 위 전망 | 신사 뒤 언덕의 낡은 벤치, 노을 진 동네와 강이 내려다보임. 교복 히나가 두 손으로 얼굴을 가렸지만 빨개진 귀가 보임("내일도 같이 갈래?" 직후) |
-| 09 | `cg/cg09_selfie_tenko.png` | 히나 루트 t6 고백 직후 첫 불꽃 | 밤 신사 언덕, 주인공이 팔을 뻗어 즉석카메라를 든 셀카 구도. 유카타·포니테일 히나가 주인공 어깨에 머리를 기대고 활짝 웃음, 머리 위 첫 불꽃 |
-| 10 | `cg/cg10_photo_tenko.png` | 히나 루트 t7 귀갓길 | 가로등 아래, 두 사람의 손에 들린 현상된 즉석사진 클로즈업. 사진 속에는 불꽃 아래 웃는 두 사람. 배경은 흐릿한 여름밤 길과 편의점 불빛 |
+| KV | `art-inbox/cg/kv.png` | 타이틀 화면 | 맑은 여름 하늘 아래 학교 앞 언덕길, 교복 차림의 아카네(왼쪽, 허리에 손)와 히나(오른쪽, 손 흔들기)가 화면을 보며 웃음. **위쪽 1/3 또는 왼쪽에 로고 넣을 빈 하늘** |
+| 01 | `art-inbox/cg/rain_osana.png` | 공통 c6 소나기 — 아카네 우산을 함께 쓴 경우 | 비 오는 주택가, 작은 남색 접이식 우산 하나를 주인공과 아카네가 함께 씀. 우산이 주인공 쪽으로 기울어 아카네 어깨가 젖음. 아카네는 부끄러워 옆을 봄. 앞쪽에 빌린 우산을 쓴 포니테일 히나가 뒤돌아보며 미소 |
+| 02 | `art-inbox/cg/rain_tenko.png` | 공통 c6 소나기 — 히나와 우산을 함께 쓴 경우 | 같은 길, 우산이 히나 쪽으로 기울어 주인공 어깨가 젖음. 포니테일 히나가 올려다보며 볼을 붉힘("그런 것까지 보고 있었어?"). 옆에 자기 우산을 쓴 아카네 |
+| 03 | `art-inbox/cg/door_osana.png` | 아카네 루트 o2 감기 문병 | 맨션 현관문이 체인 길이만큼 열린 틈. 마스크를 쓰고 잠옷 위에 카디건을 걸친 아카네가 눈을 돌린 채 노트를 받음. 따뜻한 실내등과 저녁 복도의 대비 |
+| 04 | `art-inbox/cg/ramune_osana.png` | 아카네 루트 o4 노을 강변 약속 | 노을 진 강변 둑에서 라무네 병을 든 교복 아카네가 웃음을 터뜨림("내일 토요일이거든"). 강물에 비친 노을, 철교 실루엣 |
+| 05 | `art-inbox/cg/fireworks_osana.png` | 아카네 루트 o6 고백 직후 첫 불꽃 | 밤 강변 둑, 유카타 아카네가 주인공 소매를 꼭 쥔 채 눈가가 촉촉하게 웃음. 하늘에 첫 불꽃, 강물에 반사. 아래에서 올려다보는 구도 |
+| 06 | `art-inbox/cg/homeward_osana.png` | 아카네 루트 o7 귀갓길 | 가로등이 이어진 밤길, 손을 잡고 걷는 두 사람의 뒷모습(아카네는 유카타). 아카네가 작은 수첩을 들고 돌아보며 장난스럽게 웃음 |
+| 07 | `art-inbox/cg/cats_tenko.png` | 히나 루트 t1 신사 돌계단 | 노을 진 이끼 낀 돌계단, 교복 히나(긴 머리)가 계단에 앉아 있고 통통한 흰 고양이가 옆에 털썩 붙어 앉음. 놀람과 기쁨이 섞인 순수한 웃음, 손에 흰 즉석카메라. 주변에 다른 고양이 2~3마리 |
+| 08 | `art-inbox/cg/bench_tenko.png` | 히나 루트 t4 언덕 위 전망 | 신사 뒤 언덕의 낡은 벤치, 노을 진 동네와 강이 내려다보임. 교복 히나가 두 손으로 얼굴을 가렸지만 빨개진 귀가 보임("내일도 같이 갈래?" 직후) |
+| 09 | `art-inbox/cg/selfie_tenko.png` | 히나 루트 t6 고백 직후 첫 불꽃 | 밤 신사 언덕, 주인공이 팔을 뻗어 즉석카메라를 든 셀카 구도. 유카타·포니테일 히나가 주인공 어깨에 머리를 기대고 활짝 웃음, 머리 위 첫 불꽃 |
+| 10 | `art-inbox/cg/polaroid_tenko.png` | 히나 루트 t7 귀갓길 | 가로등 아래, 두 사람의 손에 들린 현상된 즉석사진 클로즈업. 사진 속에는 불꽃 아래 웃는 두 사람. 배경은 흐릿한 여름밤 길과 편의점 불빛 |
+| (추가) | `art-inbox/cg/shutter_tenko.png` | 히나 루트 t6 셀카 직후 셔터가 눌린 순간 | 이 문서의 프롬프트 목록에 없던, 사용자가 추가로 제공한 CG(09 셀카와 10 사진 사이). 대본 t6.220 에 연결 |
 
 ### CG 프롬프트 예시 — 09 셀카
 
@@ -264,7 +271,9 @@ warm and romantic summer night atmosphere
 
 ## 7. 보내 주신 뒤 제가 하는 일
 
-1. 배경 제거(투명/초록), 가장자리 다듬기, 표정끼리 위치·크기 정렬, 1600×2400 WebP 변환
+(아래 1·3 단계는 `scripts/import-art.py` 로 자동화되어 있습니다. 옵션·출력 규격은 [docs/ASSETS.md](ASSETS.md) 참고)
+
+1. 배경 제거(투명/초록), 가장자리 다듬기, 표정끼리 위치·크기 정렬, WebP 변환(1600×2400 작업 캔버스 → 게임 파일 1200×1800)
 2. `src/story/assets.ts` 연결(조합별로 6장이 모두 오면 그 조합부터 교체) → 임시 그림 표시가 사라짐
 3. 실제 화면(PC·휴대폰 가로)에서 얼굴이 대사창·빠른 메뉴에 가리지 않는지 확인하고 위치 미세 조정
 4. CG 가 오면 엔진에 CG 명령 추가 + 해당 대사 위치에 연결 + 저장/불러오기·기록에서 복원 확인

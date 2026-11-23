@@ -246,7 +246,29 @@ describe('퀵저장·수동 30칸·썸네일용 무대 요약', () => {
     if (!p.empty) {
       expect(p.stage?.bg).toBe('classroom_day');
       expect(Object.keys(p.stage?.chars ?? {})).toEqual(expect.arrayContaining(['osana', 'tenko']));
+      expect(p.recover).toBeUndefined();
     }
+  });
+
+  it("'장면 처음부터' 복구가 필요한 저장도 peek 이 썸네일용 무대(불러오면 처음 보게 될 무대)와 recover 표시를 돌려준다", () => {
+    const story = miniStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    const { state } = play(story, ['a'], 1);
+    expect(sm.write('quick', { ...state, stepId: `${state.stepId}_deleted` }, summary)).toBe(true);
+    const loaded = sm.load('quick');
+    expect(loaded.status).toBe('recoverable');
+    const p = sm.peek('quick');
+    expect(p).toMatchObject({ empty: false, broken: false, recover: true, summary });
+    if (!p.empty && loaded.status === 'recoverable') {
+      // 불러온 복구 상태를 첫 문장까지 진행했을 때의 무대와 같아야 한다(빈 썸네일이 아니게)
+      const st = JSON.parse(JSON.stringify(loaded.data.state)) as GameState;
+      settle(story, st);
+      expect(p.stage).toEqual(st.stage);
+      expect(p.stage?.bg).toBeTruthy();
+    }
+    // peek 은 저장 데이터를 바꾸지 않는다(다시 불러와도 같은 복구 결과)
+    expect(sm.load('quick')).toEqual(loaded);
   });
 
   it('새 설정 항목(글자 크기·빛망울)은 범위로 보정되고 기본값이 있다', () => {

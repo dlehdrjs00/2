@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CG_LOW_BAND,
   CHOICE_PAD_Y,
   choiceSpace,
   choiceStackHeight,
   computeLayout,
   MIN_FONT,
+  TAB_MAX,
+  TAB_MIN,
   textBoxHeightFor,
   type Layout,
 } from '../../src/ui/layout';
@@ -66,8 +69,9 @@ describe('화면 배치', () => {
     // 대사창에 3줄이 테두리까지 포함해 들어감 (위아래 여백 1.55em + 줄 1.62em×3 + 테두리 1px×2)
     expect(L.th).toBeGreaterThanOrEqual(L.fs * (1.55 + 1.62 * 3) + 2);
     expect(L.th).toBeGreaterThanOrEqual(textBoxHeightFor(3, L.fs) - 0.01);
-    // 버튼 터치 영역
-    expect(L.btn).toBeGreaterThanOrEqual(40);
+    // 버튼 터치 영역: 이름표·빠른 메뉴 탭 44px 이상(휴대폰 가로 포함), 무대를 덜 가리게 48px 이하
+    expect(L.btn).toBeGreaterThanOrEqual(TAB_MIN);
+    expect(L.btn).toBeLessThanOrEqual(TAB_MAX);
   });
 
   it.each(cases)('%s: 선택지 목록이 HUD·대사창과 겹치지 않고, 고른 배치 단계로 한 줄짜리 선택지가 스크롤 없이 들어감', (_n, vw, vh, safe) => {
@@ -108,15 +112,16 @@ describe('화면 배치', () => {
   it('명세 9.1 실측표: 대사창 높이·폭, 탭 띠 위치, 선택지 영역, 빠른 메뉴 폭 단계', () => {
     const rows: Array<[number, number, typeof none, number, number, number, number, string]> = [
       // vw, vh, safe, fs, th, tw, ch, qm
+      // 탭 44~48px(예전 40~44px)·선택지와 탭 띠 사이 2px(예전 4px) 기준
       [1920, 1080, none, 26, 238, 1196, 747, 'icons'],
-      [1280, 720, none, 24.5, 159, 1126, 482, 'icons'],
-      [1024, 768, none, 19.6, 128, 901, 379, 'icons'],
-      [844, 390, notch, 16, 105, 640, 204, 'full'],
-      [844, 390, none, 16, 105, 676, 224, 'full'],
-      [667, 375, none, 16, 105, 650, 209, 'full'],
-      [740, 320, none, 16, 105, 553, 155, 'compact'],
-      [740, 280, none, 16, 105, 482, 115, 'compact'],
-      [390, 844, none, 16.4, 164, 374, 215, 'compact'],
+      [1280, 720, none, 24.5, 159, 1126, 483, 'icons'],
+      [1024, 768, none, 19.6, 128, 901, 377, 'icons'],
+      [844, 390, notch, 16, 105, 640, 202, 'full'],
+      [844, 390, none, 16, 105, 676, 222, 'full'],
+      [667, 375, none, 16, 105, 650, 207, 'full'],
+      [740, 320, none, 16, 105, 553, 153, 'compact'],
+      [740, 280, none, 16, 105, 482, 113, 'compact'],
+      [390, 844, none, 16.4, 164, 374, 217, 'compact'],
     ];
     for (const [vw, vh, safe, fs, th, tw, ch, qm] of rows) {
       const L = computeLayout(vw, vh, safe);
@@ -127,9 +132,16 @@ describe('화면 배치', () => {
       expect(Math.abs(L.ch - ch), `${at} ch`).toBeLessThan(1);
       expect(L.qm, at).toBe(qm);
     }
-    // 1280x720 에서 탭 띠 위끝은 무대 높이의 약 69.7%(지금 71% 보다 낮음 = 인물을 덜 가림)
+    // 1280x720 에서 탭 띠 위끝은 무대 높이의 약 69.5%(예전 71% 보다 낮음 = 인물을 덜 가림)
     const W = computeLayout(1280, 720, none);
-    expect((W.hy - W.sy) / W.sh).toBeCloseTo(0.697, 2);
+    expect((W.hy - W.sy) / W.sh).toBeCloseTo(0.695, 2);
+    // 휴대폰 가로도 탭은 44px(예전 40px — 터치 목표 44px 미달)
+    for (const [vw, vh, safe] of [
+      [844, 390, notch],
+      [667, 375, none],
+      [740, 280, none],
+    ] as const)
+      expect(computeLayout(vw, vh, safe).btn, `${vw}x${vh} btn`).toBe(44);
     expect(W.m).toBeCloseTo(720 * 0.022, 5);
     // 빠른 메뉴 탭 오른쪽 끝은 대사창 오른쪽 끝에서 모서리 반경 + 이음새 폭만큼 안쪽
     expect(1280 - W.hr).toBeCloseTo(W.tx + W.tw - W.fs * 0.55 - 10, 5);
@@ -143,7 +155,8 @@ describe('화면 배치', () => {
         expect(L.fs).toBeGreaterThanOrEqual(MIN_FONT * scale - 1e-9);
         expect(L.fs).toBeGreaterThan(base.fs);
         expect(L.th).toBeGreaterThanOrEqual(Math.min(textBoxHeightFor(3, L.fs), L.sh * 0.45) - 0.01);
-        expect(L.btn).toBeGreaterThanOrEqual(40);
+        expect(L.btn).toBeGreaterThanOrEqual(TAB_MIN);
+        expect(L.btn).toBeLessThanOrEqual(TAB_MAX);
         expectChoicesClearOfHudAndTextbox(L, vw, safe);
       }
     }
@@ -151,6 +164,31 @@ describe('화면 배치', () => {
     expect(computeLayout(844, 390, notch)).toEqual(computeLayout(844, 390, notch, { textScale: 1 }));
     // 이상한 배율은 1 로 본다
     expect(computeLayout(844, 390, notch, { textScale: Number.NaN })).toEqual(computeLayout(844, 390, notch));
+  });
+
+  it('CG 구도(cgfit): 탭 띠가 무대 높이의 66% 보다 위인 겹침 배치만 low(휴대폰 가로), 넓은 화면·세로 배치는 full', () => {
+    for (const [vw, vh, safe] of [
+      [667, 375, none],
+      [844, 390, none],
+      [844, 390, notch],
+      [932, 430, none],
+      [740, 320, none],
+      [740, 280, none],
+    ] as const) {
+      const L = computeLayout(vw, vh, safe);
+      expect(L.cgfit, `${vw}x${vh}`).toBe('low');
+      expect((L.hy - L.sy) / L.sh).toBeLessThan(CG_LOW_BAND);
+    }
+    for (const [vw, vh] of [
+      [1280, 720],
+      [1920, 1080],
+      [1024, 768],
+      [390, 844],
+      [320, 568],
+    ] as const)
+      expect(computeLayout(vw, vh, none).cgfit, `${vw}x${vh}`).toBe('full');
+    // 글자를 키우면 대사창이 커져 탭 띠가 올라가므로 1280x720 도 low 가 된다
+    expect(computeLayout(1280, 720, none, { textScale: 1.25 }).cgfit).toBe('low');
   });
 
   it('가로 화면은 overlay, 세로 화면은 대사창을 무대 아래에 둔다', () => {

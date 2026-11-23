@@ -1,5 +1,6 @@
 /**
- * 시스템 시트(docs/UI_DESIGN.md 6.9): 저장하기·불러오기·설정·대화 기록을 한 오버레이 안의 탭으로 오간다.
+ * 시스템 시트(docs/UI_DESIGN.md 6.9): 저장하기·불러오기·설정·대화 기록(플레이 중), 불러오기·추억 앨범·설정(타이틀)을
+ * 한 오버레이 안의 탭으로 오간다.
  *
  * .panel.sys[role=dialog][data-panel=<탭>]
  *   .panel-head: h2.sr-only(화면 이름) · .head-star · .sys-tabs[role=tablist] · 빈칸 · .btn.close
@@ -13,16 +14,17 @@
 import { el } from '../dom';
 import { ico, type IconName } from '../icons';
 
-export type SheetTab = 'save' | 'load' | 'settings' | 'log';
+export type SheetTab = 'save' | 'load' | 'settings' | 'log' | 'album';
 
 export const SHEET_LABEL: Record<SheetTab, string> = {
   save: '저장하기',
   load: '불러오기',
   settings: '설정',
   log: '대화 기록',
+  album: '추억 앨범',
 };
 
-const SHEET_ICON: Record<SheetTab, IconName> = { save: 'qsave', load: 'qload', settings: 'config', log: 'log' };
+const SHEET_ICON: Record<SheetTab, IconName> = { save: 'qsave', load: 'qload', settings: 'config', log: 'log', album: 'album' };
 
 /** 탭 하나의 본문 */
 export interface SheetView {

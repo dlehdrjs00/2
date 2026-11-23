@@ -34,7 +34,15 @@ export interface SaveSummary {
 
 export type SlotPeek =
   | { empty: true }
-  | { empty: false; broken: boolean; savedAt?: string; summary?: SaveSummary; stage?: GameState['stage'] };
+  | {
+      empty: false;
+      broken: boolean;
+      savedAt?: string;
+      summary?: SaveSummary;
+      stage?: GameState['stage'];
+      /** 저장한 문장이 대본에서 사라져 '장면 처음부터' 이어야 하는 저장(불러올 때 확인창이 뜬다) */
+      recover?: boolean;
+    };
 
 export interface SaveData {
   schema: number;
@@ -267,14 +275,29 @@ export class SaveManager {
   /**
    * 슬롯 목록 표시용 요약. 손상된 슬롯은 broken: true.
    * stage 는 저장 시점의 무대(배경·캐릭터) — 저장 화면 썸네일을 미니 무대로 다시 그리는 데 쓴다.
+   * '장면 처음부터' 복구가 필요한 저장은 recover: true 이고, stage 는 불러오면 처음 보게 될 무대
+   * (장면 진입 무대에 장면 앞부분의 배경·등장 지시를 첫 문장까지 적용한 것)다.
    */
   peek(slot: SlotId): SlotPeek {
     const raw = this.store.get(this.slotKey(slot));
     if (raw === null) return { empty: true };
     const r = this.parse(raw);
     if (r.status === 'ok') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary, stage: r.data.state.stage };
-    if (r.status === 'recoverable') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary };
+    if (r.status === 'recoverable') {
+      return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary, stage: this.firstFrameStage(r.data.state), recover: true };
+    }
     return { empty: false, broken: true };
+  }
+
+  /** 이 상태로 불러오면 처음 보게 될 무대(첫 블로킹 스텝까지 진행한 사본). 진행할 수 없으면 그 상태의 무대 */
+  private firstFrameStage(state: GameState): StageState {
+    try {
+      const copy = JSON.parse(JSON.stringify(state)) as GameState;
+      settle(this.story, copy);
+      return copy.stage;
+    } catch {
+      return state.stage;
+    }
   }
 
   load(slot: SlotId): LoadResult {

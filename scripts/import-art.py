@@ -13,7 +13,7 @@
   · 예전 안내(docs/ART_PROMPTS.md)의 <src>/{osana,tenko}/ 배치도 char/ 가 없을 때 받아 준다.
 
 출력
-    public/assets/char/{osana,tenko}/{outfit}_{hair}_{expr}.webp   1600x2400 RGBA
+    public/assets/char/{osana,tenko}/{outfit}_{hair}_{expr}.webp   1200x1800 RGBA (--sprite-height, 작업은 1600x2400)
     public/assets/cg/{id}.webp                                     1920x1080
     public/assets/cg/thumb/{id}.webp                               480x270
 
@@ -28,10 +28,15 @@
      · 실루엣 4px 띠의 초록 번짐(안쪽보다 초록으로 치우친 만큼)을 뺀다.
      M 은 묶음(같은 의상·헤어) 전체의 반투명 화소에서 최소제곱으로 추정한다(배경을 직접 지운
      경우엔 그 배경색). M 이 일관되지 않으면(모델이 설명력 없음) 이 단계는 건너뛴다.
-  3. 크기: 1600x2400 이면 그대로. 다르면 묶음 전체의 불투명 bbox 합집합 기준으로 같은 변환을
+  3. 작업 캔버스: 1600x2400 이면 그대로. 다르면 묶음 전체의 불투명 bbox 합집합 기준으로 같은 변환을
      적용해 2:3 캔버스에 머리 위 5% 여백·가로 중앙으로 맞춘다(표정끼리 위치가 어긋나지 않게).
-  4. WebP(quality 88, alpha_quality 90, method 6).
-  5. 같은 묶음 안에서 불투명 영역(알파 >= 128) bbox 가 다르면 경고(표정 교체 시 흔들림).
+  4. 저장 크기: 캔버스 전체를 같은 비율로 줄인다(기본 세로 1800px = 1200x1800, 위치·여백 비율은 그대로).
+     화면에서 스프라이트는 무대 높이의 116% 안팎(1080p 약 1250px, 휴대폰 가로 3배율 약 1360px)이라
+     1800px 이면 거의 모든 화면에서 충분하다. 품질 82 와 함께 30장이 5.35MB → 약 3.8MB(약 30% 감소).
+     원본 크기 그대로가 필요하면 --sprite-height 2400.
+  5. WebP(quality 82, alpha_quality 90, method 6).
+  6. 같은 묶음 안에서 불투명 영역(알파 >= 128) bbox 가 다르면 경고(표정 교체 시 흔들림).
+     bbox·머리 위 여백은 작업 캔버스(1600x2400) 기준으로 잰다.
 
 업로드 원본은 신뢰하지 않는 데이터로 취급한다: PNG/WebP/JPEG 이미지로만 열고, 심볼릭 링크는
 읽지 않으며, 너무 큰 이미지(압축 폭탄)는 거부한다.
@@ -69,7 +74,9 @@ EXT_RANK = {'.png': 0, '.webp': 1, '.jpg': 2, '.jpeg': 2}
 ALLOWED_FORMATS = {'PNG', 'WEBP', 'JPEG'}
 MAX_PIXELS = 50_000_000
 
-SPRITE_W, SPRITE_H = 1600, 2400
+SPRITE_W, SPRITE_H = 1600, 2400   # 작업 캔버스(원본 권장 크기)
+SPRITE_OUT_H = 1800                # 저장 크기 기본값(세로). 가로는 2:3 비율로 1200
+SPRITE_QUALITY = 82                # 스프라이트 WebP 품질 기본값(1800px 에서 88 과 눈으로 구분되지 않음)
 HEAD_MARGIN = 0.05
 CG_W, CG_H = 1920, 1080
 THUMB_W, THUMB_H = 480, 270
@@ -445,6 +452,12 @@ def fit_transform(bbox, src_h):
     return s, ox, oy
 
 
+def sprite_out_size(height: int) -> tuple[int, int]:
+    """저장 크기: 작업 캔버스(2:3)를 세로 height 로 같은 비율 축소. 작업 캔버스보다 키우지는 않는다."""
+    h = max(1, min(int(height), SPRITE_H))
+    return (round(SPRITE_W * h / SPRITE_H), h)
+
+
 def apply_transform(rgba: np.ndarray, bbox, s, ox, oy) -> np.ndarray:
     x0, y0, x1, y1 = bbox
     im = Image.fromarray(rgba, 'RGBA')
@@ -561,13 +574,17 @@ def process_sprite_group(char, outfit, hair, items, out_dir, opts):
         for x in xs:
             x['rgba'] = apply_transform(x['rgba'], u, s, ox, oy)
 
-    # 3) 저장 + bbox 비교
+    # 3) 저장(캔버스 전체를 같은 비율로 줄임) + bbox 비교(작업 캔버스 기준)
+    out_dim = sprite_out_size(opts.sprite_height)
     ref = next((x for x in loaded if x['expr'] == 'neutral'), loaded[0])
     ref_box = alpha_bbox(ref['rgba'][..., 3])
     for x in loaded:
         box = alpha_bbox(x['rgba'][..., 3])
         dest = out_dir / 'char' / char / f'{outfit}_{hair}_{x["expr"]}.webp'
-        size = save_webp(Image.fromarray(x['rgba'], 'RGBA'), dest, opts.dry_run, quality=opts.quality,
+        img = Image.fromarray(x['rgba'], 'RGBA')
+        if out_dim != (SPRITE_W, SPRITE_H):
+            img = img.resize(out_dim, Image.LANCZOS)  # RGBA 는 Pillow 가 premultiply 후 보간(가장자리 번짐 없음)
+        size = save_webp(img, dest, opts.dry_run, quality=opts.quality,
                          alpha_quality=opts.alpha_quality, exact=False)
         diff = int((np.abs(x['rgba'][..., 3].astype(np.int16) - ref['rgba'][..., 3].astype(np.int16)) > 64).sum())
         if box != ref_box and x is not ref:
@@ -576,7 +593,7 @@ def process_sprite_group(char, outfit, hair, items, out_dir, opts):
                                f'(Δx0,y0,x1,y1={d}) — 표정 교체 시 흔들릴 수 있음')
         if size > SPRITE_BUDGET_KB * 1024:
             res['warn'].append(f'{dest.name} {size / 1024:.0f}KB — 권장 {SPRITE_BUDGET_KB}KB 초과')
-        res['files'].append({'dest': dest, 'size': size, 'src': x['path'].name, 'dim': (SPRITE_W, SPRITE_H),
+        res['files'].append({'dest': dest, 'size': size, 'src': x['path'].name, 'dim': out_dim,
                              'bbox': box, 'sil_diff': diff, 'halo': (x['halo_before'], x['halo_after']),
                              'fixed_px': x['fixed_px'], 'notes': x['notes']})
         for n in x['notes']:
@@ -693,7 +710,9 @@ def main(argv=None) -> int:
     ap.add_argument('--src', type=Path, default=DEFAULT_SRC, help=f'입력 폴더(기본 {DEFAULT_SRC})')
     ap.add_argument('--out', type=Path, default=DEFAULT_OUT, help=f'출력 폴더(기본 {DEFAULT_OUT})')
     ap.add_argument('--only', choices=('char', 'cg'), help='한 종류만 처리')
-    ap.add_argument('--quality', type=int, default=88, help='스프라이트 WebP 품질(기본 88)')
+    ap.add_argument('--quality', type=int, default=SPRITE_QUALITY, help=f'스프라이트 WebP 품질(기본 {SPRITE_QUALITY})')
+    ap.add_argument('--sprite-height', type=int, default=SPRITE_OUT_H,
+                    help=f'스프라이트 저장 세로 크기(기본 {SPRITE_OUT_H}, 가로는 2:3). {SPRITE_H} 이면 줄이지 않음')
     ap.add_argument('--alpha-quality', type=int, default=90, help='스프라이트 알파 품질(기본 90)')
     ap.add_argument('--cg-quality', type=int, default=85, help='CG WebP 품질(기본 85)')
     ap.add_argument('--thumb-quality', type=int, default=80, help='CG 썸네일 품질(기본 80)')

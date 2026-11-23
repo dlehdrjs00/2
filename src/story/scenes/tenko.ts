@@ -7,7 +7,8 @@
  *  - t4 내가 먼저 같이 가자고 하고, 먼저 "내일도 같이 갈래?"(본편 끝, 아직 사귀지 않음)
  *  - t5 축제, 처음으로 찍히는 쪽이 된 {tenko} → t6 불꽃 전의 고백과 분명한 승낙, 둘이 함께 찍힌 첫 사진
  *  - t7 연인이 된 첫 귀갓길 → 엔딩
- * 헤어: t2(체육 있는 날)만 포니테일, 축제(t5~t7)는 유카타+포니테일, 그 외 기본(긴 웨이브).
+ * 헤어: 체육 있는 날(2주 차 수·목 = t2·t3)은 포니테일, 축제(t5~t7)는 유카타+포니테일, 그 외 기본(긴 웨이브).
+ *   체육은 매주 수·목(1주 차 목요일 c5·c6, 2주 차 수요일 t2·o3). 히나는 '체육 있는 날만 묶거든'(c5.090).
  */
 import type { Scene } from '../../engine/types';
 import { bg, bgm, card, cg, chose, ending, flash, goto, hide, jump, label, me, mono, place, say, scene, sfx, show, when } from '../../engine/dsl';
@@ -89,6 +90,7 @@ export const TENKO_SCENES: Scene[] = [
     say('t2.080', 'tenko', '{me} 군, 그거 내 수첩! 어디까지 봤어?', 'fluster'),
     me('t2.090', '미안. 주울 때 펼쳐져서, {osana} 칸이랑 내 칸까지 봐 버렸어.'),
     bgm('heart'),
+    show('tenko', { expr: 'shy' }),
     mono('t2.100', '{tenko:는} 수첩을 끌어안았다. 늘 먼저 눈을 맞추던 애가 처음으로 시선을 피했다.'),
     say('t2.110', 'tenko', '전학생은 첫 주가 승부거든. 첫날 밤에 명부를 다 외웠어. 이름 불러 주면 다들 좋아해.', 'sad'),
     say('t2.120', 'tenko', '나, 원래 친화력 좋은 애 아니야. 전부 노력한 거야. 실망했어?', 'sad'),
@@ -108,7 +110,7 @@ export const TENKO_SCENES: Scene[] = [
   ]),
 
   // ---------------------------------------------------------------------------
-  // t3 — {r4} 방과 후, 상점가 붕어빵 가게
+  // t3 — {r4} 방과 후, 상점가 붕어빵 가게 (목요일 = 체육 있는 날: 포니테일)
   // ---------------------------------------------------------------------------
   scene({ id: 't3_taste', title: '팥이냐 슈크림이냐', route: 'tenko', part: 'main' }, [
     hide('all'),
@@ -116,7 +118,7 @@ export const TENKO_SCENES: Scene[] = [
     bgm('daily'),
     place('{r4} · 방과 후, 상점가'),
     mono('t3.010', '셋이서 {shop}에 들러 할머니께 인사를 드렸다. {osana:가} 역 쪽으로 가자, {tenko:가} 붕어빵 가게를 가리켰다.'),
-    show('tenko', { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' }),
+    show('tenko', { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'ponytail' }),
     say('t3.020', 'tenko', '반장이 그러는데 여기 붕어빵이 제일 맛있대. 난 슈크림. {me} 군은?', 'smile'),
     me('t3.030', '팥. 붕어빵은 팥이지.'),
     say('t3.040', 'tenko', '에이, 너무 정석이다. 슈크림이 얼마나 부드러운데.', 'pout'),
@@ -137,6 +139,7 @@ export const TENKO_SCENES: Scene[] = [
     say('t3.170', 'tenko', '어? 아, 나는 됐어. 찍히는 건 좀.', 'fluster'),
     bgm('evening'),
     sfx('camera'),
+    show('tenko', { expr: 'neutral' }),
     mono('t3.180', '{tenko:는} 웃으며 카메라를 간판 쪽으로 돌렸다. 이번에도 찍힌 건 간판뿐이었다.'),
     mono('t3.190', '‘찍히면 떠날 때 더 아쉬우니까.’ 그 말이 목에 걸렸다. {tenko:가} 없는 옆자리는, 허전하다는 말로는 한참 모자랐다.'),
     jump('t4_invite'),
@@ -177,8 +180,8 @@ export const TENKO_SCENES: Scene[] = [
     me('t4.160', '{tenko}. 내일도 같이 갈래?'),
     say('t4.170', 'tenko', '그거, 내 대사인데.', 'fluster'),
     me('t4.180', '응. 이번엔 내가 먼저 하고 싶었어.'),
-    say('t4.190', 'tenko', '갈래.', 'shy'),
     cg('bench_tenko'),
+    say('t4.190', 'tenko', '갈래.', 'shy'),
     mono('t4.200', '{tenko:는} 두 손으로 얼굴을 가렸지만 빨개진 귀는 다 보였다. 내려가는 길, 한 번도 앞서 뛰지 않았다.'),
     jump('t5_festival'),
   ]),
@@ -235,10 +238,13 @@ export const TENKO_SCENES: Scene[] = [
     bgm('confession'),
     me('t6.040', '{tenko}, 내 얘기 좀 들어 줄래?'),
     say('t6.045', 'tenko', '응, 들을게. 다이후쿠처럼 얌전히.', 'smile'),
+    show('tenko', { expr: 'neutral' }),
     me('t6.050', '처음엔 늘 네가 먼저 와 줬지. 이름을 묻는 것도, 같이 가자는 말도.'),
     me('t6.060', '그냥 친화력인 줄 알았어. 수첩을 보고서야, 네가 얼마나 애써서 와 준 건지 알았어.'),
     me('t6.070', '언젠가 네가 또 이삿짐을 쌀지도 모른다고 생각하면, 그게 제일 싫었어. 친구한테 드는 마음이랑은 달랐어.'),
+    show('tenko', { expr: 'shy' }),
     me('t6.080', '그래서 이번엔 내가 먼저 말할게. 좋아해, {tenko}.'),
+    show('tenko', { expr: 'fluster' }),
     mono('t6.090', '카메라 끈을 놓칠 뻔했던 {tenko}의 손이, 다시 끈을 꼭 쥐었다.'),
     say('t6.100', 'tenko', '반칙이야.', 'fluster'),
     say('t6.110', 'tenko', '오늘은 내가 먼저 말하려고 했단 말이야. 거울 앞에서 연습까지 했는데.', 'shy'),
@@ -274,7 +280,7 @@ export const TENKO_SCENES: Scene[] = [
     say('t7.020', 'tenko', '손까지 선수 치기야? 오늘 나, 하나도 못 이겼어.', 'pout'),
     me('t7.030', '사격이랑 가위바위보는 네가 다 이기잖아.'),
     cg('polaroid_tenko'),
-    mono('t7.040', '가로등 아래서 {tenko:가} 사진을 들어 보였다. 하얗던 종이에 불꽃과 우리 둘이 또렷하게 떠올라 있었다.'),
+    mono('t7.040', '가로등 아래, 잡은 손은 그대로 두고 남은 손으로 사진 양 끝을 하나씩 나눠 잡았다. 하얗던 종이에 불꽃과 우리 둘이 떠올라 있었다.'),
     say('t7.050', 'tenko', '봐, 나왔어. 눈 감은 줄 알았는데, 나 엄청 웃고 있네.', 'smile'),
     say('t7.060', 'tenko', '다이후쿠한테는 미안하지만, 이 동네 첫 장은 이걸로 바꿀래.', 'smile'),
     cg(null),

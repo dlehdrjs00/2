@@ -81,7 +81,7 @@ export const SPRITE_SETS: Record<CharId, SpriteSet> = {
     placeholder: false,
     looks: [
       { outfit: 'uniform', hair: 'default', desc: '교복(베이지 카디건), 반묶음+리본' },
-      { outfit: 'yukata', hair: 'default', desc: '유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본' },
+      { outfit: 'yukata', hair: 'default', desc: '유카타(남색 바탕 금붕어 무늬, 붉은 오비), 올림머리(뒤로 틀어 올린 경단+한쪽으로 늘어뜨린 머리)·분홍 핀, 리본 없음' },
     ],
     expressions: EXPRS,
     aspect: 800 / 1200,

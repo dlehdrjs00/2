@@ -25,7 +25,12 @@ export type IconName =
   | 'eye'
   | 'hide'
   | 'rain'
-  | 'play';
+  | 'play'
+  // 화면 팀(screens.css :root 의 --i-album 등): 추억 앨범 탭·잠긴 칸·감상 화면 넘기기
+  | 'album'
+  | 'lock'
+  | 'prev'
+  | 'next';
 
 /** 마스크 변수 값(인라인 style 의 --i 에 넣는다) */
 export function iconVar(name: IconName): string {
