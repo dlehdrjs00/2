@@ -33,7 +33,8 @@ test('대사창 숨기기: 숨긴 동안 클릭·Enter·Space 는 복귀만 하�
     await expect(vn).toHaveAttribute('data-hidewin', '1');
     await page.keyboard.press(key);
     await expect(vn).not.toHaveAttribute('data-hidewin', '1');
-    await page.waitForTimeout(300);
+    // 같은 자리 두 번째 클릭(500ms 안)은 더블클릭으로 보고 흡수하므로 충분히 띄운다
+    await page.waitForTimeout(650);
     expect((await info(page)).step).toBe(s0);
   }
 

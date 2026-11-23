@@ -76,9 +76,9 @@ export interface SpriteSet {
 
 export const SPRITE_SETS: Record<CharId, SpriteSet> = {
   osana: {
-    dir: 'assets/placeholder/char/osana',
-    ext: 'svg',
-    placeholder: true,
+    dir: 'assets/char/osana',
+    ext: 'webp',
+    placeholder: false,
     looks: [
       { outfit: 'uniform', hair: 'default', desc: '교복(베이지 카디건), 반묶음+리본' },
       { outfit: 'yukata', hair: 'default', desc: '유카타(남색 바탕 금붕어 무늬, 붉은 오비), 반묶음+리본' },
@@ -87,9 +87,9 @@ export const SPRITE_SETS: Record<CharId, SpriteSet> = {
     aspect: 800 / 1200,
   },
   tenko: {
-    dir: 'assets/placeholder/char/tenko',
-    ext: 'svg',
-    placeholder: true,
+    dir: 'assets/char/tenko',
+    ext: 'webp',
+    placeholder: false,
     looks: [
       { outfit: 'uniform', hair: 'default', desc: '교복(연회색 카디건), 긴 웨이브+하늘색 머리핀' },
       { outfit: 'uniform', hair: 'ponytail', desc: '교복(연회색 카디건), 높은 포니테일+하늘색 리본' },

@@ -18,6 +18,8 @@ async function saveTo(page: Page, slot: string) {
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  // 오버레이를 닫은 직후의 짧은 입력 잠금(250ms, 중복 입력 흡수)이 풀린 뒤에 다음 조작을 한다
+  await page.waitForTimeout(300);
 }
 
 async function loadFrom(page: Page, slot: string) {

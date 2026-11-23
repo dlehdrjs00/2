@@ -10,6 +10,7 @@ import type { CharId, CharState, StageState, Story } from '../../engine/types';
 export interface PreloadResolver {
   bgUrl(id: string): string | null;
   spriteUrl(char: CharId, s: CharState): string | null;
+  cgUrl?(id: string): string | null;
 }
 
 const MAX_ACTIVE = 3;
@@ -121,6 +122,9 @@ export function sceneImages(
         end.order = end.order.filter((c) => !targets.includes(c));
         break;
       }
+      case 'cg':
+        if (step.cg) push(r.cgUrl?.(step.cg) ?? null);
+        break;
       case 'jump':
         if (!next.includes(step.scene)) next.push(step.scene);
         break;

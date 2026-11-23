@@ -22,6 +22,8 @@ export interface MiniResolver {
   bgUrl(id: string): string | null;
   bgColor(id: string): string | null;
   spriteUrl(char: CharId, s: CharState): string | null;
+  /** 이벤트 CG 의 작은 그림(있으면 무대 대신 그 그림을 보여 준다) */
+  cgThumbUrl?(id: string): string | null;
 }
 
 /** 인물 위치 → 무대 가로 위치(%). 실제 무대(.char.pos-*)와 같은 값 */
@@ -34,6 +36,13 @@ const POS_LEFT: Record<string, string> = { left: '27%', center: '50%', right: '7
 export function miniStage(cls: string, stage: StageState | undefined, r: MiniResolver): HTMLSpanElement {
   const box = el('span', cls);
   if (!stage) return box;
+  // 이벤트 CG 가 떠 있던 장면은 그 CG 를 썸네일로
+  const cg = stage.cg ? r.cgThumbUrl?.(stage.cg) ?? null : null;
+  if (cg) {
+    box.classList.add('cg');
+    box.style.setProperty('--bg', `url("${cg}")`);
+    return box;
+  }
   const url = r.bgUrl(stage.bg);
   const color = r.bgColor(stage.bg);
   if (url) box.style.setProperty('--bg', `url("${url}")`);

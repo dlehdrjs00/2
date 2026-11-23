@@ -9,8 +9,9 @@
  *   설정 particles 를 끄면(setParticles(false)) 비운다. prefers-reduced-motion 이면 CSS 가 멈춘다.
  * - 날짜 카드는 .stage > .card 로 범위를 좁힌다(대화 기록 항목 .card 와 이름이 겹치던 결함, UI_DESIGN 부록 A).
  */
-import type { BgFx, BgId, CharId, CharState, StageState } from '../engine/types';
+import type { BgFx, BgId, CgId, CharId, CharState, StageState } from '../engine/types';
 import { BACKGROUNDS, type BgTone } from '../story/assets';
+import { CGS } from '../story/cg';
 import { DATES } from '../story/config';
 import { el } from './dom';
 
@@ -23,9 +24,11 @@ export interface StageResolver {
   charLabel(char: CharId): string;
   /** 선택: 배경 톤. 없으면 에셋 매니페스트(BACKGROUNDS[id].tone, 기본 낮)로 정한다 */
   bgTone?(id: BgId): BgTone;
+  /** 선택: 이벤트 CG 주소. 없으면 매니페스트(story/cg.ts CGS[id].src)를 문서 기준으로 쓴다 */
+  cgUrl?(id: CgId): string | null;
 }
 
-const DUR = { fade: 550, veil: 380, char: 350, card: 500 };
+const DUR = { fade: 550, veil: 380, char: 350, card: 500, cg: 550 };
 /** 그림 해독을 기다리는 최대 시간 */
 const DECODE_MAX_MS = 1200;
 /** 빛망울 개수 상한(명세 8장): 대사 9, 날짜 카드 16 */
@@ -38,9 +41,10 @@ const DATE_PREFIX_RE = /^(\d{1,2})월 \d{1,2}일/;
 // 그림 해독(같은 주소는 한 번만, 해독한 Image 를 붙잡아 두어 다시 쓸 때 즉시 그려지게)
 // ---------------------------------------------------------------------------
 
-const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<void> }>();
+const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<boolean> }>();
 
-function decodeOnce(url: string): Promise<void> {
+/** 해독 결과: 성공 true, 실패(파일 없음·손상) false */
+function decodeOnce(url: string): Promise<boolean> {
   let hit = decodeCache.get(url);
   if (!hit) {
     const img = new Image();
@@ -49,12 +53,12 @@ function decodeOnce(url: string): Promise<void> {
     const done =
       typeof img.decode === 'function'
         ? img.decode().then(
-            () => undefined,
-            () => undefined,
+            () => true,
+            () => false,
           )
-        : new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
+        : new Promise<boolean>((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
           });
     hit = { img, done };
     decodeCache.set(url, hit);
@@ -62,10 +66,15 @@ function decodeOnce(url: string): Promise<void> {
   return hit.done;
 }
 
-/** 그림이 해독될 때까지(최대 ms). 실패해도 resolve 한다 */
+/** 그림이 해독될 때까지(최대 ms). 실패하거나 늦어도 resolve 한다 */
 export function whenImageReady(url: string | null, ms = DECODE_MAX_MS): Promise<void> {
   if (!url) return Promise.resolve();
-  return Promise.race([decodeOnce(url), new Promise<void>((resolve) => setTimeout(resolve, ms))]);
+  return Promise.race([decodeOnce(url).then(() => undefined), new Promise<void>((resolve) => setTimeout(resolve, ms))]);
+}
+
+/** 그림을 쓸 수 있는지(해독 성공). 최대 ms 안에 끝나지 않으면 일단 true(늦게라도 그려지게) */
+function imageUsable(url: string, ms = DECODE_MAX_MS): Promise<boolean> {
+  return Promise.race([decodeOnce(url), new Promise<boolean>((resolve) => setTimeout(() => resolve(true), ms))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +136,15 @@ export function fillMotes(container: HTMLElement, n: number, opts: MoteOptions =
   container.replaceChildren(frag);
 }
 
+/** 문서 기준 절대 주소. CSS 사용자 정의 속성(--bg 등)에 url() 을 넣을 때 쓴다(상대 주소는 CSS 파일 기준으로 풀림) */
+export function absoluteUrl(url: string): string {
+  try {
+    return new URL(url, document.baseURI).href;
+  } catch {
+    return url;
+  }
+}
+
 /** 배경 id → 톤(매니페스트 기준, 기본 낮) */
 export function toneOfBg(id: string | undefined): BgTone {
   if (!id) return 'day';
@@ -170,6 +188,10 @@ export class StageView {
   private motes: HTMLElement;
   private motesKey = '';
   private particles = true;
+  /** 이벤트 CG(캐릭터 앞, 대사창 뒤 — 무대 가득) */
+  private cgLayer: HTMLElement;
+  private cgId: CgId | null = null;
+  private cgToken = 0;
   private choiceVeil: HTMLElement;
   private veil: HTMLElement;
   private placeChip: HTMLElement;
@@ -186,6 +208,8 @@ export class StageView {
     this.sunwash = el('div', 'sunwash');
     this.motes = el('div', 'motes');
     this.motes.setAttribute('aria-hidden', 'true');
+    this.cgLayer = el('div', 'cg-layer');
+    this.cgLayer.setAttribute('aria-hidden', 'true');
     this.choiceVeil = el('div', 'choice-veil');
     this.veil = el('div', 'veil');
     this.placeChip = el('div', 'place-chip');
@@ -202,6 +226,7 @@ export class StageView {
       this.charsEl,
       this.sunwash,
       this.motes,
+      this.cgLayer,
       this.choiceVeil,
       this.placeChip,
       this.cardEl,
@@ -424,6 +449,7 @@ export class StageView {
       const img = this.chars.get(c);
       if (img) this.charsEl.append(img);
     }
+    this.showCg(stage.cg ?? null, false);
     this.clearVeilInstant();
     this.hideCard(false);
     this.hidePlace();
@@ -431,6 +457,7 @@ export class StageView {
 
   clearAll(): void {
     for (const c of [...this.chars.keys()]) this.hideChar(c, false);
+    this.showCg(null, false);
     this.setBgInstant('black');
     this.hideCard(false);
     this.hidePlace();
@@ -447,6 +474,58 @@ export class StageView {
   async flash(): Promise<void> {
     await this.veilIn('white');
     await this.veilOut();
+  }
+
+  // =========================================================================
+  // 이벤트 CG
+  // =========================================================================
+
+  private cgUrlOf(id: CgId): string | null {
+    if (this.resolver.cgUrl) return this.resolver.cgUrl(id);
+    const src = (CGS as Record<string, { src: string } | undefined>)[id]?.src;
+    return src ? absoluteUrl(src) : null;
+  }
+
+  /**
+   * 이벤트 CG 를 무대 가득(캐릭터 앞, 대사창 뒤) 보여 주거나(null 이면) 걷는다. 해독한 뒤 0.55s 페이드.
+   * 그림 파일이 없거나 깨졌으면 보여 주지 않는다(무대가 그대로 보임).
+   */
+  showCg(id: CgId | null, animate: boolean): void {
+    if (id === this.cgId) return;
+    this.cgId = id;
+    const token = ++this.cgToken;
+    const layer = this.cgLayer;
+    const set = (on: boolean) => {
+      if (animate) {
+        void layer.offsetWidth;
+        layer.classList.toggle('on', on);
+      } else withoutTransition([layer], () => layer.classList.toggle('on', on));
+    };
+    if (!id) {
+      set(false);
+      delete layer.dataset.cg;
+      return;
+    }
+    const url = this.cgUrlOf(id);
+    if (!url) {
+      set(false);
+      return;
+    }
+    void imageUsable(url).then((ok) => {
+      if (token !== this.cgToken) return;
+      if (!ok) {
+        set(false);
+        return;
+      }
+      layer.style.backgroundImage = `url("${url}")`;
+      layer.dataset.cg = id;
+      set(true);
+    });
+  }
+
+  /** 지금 보이는(또는 해독 중인) 이벤트 CG */
+  currentCg(): CgId | null {
+    return this.cgId;
   }
 
   // =========================================================================
@@ -468,7 +547,7 @@ export class StageView {
     this.motesKey = key;
     // 카드 동안은 카드 안(흐린 배경 위, 일력 아래)으로 옮긴다
     if (card) this.cardEl.insertBefore(this.motes, this.cardEl.children[1] ?? null);
-    else if (this.motes.parentElement !== this.el) this.el.insertBefore(this.motes, this.choiceVeil);
+    else if (this.motes.parentElement !== this.el) this.el.insertBefore(this.motes, this.cgLayer);
     this.motes.dataset.kind = card ? 'card' : 'play';
     if (!this.particles) {
       this.motes.replaceChildren();
@@ -524,7 +603,8 @@ export class StageView {
     const bg = el('div', 'card-bg');
     const url = bgId ? this.resolver.bgUrl(bgId) : null;
     const color = bgId ? this.resolver.bgColor(bgId) : null;
-    bg.style.setProperty('--bg', url ? `url("${url}")` : 'none');
+    // 사용자 정의 속성 안의 상대 url() 은 CSS 파일 기준으로 풀리므로(빌드는 base './') 문서 기준 절대 주소로 넣는다
+    bg.style.setProperty('--bg', url ? `url("${absoluteUrl(url)}")` : 'none');
     if (color) bg.style.backgroundColor = color;
 
     const parts: HTMLElement[] = [bg];

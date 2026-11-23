@@ -71,6 +71,7 @@ describe("'장면 처음부터' 복구", () => {
     expect(st.stage).toEqual({
       bg: 'classroom_day',
       bgm: 'daily',
+      cg: null,
       chars: { osana: { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' } },
       order: ['osana'],
     });
@@ -116,7 +117,7 @@ describe("'장면 처음부터' 복구", () => {
     expect(st.points).toEqual({ osana: 1, tenko: 0 });
     expect(st.choices).toEqual({ 'r1.ch': 'a' });
     // 캐릭터는 아직 등장 전일 수 있어 비우고, 배경·음악만 남긴다
-    expect(st.stage).toEqual({ bg: 'classroom_day', bgm: 'daily', chars: {}, order: [] });
+    expect(st.stage).toEqual({ bg: 'classroom_day', bgm: 'daily', chars: {}, order: [], cg: null });
     expect(st.log.map((e) => e.id)).toEqual(['r1.010', 'r1.ch:a', 'r1.020']);
     // 이후 저장에는 스냅샷이 들어간다
     expect(st.sceneEntry?.sceneId).toBe('r2');

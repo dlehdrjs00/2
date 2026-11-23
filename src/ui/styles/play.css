@@ -244,6 +244,23 @@
   }
 }
 
+/* 이벤트 CG: 캐릭터·햇살·빛망울 앞, 대사창 뒤에 무대 가득(stage.ts showCg). 해독한 뒤 크로스페이드 */
+.cg-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #cfe6f8 center / cover no-repeat;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.55s ease,
+    visibility 0.55s;
+}
+.cg-layer.on {
+  opacity: 1;
+  visibility: visible;
+}
+
 /* 선택지 중 무대 베일: 가운데는 밝게, 가장자리는 하늘 남색으로 살짝 눌러 선택지 리본이 떠 보이게 */
 .choice-veil {
   position: absolute;
@@ -252,8 +269,8 @@
   opacity: 0;
   visibility: hidden;
   background: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232, 244, 255, 0.22), rgba(36, 70, 118, 0.26) 100%);
-  backdrop-filter: blur(1.5px);
   -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
   transition:
     opacity 0.3s ease,
     visibility 0.3s;
@@ -280,8 +297,8 @@
   color: var(--ink);
   white-space: nowrap;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.66));
-  backdrop-filter: blur(10px) saturate(1.2);
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
   border: 1px solid var(--glass-hi);
   border-radius: 999px;
   box-shadow:
@@ -357,8 +374,8 @@
     rgba(255, 255, 255, calc(var(--win-alpha) * 0.96)) 0%,
     rgba(244, 250, 255, calc(var(--win-alpha) * 0.9)) 100%
   );
-  backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
   border: 1px solid var(--glass-hi);
   box-shadow:
     0 0 0 1px var(--glass-edge),
@@ -545,8 +562,8 @@
   padding: 0 5px;
   border-radius: calc(var(--fs) * 0.5) calc(var(--fs) * 0.5) 0 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, calc(var(--win-alpha) * 0.9)), rgba(255, 255, 255, calc(var(--win-alpha) * 0.97)));
-  backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
   border: 0;
   box-shadow:
     inset 0 1px 0 #fff,
@@ -769,8 +786,8 @@
   color: var(--ink-2);
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   box-shadow:
     0 0 0 1px var(--glass-edge),
     0 6px 16px rgba(28, 72, 124, 0.15);
@@ -848,8 +865,8 @@
     linear-gradient(90deg, transparent, var(--sky-300) 18%, var(--sky-300) 82%, transparent) 50% 3px / 92% 1px no-repeat,
     linear-gradient(90deg, transparent, var(--sky-300) 18%, var(--sky-300) 82%, transparent) 50% calc(100% - 3px) / 92% 1px no-repeat,
     linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.93) 9%, rgba(255, 255, 255, 0.93) 91%, rgba(255, 255, 255, 0) 100%);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   box-shadow: 0 8px 22px rgba(24, 60, 110, 0.16);
   opacity: 0;
   translate: 0 8px;
@@ -1387,6 +1404,7 @@
 @media (prefers-reduced-motion: reduce) {
   .char,
   .bg-layer,
+  .cg-layer,
   .veil,
   .stage > .card,
   .choice,

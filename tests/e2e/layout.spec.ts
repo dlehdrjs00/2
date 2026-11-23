@@ -73,6 +73,8 @@ test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치�
   ];
   for (const [name, texts] of shapes) {
     await setChoices(texts);
+    // 새로 붙인 버튼의 등장 연출(아래에서 8px 올라옴)이 끝난 뒤의 자리를 잰다
+    await page.evaluate(() => Promise.all([...document.querySelectorAll('.choice')].flatMap((e) => e.getAnimations().map((a) => a.finished.catch(() => undefined)))));
     for (const [w, h] of sizes) {
       await relayoutTo(page, w, h);
       const where = `${name} @${w}x${h}`;
@@ -85,7 +87,8 @@ test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치�
       const clipped = await page.locator('.choice').evaluateAll((els) => els.map((e) => e.scrollHeight - e.clientHeight));
       for (const d of clipped) expect(d, `${where}: 버튼 글자 넘침`).toBeLessThanOrEqual(1);
       for (const [i, b] of btns.entries()) {
-        expect(b.bottom - b.top, where).toBeGreaterThanOrEqual(44);
+        // 44px 이상(소수점 배치 오차 0.01px 허용)
+        expect(b.bottom - b.top, where).toBeGreaterThanOrEqual(44 - 0.01);
         for (const hb of hud) expect(overlap(b, hb), `${where}: ${i + 1}번이 HUD 와 겹침`).toBe(false);
         expect(overlap(b, tb), `${where}: ${i + 1}번이 대사창과 겹침`).toBe(false);
         // 스크롤 없이 목록 안에 다 보인다
@@ -112,11 +115,15 @@ test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사�
   await page.setViewportSize({ width: 740, height: 320 });
   await boot(page);
   await newGame(page);
+  // 글자를 바꾼 뒤 새로 필요한 웹폰트 조각(unicode-range)이 다 받아진 다음에 잰다(대체 글꼴 폭으로 재지 않게)
   const put = (s: string) =>
-    page.evaluate((s) => {
+    page.evaluate(async (s) => {
       const t = document.querySelector('.textbox .text')!;
       (t.firstChild as Text).data = s;
       t.querySelector('.hidden-char')!.textContent = '';
+      void t.getBoundingClientRect(); // 배치를 한 번 돌려 필요한 글꼴 조각 내려받기를 시작시킨다
+      await new Promise((r) => requestAnimationFrame(r));
+      await document.fonts.ready;
     }, s);
   const measure = () =>
     page.evaluate(() => {
@@ -141,11 +148,11 @@ test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사�
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     const base = await measure();
     expect((await info(page)).textOverflow, `${w}x${h}: ${LINE_MAX_CHARS}자`).toBe(false);
-    // 한 줄 넘게 긴 문장: 넘침으로 잡히고(예전 판정은 아래 여백만큼 느슨해 4번째 줄을 놓쳤다), 대사창이 위로 늘어나 잘리지 않음
-    await put(full.slice(0, LINE_MAX_CHARS + 40).trimEnd());
+    // 한 줄 넘게 긴 문장(LINE_MAX_CHARS 의 2배 — 고운돋움은 한글 폭이 1em 보다 좁아 +40자로는 667×375 에서 3줄 안에 들어간다): 넘침으로 잡히고(예전 판정은 아래 여백만큼 느슨해 4번째 줄을 놓쳤다), 대사창이 위로 늘어나 잘리지 않음
+    await put(full.slice(0, LINE_MAX_CHARS * 2).trimEnd());
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     const grown = await measure();
-    expect((await info(page)).textOverflow, `${w}x${h}: ${LINE_MAX_CHARS + 40}자`).toBe(true);
+    expect((await info(page)).textOverflow, `${w}x${h}: ${LINE_MAX_CHARS * 2}자`).toBe(true);
     expect(grown.top, `${w}x${h}: 대사창이 위로 늘어남`).toBeLessThan(base.top - 10);
     expect(grown.textBottom, `${w}x${h}: 글자가 대사창 안`).toBeLessThanOrEqual(grown.innerBottom + 0.5);
     expect(grown.textBottom).toBeLessThanOrEqual(grown.vh);

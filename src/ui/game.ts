@@ -16,7 +16,7 @@
  *  - 키 자동 반복(e.repeat)은 모두 무시한다(메뉴 깜빡임, 자동/건너뛰기 토글 반복, 확인창 즉시 확정 방지).
  *  - 저장·불러오기·설정·기록은 탭 시트 하나(오버레이 하나)다. 탭을 바꿔도 본문만 바뀌어 Esc 한 번에 닫힌다.
  */
-import type { CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
+import type { CgId, CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
 import { HEROINES } from '../engine/types';
 import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
 import { SaveManager, type LoadResult, type SaveSummary, type SlotId } from '../engine/save';
@@ -59,6 +59,13 @@ export interface GameContent {
   allImageUrls(): string[];
   titleSprites: Array<{ char: CharId; outfit: string; hair: string; expr: string }>;
   usesPlaceholders: boolean;
+  /** 이벤트 CG 원본·작은 그림(저장 썸네일) 주소 */
+  cgUrl?(id: string): string | null;
+  cgThumbUrl?(id: string): string | null;
+  /** 엔딩 폴라로이드에 넣을 대표 CG */
+  endingCg?(heroine: HeroineId): string | null;
+  /** 타이틀 키 비주얼(두 히로인이 함께 그려진 한 장 그림). 있으면 배경 + 개별 스프라이트 대신 쓴다 */
+  titleVisual?: string | null;
 }
 
 type Mode = 'boot' | 'title' | 'play' | 'ending';
@@ -156,6 +163,7 @@ export class Game {
       bgUrl: (id) => content.bgUrl(id),
       bgColor: (id) => content.bgColor(id),
       spriteUrl: (char, s) => content.spriteUrl(char, s.outfit, s.hair, s.expr),
+      cgThumbUrl: (id) => content.cgThumbUrl?.(id) ?? null,
     };
 
     this.root = el('div', 'vn');
@@ -167,6 +175,7 @@ export class Game {
       bgColor: (id) => content.bgColor(id),
       spriteUrl: (char, s) => content.spriteUrl(char, s.outfit, s.hair, s.expr),
       charLabel: (char) => content.heroineNames[char],
+      cgUrl: content.cgUrl ? (id: CgId) => content.cgUrl!(id) : undefined,
     });
     this.stage.onBackdrop = (url, color, tone?: string) => this.paintBackdrop(url, color, tone);
     this.textbox = new TextBox();
@@ -537,6 +546,7 @@ export class Game {
     if (opts.fromLoad) {
       this.stage.renderSnapshot(state.stage);
       this.playBgm(state.stage.bgm);
+      if (state.stage.cg) this.saves.markCg(state.stage.cg);
     } else {
       await this.applyEvents(res.events, instant, token);
       if (token !== this.presentToken) return;
@@ -640,6 +650,11 @@ export class Game {
           break;
         case 'fx':
           if (e.fx === 'shake' && !instant) this.stage.shake();
+          break;
+        case 'cg':
+          // 이벤트 CG: 무대 가득(캐릭터 앞, 대사창 뒤). 본 CG 는 기록해 둔다(추억 앨범)
+          this.stage.showCg(e.cg, !instant);
+          if (e.cg) this.saves.markCg(e.cg);
           break;
         default:
           break;
@@ -1043,11 +1058,13 @@ export class Game {
     const reached = new Set(this.saves.endingsReached());
     const hasAuto = this.saves.exists('auto');
     const version = `${this.c.buildLabel.replace(/\s*·\s*임시 에셋\s*$/, '')}${this.c.usesPlaceholders ? ' · 임시 그림' : ''}`;
+    const kv = this.c.titleVisual ?? null;
     const scr = buildTitle({
       title: this.c.title,
       subtitle: this.c.subtitle,
-      bgUrl: this.c.bgUrl('title'),
-      heroines: this.c.titleSprites.map((s) => ({ char: s.char, url: this.c.spriteUrl(s.char, s.outfit, s.hair, s.expr) })),
+      bgUrl: kv ?? this.c.bgUrl('title'),
+      keyVisual: !!kv,
+      heroines: kv ? [] : this.c.titleSprites.map((s) => ({ char: s.char, url: this.c.spriteUrl(s.char, s.outfit, s.hair, s.expr) })),
       hasAuto,
       autoDate: hasAuto ? this.autoDate() : '',
       endings: Object.values(this.story.endings).map((e) => ({
@@ -1148,7 +1165,7 @@ export class Game {
       title: this.t(def.title),
       bgUrl: this.c.bgUrl(bg),
       bgColor: this.c.bgColor(bg),
-      photo: miniStage('mini', stage, this.mini),
+      photo: this.endingPhoto(def.heroine, stage),
       caption,
       medals: HEROINES.map((h) => ({
         heroine: h,
@@ -1159,6 +1176,17 @@ export class Game {
     });
     this.root.insertBefore(scr, this.overlayRoot);
     this.screenEl = scr;
+  }
+
+  /** 엔딩 폴라로이드 사진: 대표 이벤트 CG 가 있으면 그 그림, 없으면 엔딩 직전 무대로 그린 미니 무대 */
+  private endingPhoto(heroine: HeroineId, stage: StageState | undefined): HTMLElement {
+    const cg = this.c.endingCg?.(heroine) ?? null;
+    const url = cg ? this.c.cgUrl?.(cg) ?? null : null;
+    if (!url) return miniStage('mini', stage, this.mini);
+    const photo = miniStage('mini', undefined, this.mini);
+    photo.classList.add('cg');
+    photo.style.setProperty('--bg', `url("${url}")`);
+    return photo;
   }
 
   // =========================================================================
@@ -1581,6 +1609,7 @@ export class Game {
     const r: PreloadResolver = {
       bgUrl: (id) => this.c.bgUrl(id),
       spriteUrl: (char, s) => this.c.spriteUrl(char, s.outfit, s.hair, s.expr),
+      cgUrl: (id) => this.c.cgUrl?.(id) ?? null,
     };
     try {
       const cur = sceneImages(this.story, sceneId, stage, r, route);
@@ -1631,6 +1660,8 @@ export class Game {
       bg: this.stage.currentBg() ?? null,
       bgm: this.bgmRequested,
       typing: this.textbox.isTyping,
+      /** 암전·번쩍임 연출 중(대사가 아직 그려지기 전) */
+      transitioning: this.transitioning,
       textOverflow: this.textbox.overflowing(),
       readCount: this.saves.readCount(),
       hidewin: this.hideWin,

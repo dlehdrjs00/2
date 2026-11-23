@@ -24,6 +24,8 @@ export interface TitleOptions {
   title: string;
   subtitle: string;
   bgUrl: string | null;
+  /** 배경이 두 히로인이 그려진 키 비주얼이면 true(개별 스프라이트를 겹치지 않는다) */
+  keyVisual?: boolean;
   /** 왼쪽(뒤)부터 두 히로인 그림 */
   heroines: Array<{ char: HeroineId; url: string | null }>;
   hasAuto: boolean;
@@ -81,7 +83,7 @@ function logo(title: string): HTMLElement {
 }
 
 export function buildTitle(o: TitleOptions): HTMLElement {
-  const scr = el('div', 'title-screen');
+  const scr = el('div', `title-screen${o.keyVisual ? ' kv' : ''}`);
   scr.dataset.noadvance = '';
   if (o.bgUrl) scr.style.setProperty('--bg', `url("${o.bgUrl}")`);
 
@@ -110,6 +112,8 @@ export function buildTitle(o: TitleOptions): HTMLElement {
     const d = el('span', 'sub', o.autoDate);
     d.id = 'vn-continue-date';
     bCont.append(d);
+    // 이름은 '이어하기', 날짜는 설명으로 읽힌다(두 번 읽히지 않게)
+    bCont.setAttribute('aria-label', '이어하기');
     bCont.setAttribute('aria-describedby', d.id);
   }
   const bLoad = button('불러오기', 'btn', () => o.onLoad());

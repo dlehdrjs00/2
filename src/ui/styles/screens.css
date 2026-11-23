@@ -984,6 +984,17 @@
   .slots .slot-name {
     flex: 1 1 calc(100% - 15px);
   }
+  /* 가로형 카드: 긴 제목·발췌는 줄을 넘기되 첫 줄만 보인다(글자가 오른쪽 삭제 버튼 밑으로 흘러가지 않게) */
+  .slots .slot-name,
+  .slots .slot-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    white-space: normal;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
   .slots .slot-r {
     display: inline-block;
   }
@@ -1526,6 +1537,16 @@
   inset: 0;
   pointer-events: none;
   background: linear-gradient(90deg, rgba(244, 250, 255, 0.78) 0%, rgba(244, 250, 255, 0.5) 30%, rgba(244, 250, 255, 0) 52%);
+}
+/* 키 비주얼(두 히로인이 함께 그려진 한 장 그림): 그림이 오른쪽 2/3 를 쓰므로 베일을 좁히고 햇빛은 옅게 */
+.title-screen.kv {
+  background-position: 62% center;
+}
+.title-screen.kv .leftveil {
+  background: linear-gradient(90deg, rgba(244, 250, 255, 0.82) 0%, rgba(244, 250, 255, 0.55) 24%, rgba(244, 250, 255, 0) 40%);
+}
+.title-screen.kv .sunlight {
+  opacity: 0.55;
 }
 .title-heroines {
   position: absolute;
@@ -2223,7 +2244,8 @@
   .title-heroines .hina {
     left: 70%;
   }
-  .title-screen .leftveil {
+  .title-screen .leftveil,
+  .title-screen.kv .leftveil {
     background: linear-gradient(180deg, rgba(244, 250, 255, 0.8) 0%, rgba(244, 250, 255, 0) 26%, rgba(244, 250, 255, 0) 50%, rgba(244, 250, 255, 0.85) 100%);
   }
   .title-screen .ver {

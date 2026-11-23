@@ -8,6 +8,7 @@ import { Game, type GameContent } from './ui/game';
 import { openStore } from './engine/storage';
 import { STORY } from './story';
 import { BACKGROUNDS, BGM, SFX, SPRITE_SETS, allSpritePaths, spritePath } from './story/assets';
+import { CGS, ENDING_CG, KEY_VISUAL } from './story/cg';
 import { BUILD_LABEL, GAME_SUBTITLE, GAME_TITLE, NAMES, SPEAKER_NAMES, TEXT_VARS } from './story/config';
 
 const BASE = import.meta.env.BASE_URL;
@@ -48,6 +49,17 @@ const content: GameContent = {
       .map(url),
     ...allSpritePaths().map(url),
   ],
+  cgUrl: (id) => {
+    const a = (CGS as Record<string, { src: string } | undefined>)[id];
+    return a ? url(a.src) : null;
+  },
+  cgThumbUrl: (id) => {
+    const a = (CGS as Record<string, { thumb: string } | undefined>)[id];
+    return a ? url(a.thumb) : null;
+  },
+  endingCg: (heroine) => ENDING_CG[heroine] ?? null,
+  // 타이틀: 두 히로인이 함께 그려진 키 비주얼(없으면 배경 + 스프라이트 두 장)
+  titleVisual: KEY_VISUAL.src ? url(KEY_VISUAL.src) : null,
   titleSprites: [
     { char: 'osana', outfit: 'uniform', hair: 'default', expr: 'smile' },
     { char: 'tenko', outfit: 'uniform', hair: 'default', expr: 'smile' },

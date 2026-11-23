@@ -15,6 +15,8 @@ export interface Info {
   /** 마지막으로 요청한 배경음 id */
   bgm: string | null;
   typing: boolean;
+  /** 암전·번쩍임 연출 중(대사가 아직 그려지기 전) */
+  transitioning: boolean;
   textOverflow: boolean;
   readCount: number;
   /** 대사창 숨김(H) 중인지 */
@@ -49,12 +51,12 @@ export async function newGame(page: Page) {
   await waitSettled(page);
 }
 
-/** 연출(암전 등)이 끝나 블로킹 프레임이 표시될 때까지 */
+/** 연출(암전 등)이 끝나 블로킹 프레임이 표시될 때까지(암전 중에는 아직 대사를 그리기 전이라 기다린다) */
 export async function waitSettled(page: Page) {
   await expect
     .poll(async () => {
       const i = await info(page);
-      return i.mode !== 'play' || (i.step !== null && !i.typing);
+      return i.mode !== 'play' || (i.step !== null && !i.typing && !i.transitioning);
     })
     .toBe(true);
 }
