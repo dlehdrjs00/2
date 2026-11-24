@@ -544,6 +544,15 @@
   .panel-hint {
     display: none;
   }
+  /* 경고(이 탭에만 남는 저장)는 낮은 화면에서도 보인다. 쪽 번호는 레일에 있으므로 뺀다 */
+  .panel-hint.warn {
+    display: flex;
+    padding-top: 4px;
+    line-height: 1.3;
+  }
+  .panel-hint.warn .pageno {
+    display: none;
+  }
 }
 
 /* 작은 패널(메뉴·확인창): 가운데 유리 카드 + 안쪽 장식선 */
@@ -924,6 +933,16 @@
 .slot-line2 .slot-text {
   flex: 1 1 auto;
   min-width: 0;
+}
+/* 이 탭 메모리에만 있는 칸(브라우저 저장소에 쓰지 못함): 사라질 수 있다는 경고라 '장면 처음부터'보다 진하게(흰 글자 4.8:1) */
+.slot-tabonly {
+  flex: none;
+  padding: 0.1em 0.5em;
+  font: 700 16px/1.3 var(--font-ui);
+  color: #fff;
+  white-space: nowrap;
+  border-radius: 999px;
+  background: #b35a00;
 }
 .slot-recover {
   flex: none;
@@ -2512,6 +2531,15 @@
   color: var(--sky-700);
   white-space: nowrap;
   text-shadow: none;
+}
+/* [이어하기]의 자동 저장이 이 탭에만 있음(같은 탭에서는 그 최신 진행을 불러온다) */
+.title-menu .btn .sub .tab-only {
+  display: inline-block;
+  padding: 0.2em 0.5em;
+  border-radius: 999px;
+  font-weight: 700;
+  color: #fff;
+  background: #b35a00;
 }
 /* 엔딩 배지(맨 아래): 본 엔딩은 인물 색 테와 별, 못 본 엔딩은 회색 별 */
 .title-foot {

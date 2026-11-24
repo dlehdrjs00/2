@@ -26,6 +26,7 @@ export type IconName =
   | 'hide'
   | 'rain'
   | 'play'
+  | 'warn'
   // 화면 팀(screens.css :root 의 --i-album 등): 추억 앨범 탭·잠긴 칸·감상 화면 넘기기
   | 'album'
   | 'lock'

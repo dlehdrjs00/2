@@ -8,7 +8,7 @@
  *   숨기기는 빠른 메뉴가 4개만 남는 compact 단계와 키보드 없는 휴대폰에서 그림을 감상하는 터치 대안이다.
  * 확인창 [data-panel=confirm]
  *   .dialog-msg 에 메시지 전체를 담는다(테스트가 문구를 여기서 찾는다). 첫 줄은 strong.lead(제목처럼),
- *   나머지는 본문, 보충 줄은 small. 오른쪽 아래 취소·확인(data-action=cancel/ok, data-autofocus).
+ *   나머지는 본문, 보충 줄은 small. 오른쪽 아래 취소·확인(data-action=cancel/ok, data-autofocus). cancel 이 빈 문자열이면 확인만.
  */
 import { button, el } from '../dom';
 import { ico, type IconName } from '../icons';
@@ -68,6 +68,7 @@ export type AskMessage = string | { lead: string; body?: string; note?: string }
 
 export interface AskOptions {
   ok: string;
+  /** 빈 문자열이면 [취소] 버튼을 두지 않는다(알리기만 하는 창. Esc 는 그대로 '취소'로 닫힌다) */
   cancel: string;
   danger?: boolean;
 }
@@ -99,7 +100,8 @@ export function buildConfirm(message: AskMessage, o: AskOptions, answer: (yes: b
   ok.dataset.action = 'ok';
   // 기본 버튼에 포커스(Enter = 확인). 삭제처럼 되돌릴 수 없는 확인창은 실수로 확정되지 않게 취소에 둔다
   (o.danger ? cancel : ok).dataset.autofocus = '';
-  foot.append(cancel, ok);
+  if (o.cancel) foot.append(cancel);
+  foot.append(ok);
   p.append(h, msg, foot);
   return p;
 }

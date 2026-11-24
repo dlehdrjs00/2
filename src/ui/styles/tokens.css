@@ -149,6 +149,8 @@
   --i-hide: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.9 5.7A10 10 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.6 3.4M6.3 7.3C3.9 9 2.5 12 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.4-1.1'/%3E%3Cpath d='M9.9 9.9a3 3 0 0 0 4.2 4.2M3.5 3.5l17 17'/%3E%3C/svg%3E");
   --i-rain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 15.5a4.5 4.5 0 0 1 .4-9A5.5 5.5 0 0 1 18 8a3.8 3.8 0 0 1-.5 7.5z'/%3E%3Cpath d='M8.5 18.5 7.5 21M12.5 18.5l-1 2.5M16.5 18.5l-1 2.5'/%3E%3C/svg%3E");
   --i-play: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23000'%3E%3Cpath d='M8 5.5v13l10.5-6.5z'/%3E%3C/svg%3E");
+  /* 경고(세모 + 느낌표): 자동 저장이 이 탭에만 있을 때의 상태 표시·안내(play.css 12절) */
+  --i-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3.8 2.8 19.8h18.4z'/%3E%3Cpath d='M12 10v4.6M12 17.3v.1'/%3E%3C/svg%3E");
 }
 
 /* ---------- 기초 요소 ---------- */

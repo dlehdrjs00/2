@@ -21,13 +21,15 @@
  *  - 오버레이가 열려 있으면 그 밖의 화면은 inert 로 막아 Tab·Enter 로 아래 버튼을 누를 수 없다.
  *  - 키 자동 반복(e.repeat)은 모두 무시한다(메뉴 깜빡임, 자동/건너뛰기 토글 반복, 확인창 즉시 확정 방지).
  *  - 저장·불러오기·설정·기록은 탭 시트 하나(오버레이 하나)다. 탭을 바꿔도 본문만 바뀌어 Esc 한 번에 닫힌다.
+ *  - 자동 저장 상태 표시(.autosave-chip, savestatus.ts)는 [data-noadvance] 버튼이라 누른 입력이 대사 진행으로 새지 않고,
+ *    오버레이가 열리면 다른 화면처럼 inert 가 된다.
  *  - 추억 앨범(타이틀 시트의 탭)의 감상 화면은 시트 위에 겹친 오버레이다. 키 입력은 맨 위 오버레이의 onKey 가 먼저 받고
  *    (←/→ 넘기기 등), 클릭은 오버레이 안에서 전파를 멈춘다. 닫으면 포커스는 연 칸 → 시트를 닫으면 [추억 앨범]으로 돌아간다.
  */
 import type { CgId, CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
 import { HEROINES } from '../engine/types';
 import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
-import { KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotId } from '../engine/save';
+import { KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotDurability, type SlotId } from '../engine/save';
 import { autoDelayMs, charsPerSecond, DEFAULT_SETTINGS, loadSettings, saveSettings, textScaleFactor, type Settings } from '../engine/settings';
 import type { KeyValueStore } from '../engine/storage';
 import { AudioManager } from '../engine/audio';
@@ -36,7 +38,20 @@ import { applyLayout, computeLayout, isPhonePortrait, measureSafeArea } from './
 import { StageView, bgAfterCard, toneOfBg } from './stage';
 import { TextBox } from './textbox';
 import { createQuickBar, type QuickBar } from './qbar';
-import { button, cssUrl, el, withJosa } from './dom';
+import { button, cssUrl, el, formatSlotDate, withJosa } from './dom';
+import {
+  AUTOSAVE_ALERT_MS,
+  AUTOSAVE_HEADROOM,
+  AUTOSAVE_NOTE_MS,
+  AUTOSAVE_TEXT,
+  AutoSaveTracker,
+  autosaveChipRow,
+  createAutosaveChip,
+  isAutoSaveWarn,
+  setAutosaveChip,
+  type AutoSaveChange,
+  type AutoSaveStatus,
+} from './savestatus';
 import { isFullscreen, prefersReducedMotion, showFullscreenControl, splitDate, toggleFullscreen } from './screens/common';
 import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
@@ -167,6 +182,13 @@ export class Game {
   private screenEl: HTMLElement | null = null;
   private toastEl: HTMLElement | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 자동 저장 상태 표시(이 탭에만 있는 동안 플레이 화면에 계속 보임) */
+  private autoChip: HTMLButtonElement;
+  /**
+   * 자동 저장 상태 기계(savestatus.ts AutoSaveTracker). 자동 저장 칸만 보고 정한다. 문제 구간이 시작·끝날 때만 알리고
+   * (applyAutoSave), tab-only·low-space 동안 상태 표시를 띄운다. 타이틀을 오가도 유지한다(저장소의 실제 상태라서)
+   */
+  private autoTrack = new AutoSaveTracker();
   private mini: MiniResolver;
   private preloader = new ImagePreloader();
 
@@ -244,6 +266,8 @@ export class Game {
     this.root = el('div', 'vn');
     this.root.id = 'vn';
     this.root.dataset.tone = 'day';
+    this.root.dataset.autosave = this.autoSave;
+    this.root.dataset.aschip = 'above';
     this.backdrop = el('div', 'backdrop');
     this.stage = new StageView({
       bgUrl: (id) => content.bgUrl(id),
@@ -267,6 +291,8 @@ export class Game {
       menu: () => this.openMenu(),
     });
 
+    this.autoChip = createAutosaveChip(() => this.openAutosaveInfo());
+
     this.choicesEl = el('div', 'choices');
     this.choicesEl.dataset.noadvance = '';
     this.choicesEl.setAttribute('role', 'group');
@@ -278,7 +304,17 @@ export class Game {
     this.safeProbe.style.cssText =
       'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
 
-    this.root.append(this.backdrop, this.stage.el, this.textbox.el, this.choicesEl, this.qbar.el, this.overlayRoot, this.rotateEl, this.safeProbe);
+    this.root.append(
+      this.backdrop,
+      this.stage.el,
+      this.textbox.el,
+      this.choicesEl,
+      this.qbar.el,
+      this.autoChip,
+      this.overlayRoot,
+      this.rotateEl,
+      this.safeProbe,
+    );
     mount.append(this.root);
 
     this.applyVisualSettings();
@@ -293,7 +329,7 @@ export class Game {
 
   start(): void {
     this.showTitle();
-    if (!this.saves.persistent) this.toast('브라우저 저장소를 쓸 수 없어 저장이 이 탭에서만 유지돼요.', 5000);
+    if (!this.saves.canPersist) this.toast('브라우저 저장소를 쓸 수 없어 저장이 이 탭에만 남아요.', 5000);
     // 그림 미리 불러오기(백그라운드, 낮은 우선순위): 타이틀 키 비주얼이 그려진 뒤(늦어도 TITLE_ART_WAIT_MS 뒤) 첫 장면 → 나머지 전부
     this.whenTitleArt(() => setTimeout(() => this.startPreload(), 300));
     setTimeout(() => this.titleArtDone(), TITLE_ART_WAIT_MS);
@@ -794,6 +830,8 @@ export class Game {
         state.endedWith = step.ending;
         this.saves.markEnding(step.ending);
         this.saves.remove('auto');
+        // 자동 저장이 없어졌으니 '이 탭에만' 위험도 없다(조용히 되돌린다. 다음 게임의 첫 자동 저장이 다시 판단)
+        this.applyAutoSave(this.autoTrack.cleared());
         this.textbox.setVisible(false);
         this.showEnding(step.ending);
         break;
@@ -1187,6 +1225,7 @@ export class Game {
     ).then((yes) => {
       if (!yes) return;
       this.saves.remove(slot);
+      if (slot === 'auto') this.applyAutoSave(this.autoTrack.cleared());
       this.toast(`${withJosa(slotName, '을')} 삭제했어요.`);
       this.refreshTopOverlay();
       if (this.mode === 'title') this.renderTitle();
@@ -1216,9 +1255,111 @@ export class Game {
     return loc ? loc.scene.steps[loc.index] : null;
   }
 
-  private autosave() {
-    if (!this.state || this.mode !== 'play') return;
-    this.saves.write('auto', this.state, this.summary());
+  /** 자동 저장 상태(savestatus.ts): none / ok / tab-only / low-space */
+  private get autoSave(): AutoSaveStatus {
+    return this.autoTrack.status;
+  }
+
+  /**
+   * 자동 저장. 쓸 때마다 자동 저장 칸이 브라우저 저장소에 들어갔는지 확인해 상태 기계에 넘긴다(알림은 문제 구간의 시작·끝에만).
+   * 실패해도 브라우저 저장소의 옛 자동 저장은 지우지 않는다(같은 탭에서는 새 위치, 새로고침하면 옛 위치).
+   * 돌려주는 값은 바뀐 상태와 알림([지금 다시 저장]이 결과를 알릴 때 쓴다). quiet 면 알림을 띄우지 않는다
+   */
+  private autosave(quiet = false): AutoSaveChange | null {
+    if (!this.state || this.mode !== 'play') return null;
+    const d = this.saves.saveSlot('auto', this.state, this.summary());
+    const change = this.autoTrack.saved({
+      persisted: d === 'persisted',
+      canPersist: this.saves.canPersist,
+      hasRoom: () => this.saves.hasRoom(AUTOSAVE_HEADROOM),
+    });
+    this.applyAutoSave(quiet ? { ...change, notice: null } : change);
+    return change;
+  }
+
+  /**
+   * 상태 기계의 결과를 화면에 옮긴다. 상태가 같으면 아무것도 하지 않는다(매 대사 토스트 금지).
+   * 알림: failed(경고, role=alert) / memoryOnly(처음부터 저장소를 못 씀, 페이지마다 한 번) / recovered(회복).
+   * tab-only ↔ low-space 는 알리지 않고 상태 표시의 글자만 바꾼다. → none 은 조용히 걷는다.
+   */
+  private applyAutoSave(c: AutoSaveChange) {
+    if (!c.changed) return;
+    this.root.dataset.autosave = c.status;
+    if (isAutoSaveWarn(c.status)) setAutosaveChip(this.autoChip, c.status);
+    if (c.notice === 'failed') this.toast(AUTOSAVE_TEXT.failed, AUTOSAVE_ALERT_MS, { kind: 'autosave-tab-only', alert: true });
+    else if (c.notice === 'memoryOnly') this.toast(AUTOSAVE_TEXT.memoryOnly, AUTOSAVE_NOTE_MS, { kind: 'autosave-tab-only', alert: true });
+    else if (c.notice === 'recovered') this.toast(AUTOSAVE_TEXT.recovered, AUTOSAVE_NOTE_MS, { kind: 'autosave-recovered' });
+    // 열린 저장·불러오기 목록의 '이 탭에만' 표시·안내 줄을 맞춘다
+    const tab = this.sheet?.current();
+    if (tab === 'save' || tab === 'load') this.refreshTopOverlay();
+  }
+
+  /** 상태 표시를 눌렀을 때: 위험·남아 있는 위치·해결 방법과 [지금 다시 저장] */
+  private openAutosaveInfo() {
+    if (this.mode !== 'play' || this.overlays.length || !isAutoSaveWarn(this.autoSave)) return;
+    // 떠 있는 자동 저장 알림은 걷는다: 설명창이 같은 내용을 담고, 낮은 가로 화면에서는 아래 가운데 토스트가 설명창 버튼을 가린다
+    if (this.toastEl?.dataset.kind?.startsWith('autosave')) this.dismissToast();
+    if (!this.saves.canPersist) {
+      void this.ask(
+        {
+          lead: '저장이 이 탭에만 있어요',
+          body:
+            '이 브라우저에서는 저장소를 쓸 수 없어(사생활 보호 모드·사이트 데이터 차단 등) 자동 저장과 모든 저장이 이 탭의 메모리에만 남아요. ' +
+            '새로고침하거나 탭을 닫으면 진행이 사라져요.',
+          note: '사이트 데이터 저장을 허용하거나 일반 창에서 열면 저장이 남아요(지금 진행은 옮겨지지 않아요).',
+        },
+        { ok: '확인', cancel: '' },
+      );
+      return;
+    }
+    const remedy =
+      '쓰지 않는 저장 칸을 지우거나 브라우저의 다른 사이트 데이터를 정리해 공간을 만든 뒤 [지금 다시 저장]을 눌러 보세요. ' +
+      '사생활 보호(시크릿) 창은 저장 공간이 작을 수 있어요.';
+    if (this.autoSave === 'low-space') {
+      void this.ask(
+        {
+          lead: '저장 공간이 거의 없어요',
+          body:
+            '지금 위치까지는 자동 저장이 브라우저에 들어가 있어, 새로고침해도 여기서 이어 갈 수 있어요. ' +
+            '하지만 저장 공간이 거의 없어 다음 자동 저장이 다시 실패할 수 있고, 그러면 새로고침하거나 탭을 닫을 때 최근 진행이 사라질 수 있어요.',
+          note: remedy,
+        },
+        { ok: '지금 다시 저장', cancel: '닫기' },
+      ).then((yes) => yes && this.retryAutosave());
+      return;
+    }
+    const kept = this.saves.peekPersisted('auto');
+    let where = '브라우저에 남아 있는 자동 저장이 없어, 새로고침하면 [이어하기]로 이 진행을 이어 갈 수 없어요.';
+    if (!kept.empty && !kept.broken) {
+      const label = [kept.summary?.sceneTitle ?? '', formatSlotDate(kept.savedAt ?? '')].filter(Boolean).join(' · ');
+      where = `브라우저에는 마지막으로 저장된 자동 저장${label ? `(${label})` : ''}이 그대로 남아 있어, 새로고침하면 그 위치로 돌아가요.`;
+    }
+    void this.ask(
+      {
+        lead: '자동 저장이 이 탭에만 있어요',
+        body:
+          '저장 공간이 부족하거나 저장이 막혀 자동 저장을 브라우저에 쓰지 못했어요. 지금 진행은 이 탭의 메모리에만 있어, ' +
+          `새로고침하거나 탭을 닫으면 최근 진행이 사라질 수 있어요.\n${where}`,
+        note: remedy,
+      },
+      { ok: '지금 다시 저장', cancel: '닫기' },
+    ).then((yes) => yes && this.retryAutosave());
+  }
+
+  /**
+   * [지금 다시 저장]: 자동 저장을 곧바로 다시 쓰고(여유 공간도 다시 재 본다), 사용자가 누른 것이므로 결과를 늘 알린다
+   * (상태 기계의 반복 제한과 상관없이): 회복 / 저장됐지만 공간 부족 / 아직 실패.
+   */
+  private retryAutosave() {
+    if (this.mode !== 'play' || !this.state || !this.current) return;
+    // persistNow 와 같은 규칙: 엔딩 위치는 자동 저장으로 남기지 않는다
+    const t = this.stateStep()?.t ?? this.current.step.t;
+    if (t === 'ending') return;
+    const c = this.autosave(true);
+    if (!c) return;
+    if (c.status === 'ok') this.toast(AUTOSAVE_TEXT.recovered, AUTOSAVE_NOTE_MS, { kind: 'autosave-recovered' });
+    else if (c.status === 'low-space') this.toast(AUTOSAVE_TEXT.retryLow, AUTOSAVE_NOTE_MS, { kind: 'autosave-retry-low' });
+    else this.toast(AUTOSAVE_TEXT.retryFailed, AUTOSAVE_NOTE_MS, { kind: 'autosave-retry-failed' });
   }
 
   private persistNow() {
@@ -1233,17 +1374,19 @@ export class Game {
   /** 퀵저장(F5·빠른 메뉴): 확인 없이 퀵 칸에 덮어쓴다. 선택지 위에서도 된다 */
   private quickSave() {
     if (this.mode !== 'play' || !this.state || this.overlays.length) return;
-    const ok = this.saves.write('quick', this.state, this.summary());
-    this.toast(this.savedMessage(ok, '퀵저장했어요'), ok && this.saves.persistent ? undefined : 4000);
+    const d = this.saves.saveSlot('quick', this.state, this.summary());
+    this.toast(this.savedMessage(d, '퀵저장했어요'), d === 'persisted' ? undefined : AUTOSAVE_NOTE_MS);
   }
 
   /**
-   * 저장 결과 안내. 브라우저 저장소를 쓸 수 없으면(메모리 저장) 성공해도 이 탭을 닫으면 사라진다는 사실을 함께 알린다.
-   * ok 가 false 면 용량 부족 등으로 이 탭의 메모리에만 남은 경우다.
+   * 저장 결과 안내. 판단은 방금 저장한 그 칸이 브라우저 저장소에 들어갔는지(saveSlot)로만 한다
+   * (다른 칸이 이 탭에만 있다고 영구 저장된 칸에 '사라져요'를 붙이지 않게).
+   * 이 탭에만 남았으면: 브라우저 저장소를 쓸 수 없는 경우(메모리 저장)와 쓰기가 실패한 경우(용량 부족 등)를 나눠 알린다.
    */
-  private savedMessage(ok: boolean, done: string): string {
-    if (!ok) return '저장 공간이 부족해 이 탭에서만 저장됐어요.';
-    return this.saves.persistent ? done : `${done} · 이 탭을 닫으면 사라져요`;
+  private savedMessage(d: SlotDurability, done: string): string {
+    if (d === 'persisted') return done;
+    if (!this.saves.canPersist) return `${done} · 새로고침하거나 탭을 닫으면 사라져요`;
+    return '용량이 부족해 이 탭에만 저장됐어요 · 새로고침하거나 탭을 닫으면 사라져요';
   }
 
   /** 퀵로드(F9·빠른 메뉴): 비었으면 안내, 있으면 불러오기 확인 뒤 */
@@ -1426,6 +1569,8 @@ export class Game {
     const reached = new Set(this.saves.endingsReached());
     const hasAuto = this.saves.exists('auto');
     const autoDate = hasAuto ? this.autoDate() : '';
+    // 같은 탭에서는 이 탭에만 있는 최신 진행을 이어 간다(BrowserStore.get 이 메모리 값을 먼저 본다). 그 사실을 작게 표시
+    const autoTabOnly = hasAuto && !this.saves.slotPersisted('auto');
     const album = this.hasAlbum() ? { seen: this.albumSeenCount(), total: this.c.cgCatalog!.length } : null;
     const endings = Object.values(this.story.endings).map((e) => ({
       id: e.id,
@@ -1434,7 +1579,7 @@ export class Game {
       reached: reached.has(e.id),
       title: this.t(e.title),
     }));
-    const sig = JSON.stringify([endings.map((e) => e.reached), hasAuto, autoDate, album]);
+    const sig = JSON.stringify([endings.map((e) => e.reached), hasAuto, autoDate, autoTabOnly, album]);
     if (this.screenEl && sig === this.titleSig) return;
     this.titleSig = sig;
     const version = `${this.c.buildLabel}${this.c.placeholderNote ? ` · ${this.c.placeholderNote}` : ''}`;
@@ -1449,6 +1594,7 @@ export class Game {
       heroines: kv ? [] : this.c.titleSprites.map((s) => ({ char: s.char, url: this.c.spriteUrl(s.char, s.outfit, s.hair, s.expr) })),
       hasAuto,
       autoDate,
+      autoTabOnly,
       endings,
       version,
       album,
@@ -1818,10 +1964,16 @@ export class Game {
   }
 
   private confirmToTitle() {
-    void this.ask(
-      { lead: '타이틀로 돌아갈까요?', body: '지금 위치는 자동 저장되어 있어요.', note: '타이틀의 [이어하기]로 여기서 다시 시작할 수 있어요.' },
-      { ok: '타이틀로', cancel: '취소' },
-    ).then((yes) => {
+    // 자동 저장이 이 탭에만 있으면 '저장되어 있어요'만 말하지 않는다(새로고침·탭 닫기 손실을 함께 알린다)
+    const msg: AskMessage =
+      this.autoSave === 'tab-only'
+        ? {
+            lead: '타이틀로 돌아갈까요?',
+            body: '지금 위치는 이 탭에만 자동 저장되어 있어요.',
+            note: '이 탭의 [이어하기]로 다시 시작할 수 있지만, 새로고침하거나 탭을 닫으면 사라질 수 있어요.',
+          }
+        : { lead: '타이틀로 돌아갈까요?', body: '지금 위치는 자동 저장되어 있어요.', note: '타이틀의 [이어하기]로 여기서 다시 시작할 수 있어요.' };
+    void this.ask(msg, { ok: '타이틀로', cancel: '취소' }).then((yes) => {
       if (!yes) return;
       this.persistNow();
       this.showTitle();
@@ -1969,8 +2121,8 @@ export class Game {
         const name = this.slotName(slot);
         const doSave = () => {
           if (!this.state || this.mode !== 'play') return;
-          const ok = this.saves.write(slot, this.state, this.summary());
-          this.toast(this.savedMessage(ok, `${name}에 저장했어요`), ok && this.saves.persistent ? undefined : 4000);
+          const d = this.saves.saveSlot(slot, this.state, this.summary());
+          this.toast(this.savedMessage(d, `${name}에 저장했어요`), d === 'persisted' ? undefined : AUTOSAVE_NOTE_MS);
           // 다시 그린 직후 같은 자리 두 번째 클릭(예: 저장 더블클릭)이 새로 그려진 카드에 닿지 않게
           this.refreshTopOverlay();
           (this.sheet?.view() as SaveLoadView | null)?.pulse?.(slot);
@@ -2114,12 +2266,16 @@ export class Game {
     t.style.setProperty('--toast-right', `${Math.round(right)}px`);
   }
 
-  toast(msg: string, ms = 2200): void {
-    this.toastEl?.remove();
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    // 앞의 분홍 별은 CSS(.toast::before)가 그린다
-    const t = el('div', 'toast', msg);
-    t.setAttribute('role', 'status');
+  /**
+   * 토스트 한 장(새 토스트는 앞 토스트를 바꾼다).
+   * opts.kind: 테스트·스타일용 표식(data-kind). opts.alert: 경고 모양(.toast.warn)과 role=alert(스크린리더가 바로 읽음)
+   */
+  toast(msg: string, ms = 2200, opts: { kind?: string; alert?: boolean } = {}): void {
+    this.dismissToast();
+    // 앞의 분홍 별(경고는 주황 세모)은 CSS(.toast::before)가 그린다
+    const t = el('div', opts.alert ? 'toast warn' : 'toast', msg);
+    t.setAttribute('role', opts.alert ? 'alert' : 'status');
+    if (opts.kind) t.dataset.kind = opts.kind;
     this.root.append(t);
     this.toastEl = t;
     this.placeToast();
@@ -2127,6 +2283,14 @@ export class Game {
       t.remove();
       if (this.toastEl === t) this.toastEl = null;
     }, ms);
+  }
+
+  /** 떠 있는 토스트를 곧바로 걷는다 */
+  private dismissToast() {
+    this.toastEl?.remove();
+    this.toastEl = null;
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = null;
   }
 
   // =========================================================================
@@ -2183,8 +2347,11 @@ export class Game {
     const jitter = zoomed && last !== null && Math.abs(vw - last.vw) <= 2 && Math.abs(vh - last.vh) <= 2;
     if (!jitter) {
       this.lastLayoutSize = { vw, vh };
-      const L = computeLayout(vw, vh, measureSafeArea(this.safeProbe), { textScale: textScaleFactor(this.settings.textScale) });
+      const safe = measureSafeArea(this.safeProbe);
+      const L = computeLayout(vw, vh, safe, { textScale: textScaleFactor(this.settings.textScale) });
       applyLayout(this.root, L);
+      // 세로 배치에서 자동 저장 상태 표시를 장소 표시 위 줄에 둘 수 있는지(savestatus.ts autosaveChipRow, play.css 12절)
+      this.root.dataset.aschip = autosaveChipRow(L.sy, safe.t, L.fs, L.btn);
       this.stage.placeHintIn(L.mode === 'below' ? this.root : null);
       this.placeToast();
     }
@@ -2311,6 +2478,8 @@ export class Game {
       preload: this.preloader.pending,
       hidewin: this.hideWin,
       sheet: this.sheet?.current() ?? null,
+      /** 자동 저장 상태: none(없음·아직 안 씀) / ok(브라우저에 저장됨) / tab-only(이 탭 메모리에만) / low-space(저장됐지만 공간 부족) */
+      autoSave: this.autoSave,
     };
   }
 }

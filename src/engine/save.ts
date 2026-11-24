@@ -25,6 +25,12 @@ export const KEY_PREFIX = 'ashita.';
 export const MANUAL_SLOTS = 30;
 /** auto = 자동 저장, quick = 퀵저장(빠른 메뉴), 숫자 = 수동 저장 칸 */
 export type SlotId = 'auto' | 'quick' | `${number}`;
+/**
+ * 한 칸의 저장 상태. persisted = 브라우저 저장소에 들어 있음(새로고침·탭을 닫아도 남음),
+ * tab-only = 이 탭의 메모리에만 있음(용량 초과로 쓰기 실패, 또는 브라우저 저장소를 쓸 수 없음).
+ * 칸마다 따로 판단한다(다른 칸이 이 탭에만 있어도 이 칸의 판단은 바뀌지 않는다).
+ */
+export type SlotDurability = 'persisted' | 'tab-only';
 
 export interface SaveSummary {
   sceneTitle: string;
@@ -149,8 +155,33 @@ export class SaveManager {
     });
   }
 
+  /** 저장소 전체 기준(모든 값이 브라우저 저장소에 있음). 칸 하나의 판단에는 slotPersisted 를 쓴다 */
   get persistent(): boolean {
     return this.store.persistent;
+  }
+
+  /** 브라우저 저장소를 쓰는가(false: 처음부터 쓸 수 없어 모든 저장이 이 탭 메모리에만 남음) */
+  get canPersist(): boolean {
+    return this.store.canPersist;
+  }
+
+  /**
+   * 브라우저 저장소에 글자 chars 개를 더 쓸 자리가 있는가(임시 키로 재 본다. storage.ts hasRoom).
+   * 자동 저장이 용량 초과로 실패한 뒤 '공간이 생겼는지'를 판단할 때만 쓴다(savestatus.ts AutoSaveTracker)
+   */
+  hasRoom(chars: number): boolean {
+    return this.store.hasRoom(chars);
+  }
+
+  /** 이 칸의 지금 내용(없으면 '없음')이 브라우저 저장소에 그대로 들어 있는가. 다른 칸의 상태와 상관없다 */
+  slotPersisted(slot: SlotId): boolean {
+    return this.store.isPersisted(this.slotKey(slot));
+  }
+
+  /** 이 칸에 무엇이 있고 그것이 영구 저장인지. 빈 칸이면 null */
+  slotDurability(slot: SlotId): SlotDurability | null {
+    if (!this.exists(slot)) return null;
+    return this.slotPersisted(slot) ? 'persisted' : 'tab-only';
   }
 
   slotKey(slot: SlotId): string {
@@ -262,6 +293,25 @@ export class SaveManager {
       state: JSON.parse(JSON.stringify(state)) as GameState,
     };
     return this.store.set(this.slotKey(slot), JSON.stringify(data));
+  }
+
+  /**
+   * 저장하고, 그 칸이 브라우저 저장소에 실제로 들어갔는지를 돌려준다(write 결과와 칸의 영구 저장 여부를 한 곳에서 판단).
+   * write() 의 true 만으로는 알 수 없다: 메모리 저장소(브라우저 저장소를 쓸 수 없음)는 쓰기가 늘 성공한다.
+   * 실패해도 다른 칸이나 이 칸의 옛 영구 저장본을 지우지 않는다(같은 탭에서는 새 값을, 새로고침하면 옛 값을 불러온다).
+   */
+  saveSlot(slot: SlotId, state: GameState, summary: SaveSummary, now = new Date()): SlotDurability {
+    const ok = this.write(slot, state, summary, now);
+    return ok && this.slotPersisted(slot) ? 'persisted' : 'tab-only';
+  }
+
+  /** 새로고침하면 보게 될(브라우저 저장소에 남아 있는) 이 칸의 요약. 이 탭에만 있는 새 값은 보지 않는다 */
+  peekPersisted(slot: SlotId): SlotPeek {
+    const raw = this.store.getPersisted(this.slotKey(slot));
+    if (raw === null) return { empty: true };
+    const r = this.parse(raw);
+    if (r.status === 'ok' || r.status === 'recoverable') return { empty: false, broken: false, savedAt: r.data.savedAt, summary: r.data.summary };
+    return { empty: false, broken: true };
   }
 
   remove(slot: SlotId): void {

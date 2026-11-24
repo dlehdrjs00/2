@@ -4,6 +4,7 @@
  * 아래부터: 배경(title) → 햇빛·빛줄기 → 왼쪽 흰 베일 → 두 히로인 → 빛망울 → 왼쪽 열(로고·부제·세로 메뉴·엔딩 배지) → 버전 알약
  * - 메뉴 버튼은 .btn 클래스와 data-action(new/continue/load/album/settings)을 유지한다(테스트 훅).
  * - [이어하기] 옆에 자동 저장 위치의 날짜, [추억 앨범] 옆에 모은 수를 작게 보여 준다(aria-describedby).
+ *   자동 저장이 이 탭에만 있으면 날짜 자리에 주황 '이 탭에만'(.sub > .tab-only)을 둔다(날짜는 읽어 줄 글자·title 로).
  * - [추억 앨범]·[설정]은 .half: 낮은 화면(높이 540px 이하)에서는 한 줄에 반씩 나란히 놓인다(screens.css).
  * - 히로인 위치는 .title-heroines .akane/.hina 클래스로만 잡는다(일러스트를 바꾸면 CSS 두 값만 조정).
  * - 키 비주얼(.kv)은 배경 대신 .title-art 두 겹으로 그린다: 작은 그림(.art-lo, 흐림)을 먼저 깔고,
@@ -40,6 +41,8 @@ export interface TitleOptions {
   hasAuto: boolean;
   /** 자동 저장 위치의 날짜('7월 10일'). 모르면 빈 문자열 */
   autoDate: string;
+  /** 자동 저장이 이 탭 메모리에만 있음(브라우저 저장소에 쓰지 못함). [이어하기]는 그 최신 진행을 불러온다 */
+  autoTabOnly?: boolean;
   endings: TitleEnding[];
   version: string;
   /** 추억 앨범(이벤트 CG 갤러리)에 모은 수. null 이면 [추억 앨범]을 두지 않는다 */
@@ -212,9 +215,18 @@ export function buildTitle(o: TitleOptions): HTMLElement {
   const bCont = button('이어하기', 'btn', () => o.onContinue());
   bCont.dataset.action = 'continue';
   bCont.disabled = !o.hasAuto;
-  if (o.hasAuto && o.autoDate) {
-    const d = el('span', 'sub', o.autoDate);
+  const tabOnly = o.hasAuto && !!o.autoTabOnly;
+  if (o.hasAuto && (o.autoDate || tabOnly)) {
+    const d = el('span', 'sub', tabOnly ? undefined : o.autoDate);
     d.id = 'vn-continue-date';
+    if (tabOnly) {
+      // 이 탭에만 있는 진행(새로고침하면 브라우저에 남은 이전 위치로 돌아간다): 날짜 자리에 작은 주황 표시.
+      // 좁은 메뉴(232px)에 날짜와 함께 넣으면 버튼 밖으로 넘쳐 날짜는 읽어 줄 글자·title 로만 둔다
+      if (o.autoDate) d.append(el('span', 'sr-only', `${o.autoDate} · `));
+      d.append(el('span', 'tab-only', '이 탭에만'));
+      bCont.classList.add('tab-only');
+      bCont.title = `${o.autoDate ? `${o.autoDate} · ` : ''}이 탭에만 저장된 최신 진행이에요. 새로고침하거나 탭을 닫으면 사라질 수 있어요.`;
+    }
     bCont.append(d);
     // 이름은 '이어하기', 날짜는 설명으로 읽힌다(두 번 읽히지 않게)
     bCont.setAttribute('aria-label', '이어하기');

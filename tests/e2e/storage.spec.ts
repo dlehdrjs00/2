@@ -173,7 +173,7 @@ test('브라우저 저장소를 쓸 수 없으면: 낮은 타이틀의 안내가
   });
   await page.goto('./?debug');
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
-  await expect(page.locator('.toast')).toContainText('이 탭에서만');
+  await expect(page.locator('.toast')).toContainText('이 탭에만');
   for (const [w, h] of [
     [667, 375],
     [844, 390],
@@ -194,12 +194,12 @@ test('브라우저 저장소를 쓸 수 없으면: 낮은 타이틀의 안내가
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'play');
   await waitSettled(page);
   await page.keyboard.press('F5');
-  await expect(page.locator('.toast')).toContainText('퀵저장했어요 · 이 탭을 닫으면 사라져요');
+  await expect(page.locator('.toast')).toContainText('퀵저장했어요 · 새로고침하거나 탭을 닫으면 사라져요');
   await page.keyboard.press('Escape');
   await page.locator('[data-panel=menu] [data-action=save]').click();
   await expect(page.locator('[data-panel=save] .panel-hint.warn')).toContainText('이 탭을 닫거나 새로고침하면 저장이 사라져요');
   await page.locator('[data-panel=save] .slot[data-slot="1"]').click();
-  await expect(page.locator('.toast')).toContainText('슬롯 1에 저장했어요 · 이 탭을 닫으면 사라져요');
+  await expect(page.locator('.toast')).toContainText('슬롯 1에 저장했어요 · 새로고침하거나 탭을 닫으면 사라져요');
 });
 
 test('낮은 화면의 저장 카드 썸네일은 진짜 16:9 이고 카드 안에 들어간다(CG·양옆 인물이 잘리지 않게)', async ({ page }) => {

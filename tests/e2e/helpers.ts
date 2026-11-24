@@ -23,6 +23,11 @@ export interface Info {
   hidewin: boolean;
   /** 열린 시스템 시트의 탭(save/load/settings/log) */
   sheet: string | null;
+  /**
+   * 자동 저장 상태(src/ui/savestatus.ts): none(없음·아직 안 씀) / ok(브라우저에 저장됨) / tab-only(이 탭 메모리에만) /
+   * low-space(쓰기 실패 뒤 다시 브라우저에 저장됐지만 여유 공간이 거의 없음)
+   */
+  autoSave: 'none' | 'ok' | 'tab-only' | 'low-space';
 }
 
 /** 설정(글자 즉시 표시 등)을 넣고 게임을 연다. 저장 데이터는 건드리지 않는다. */

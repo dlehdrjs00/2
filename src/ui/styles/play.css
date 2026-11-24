@@ -1683,6 +1683,22 @@
   top: calc(var(--safe-t) + 14px);
   bottom: auto;
 }
+/* 경고 토스트(자동 저장을 브라우저에 쓰지 못함 등, role=alert): 연한 주황 유리 + 주황 세모. 7초(savestatus.ts) */
+.toast.warn {
+  color: #5e3206;
+  background: rgba(255, 247, 226, 0.97);
+  border-color: #fff7e2;
+  box-shadow:
+    0 0 0 1.5px rgba(214, 140, 40, 0.75),
+    0 8px 22px rgba(120, 70, 10, 0.22);
+}
+.toast.warn::before {
+  align-self: flex-start;
+  margin-top: 0.12em;
+  background: #b35a00;
+  -webkit-mask-image: var(--i-warn);
+  mask-image: var(--i-warn);
+}
 .vn[data-mode='play']:not([data-overlay]) > .toast,
 .vn[data-mode='play'][data-overlay='0'] > .toast {
   top: calc(var(--sy) + var(--fs) * 0.7);
@@ -1723,12 +1739,18 @@
   transform: translateX(-50%);
   max-width: calc(100% - 32px);
 }
+/* 자동 저장 상태 표시(12절)가 무대 오른쪽 위에 떠 있는 동안(대사·카드, 가로 배치): 토스트는 그 바로 아래로 */
+.vn[data-mode='play']:is([data-autosave='tab-only'], [data-autosave='low-space']):not([data-frame='choice']):not([data-layout='below']):not([data-hidewin='1']):not([data-overlay]) > .toast,
+.vn[data-mode='play']:is([data-autosave='tab-only'], [data-autosave='low-space']):not([data-frame='choice']):not([data-layout='below']):not([data-hidewin='1'])[data-overlay='0'] > .toast {
+  top: calc(var(--sy) + var(--fs) * 0.7 + var(--btn) + 8px);
+}
 
 /* =========================================================================
  * 10. 포커스(이 파일의 조작 요소): 파란 테 3px + 흰 후광 6px — 밝은·어두운 바탕 모두에서 보인다
  * ========================================================================= */
 .qbar button:focus-visible,
-.choice:focus-visible {
+.choice:focus-visible,
+.autosave-chip:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.85);
@@ -1797,5 +1819,100 @@
   .vn > .stage[data-cg] ~ .textbox,
   .vn > .stage[data-cg] ~ .qbar {
     --cg-a: clamp(0.4, calc(var(--win-alpha) * var(--win-alpha) * 0.78 + 0.1), 0.9);
+  }
+}
+
+/* =========================================================================
+ * 12. 자동 저장 상태 표시 .autosave-chip (savestatus.ts, docs/UI_DESIGN.md 6.21)
+ *     자동 저장에 문제가 있는 동안(플레이 중 #vn[data-autosave='tab-only'|'low-space']) 계속 보이는 주황 경고 알약.
+ *     글자: tab-only '이 탭에만 저장됨', low-space '공간 부족 · 저장됨'(data-state). 누르면 설명 패널(위험·남아 있는 위치·
+ *     해결 방법·[지금 다시 저장]). 높이 = 탭 띠(--btn, 44~48px): 휴대폰 터치 44px 이상.
+ *     - 대사·날짜 카드: 무대 오른쪽 위(토스트 자리. 토스트는 그 아래로 내려간다 — 9절). 장소 표시(왼쪽 위)는 알약 폭(--asw)만큼
+ *       최대 폭을 줄여 길어도 닿지 않는다.
+ *     - 선택지: 선택지 목록이 무대 위쪽부터 쓰므로 탭 띠의 빠른 메뉴 왼쪽으로 옮긴다(선택지 동안에는 이름표가 없다).
+ *       목록은 탭 띠 위에서 끝나 겹치지 않는다(layout.ts).
+ *     - 세로 배치(data-layout=below): 무대가 좁아 장소 표시와 같은 줄에 두면 장소명이 잘리므로, 무대 위 여백의 장소 표시 줄
+ *       바로 위 오른쪽(data-aschip=above). 위 여백이 모자라면(data-aschip=under, savestatus.ts autosaveChipRow) 장소 표시 줄
+ *       바로 아래 오른쪽(무대 위끝에 걸침). 어느 쪽이든 장소 표시의 폭은 줄이지 않는다.
+ *     - 대사창 숨기기(H) 동안에는 감춘다(다른 조작 요소와 같이).
+ * ========================================================================= */
+.autosave-chip {
+  position: absolute;
+  z-index: 6;
+  top: calc(var(--sy) + var(--fs) * 0.7);
+  right: calc(100% - var(--sx) - var(--sw) + var(--fs) * 0.8);
+  display: none;
+  align-items: center;
+  gap: 0.4em;
+  height: var(--btn);
+  min-width: 44px;
+  max-width: calc(var(--sw) * 0.5);
+  padding: 0 1em 0 0.8em;
+  border: 0;
+  border-radius: 999px;
+  font: 700 16px/1 var(--font-ui);
+  letter-spacing: 0.01em;
+  color: #7a3f08;
+  white-space: nowrap;
+  background: rgba(255, 243, 209, 0.96);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(214, 140, 40, 0.8),
+    0 6px 16px rgba(120, 70, 10, 0.2);
+  cursor: pointer;
+  transition:
+    opacity 0.25s ease,
+    background-color 0.15s ease;
+}
+.vn[data-mode='play']:is([data-autosave='tab-only'], [data-autosave='low-space']) > .autosave-chip {
+  display: inline-flex;
+}
+.autosave-chip .ico {
+  --i: var(--i-warn);
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  color: #b35a00;
+}
+.autosave-chip .lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (hover: hover) {
+  .autosave-chip:hover {
+    background: #ffe9b3;
+  }
+}
+.autosave-chip:active {
+  background: #ffe2a0;
+}
+.vn[data-frame='choice'] > .autosave-chip {
+  top: calc(var(--ty) - var(--btn) - var(--tb-grow, 0px));
+  /* 빠른 메뉴 탭의 왼쪽 오목 이음새(10px)를 비우고 붙인다 */
+  right: calc(var(--hr) + var(--qbw, 0px) + 14px);
+  max-width: calc(var(--tw) - var(--qbw, 0px) - 14px - var(--fs) * 0.55 - 10px);
+}
+/* 좁은 탭 띠(빠른 메뉴 compact 단계: 세로 배치·낮은 가로)에서는 '이 탭에만'만 남긴다(접근 이름은 그대로) */
+.vn[data-frame='choice'][data-qm='compact'] > .autosave-chip .lbl-x {
+  display: none;
+}
+/* 세로 배치: --pch = 장소 표시 높이(3절: 글자 max(16px, fs×0.72) × 2.3em), 장소 표시 줄 위끝 = max(안전 영역 + 8, sy − 8 − pch) */
+.vn[data-layout='below']:not([data-frame='choice']) > .autosave-chip {
+  --pch: calc(max(16px, var(--fs) * 0.72) * 2.3);
+  top: calc(max(calc(var(--safe-t, 0px) + 8px), calc(var(--sy) - 8px - var(--pch))) - 8px - var(--btn));
+}
+.vn[data-layout='below'][data-aschip='under']:not([data-frame='choice']) > .autosave-chip {
+  top: calc(max(calc(var(--safe-t, 0px) + 8px), calc(var(--sy) - 8px - var(--pch))) + var(--pch) + 8px);
+}
+.vn[data-hidewin='1'] > .autosave-chip {
+  opacity: 0;
+  pointer-events: none;
+}
+.vn[data-mode='play']:is([data-autosave='tab-only'], [data-autosave='low-space']):not([data-layout='below']) .stage > .place-chip {
+  max-width: calc(100% - var(--fs) * 1.6 - var(--asw, 180px) - 10px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .autosave-chip {
+    transition-duration: 0.01s !important;
   }
 }

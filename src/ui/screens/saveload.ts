@@ -10,6 +10,10 @@
  *   썸네일은 저장된 무대 상태로 그린 미니 무대, 왼쪽 위 .slot-no(01·자동·퀵), 루트 배지 .slot-route
  *   정보: .slot-line1(.slot-r? .slot-name .slot-meta) + .slot-text
  *         '장면 처음부터' 복구 저장(SlotPeek.recover)은 .slot.recover, 발췌 줄이 .slot-line2(.slot-recover 배지 + .slot-text)
+ *         이 탭 메모리에만 있는 칸(SaveManager.slotPersisted 가 false)은 .slot.tab-only, 발췌 줄 앞에 .slot-tabonly 배지 '이 탭에만'.
+ *         칸마다 따로 판단한다(다른 칸·자동 저장의 상태와 섞지 않음)
+ * 안내 줄(.panel-hint): 브라우저 저장소를 쓸 수 없음 > 자동 저장이 이 탭에만 > 이 쪽에 '이 탭에만' 칸이 있음 > 평소 안내.
+ *   앞의 셋은 .warn 이고, 낮은 화면(높이 540px 이하)에서도 보인다(평소 안내는 숨김)
  * 테스트 훅: .slot[data-slot], .slot-wrap > .slot + .slot-del, .slot-meta, .slot-name, .slot-text, .broken, 빈 칸 disabled(불러오기)
  */
 import { MANUAL_SLOTS, type SaveManager, type SlotId, type SlotPeek } from '../../engine/save';
@@ -86,6 +90,8 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
   hint.append(ico('star'), hintText, el('span', 'grow'), pageno);
 
   let page = initialPage(o.kind, o.saves, o.lastPage);
+  /** 지금 쪽에서 '이 탭에만' 배지를 단 칸(render 마다 다시 센다) */
+  const tabOnlyShown = new Set<SlotId>();
   const railBtns = new Map<SlotPage, HTMLButtonElement>();
   const pages: SlotPage[] = ['q', 1, 2, 3, 4, 5];
   for (const pg of pages) {
@@ -129,6 +135,9 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
   function card(slot: SlotId, latest: SlotId | null): HTMLElement {
     const wrap = el('div', 'slot-wrap');
     const info: SlotPeek = o.saves.peek(slot);
+    /** 이 칸만 본다: 읽을 수 있는 내용이 있고 브라우저 저장소에 들어가 있지 않음 */
+    const tabOnly = !info.empty && !info.broken && !o.saves.slotPersisted(slot);
+    if (tabOnly) tabOnlyShown.add(slot);
     const name = o.slotName(slot);
     const b = el('button', 'slot');
     b.type = 'button';
@@ -188,21 +197,34 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
       // 저장 시각·발췌를 읽을 수 없어도(일부 손상) 정보 줄 높이는 그대로 둔다(썸네일만 커지지 않게)
       line1.append(el('span', 'slot-name', title), el('span', 'slot-meta', date || '날짜 모름'));
       const textEl = el('span', 'slot-text', text || '\u00a0');
+      const badges: HTMLElement[] = [];
+      if (tabOnly) {
+        // 브라우저 저장소에 쓰지 못해 이 탭 메모리에만 있는 칸(새로고침하면 브라우저에 남은 이전 내용으로 돌아간다)
+        const badge = el('span', 'slot-tabonly', '이 탭에만');
+        badge.title = '브라우저에 저장하지 못해 이 탭에만 있어요. 새로고침하거나 탭을 닫으면 사라져요';
+        badges.push(badge);
+      }
       if (info.recover) {
-        // 저장한 문장이 대본에서 바뀌어 '장면 처음부터' 이어지는 저장: 발췌 앞에 작은 배지(같은 줄, 정보 줄 높이 그대로)
-        const row = el('span', 'slot-line2');
+        // 저장한 문장이 대본에서 바뀌어 '장면 처음부터' 이어지는 저장
         const badge = el('span', 'slot-recover', '장면 처음부터');
         badge.title = '저장한 문장이 바뀌어 이 장면 처음부터 이어져요';
-        row.append(badge, textEl);
+        badges.push(badge);
+      }
+      if (badges.length) {
+        // 발췌 앞에 작은 배지(같은 줄, 정보 줄 높이 그대로)
+        const row = el('span', 'slot-line2');
+        row.append(...badges, textEl);
         infoEl.append(line1, row);
       } else infoEl.append(line1, textEl);
       b.append(thumb, infoEl);
       if (slot === latest) b.classList.add('latest');
       if (info.recover) b.classList.add('recover');
+      if (tabOnly) b.classList.add('tab-only');
       // 읽어 줄 이름: 빈 구절은 빼고 이어 붙인다('슬롯 5: 슬롯 5, . ' 처럼 읽히지 않게)
       const what = [title !== name ? title : '', route ? `${o.heroineName(route)} 루트` : ''].filter(Boolean).join(' · ');
       const recoverNote = info.recover ? ' 저장한 문장이 바뀌어 장면 처음부터 이어져요.' : '';
-      label = `${name}${what ? `: ${what}` : ''}${date ? `, ${date}` : ''}.${recoverNote}${text ? ` ${text}` : ''}`;
+      const tabNote = tabOnly ? ' 이 탭에만 저장돼 있어 새로고침하거나 탭을 닫으면 사라져요.' : '';
+      label = `${name}${what ? `: ${what}` : ''}${date ? `, ${date}` : ''}.${tabNote}${recoverNote}${text ? ` ${text}` : ''}`;
     }
     b.setAttribute('aria-label', label);
 
@@ -240,12 +262,26 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
       else b.removeAttribute('aria-current');
     }
     const latest = latestSlot();
+    tabOnlyShown.clear();
     grid.replaceChildren(...pageSlots(page).map((s) => card(s, latest)));
     grid.classList.toggle('q', page === 'q');
-    if (!o.saves.persistent) {
+    const autoTabOnly = o.saves.exists('auto') && !o.saves.slotPersisted('auto');
+    /** 이 쪽에 '이 탭에만' 배지를 단 칸이 있음(배지와 같은 판단) */
+    const pageTabOnly = tabOnlyShown.size > 0;
+    hint.classList.remove('warn');
+    if (!o.saves.canPersist) {
       // 브라우저 저장소를 쓸 수 없음(사생활 보호 모드 등): 저장은 이 탭의 메모리에만 남는다
       hint.classList.add('warn');
       hintText.textContent = '지금은 브라우저 저장소를 쓸 수 없어, 이 탭을 닫거나 새로고침하면 저장이 사라져요.';
+      pageno.textContent = page === 'q' ? '자동·퀵' : `${page} / ${PAGES}쪽`;
+    } else if (autoTabOnly) {
+      // 자동 저장만의 판단(다른 칸 상태와 섞지 않음). 시트를 열어도 위험이 보이게
+      hint.classList.add('warn');
+      hintText.textContent = '자동 저장이 이 탭에만 있어요. 새로고침하거나 탭을 닫으면 최근 진행이 사라질 수 있어요.';
+      pageno.textContent = page === 'q' ? '자동·퀵' : `${page} / ${PAGES}쪽`;
+    } else if (pageTabOnly) {
+      hint.classList.add('warn');
+      hintText.textContent = "'이 탭에만' 칸은 브라우저에 저장하지 못한 칸이에요. 새로고침하거나 탭을 닫으면 사라져요.";
       pageno.textContent = page === 'q' ? '자동·퀵' : `${page} / ${PAGES}쪽`;
     } else if (page === 'q') {
       hintText.textContent =
