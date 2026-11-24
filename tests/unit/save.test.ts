@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance, choose, newGameState, settle } from '../../src/engine/runner';
-import { SaveManager, GAME_KEY, SAVE_SCHEMA } from '../../src/engine/save';
+import { SaveManager, GAME_KEY, SAVE_SCHEMA, type SlotId } from '../../src/engine/save';
 import { MemoryStore, openStore } from '../../src/engine/storage';
 import { loadSettings, saveSettings, DEFAULT_SETTINGS } from '../../src/engine/settings';
 import type { GameState, Story } from '../../src/engine/types';
@@ -269,6 +269,31 @@ describe('퀵저장·수동 30칸·썸네일용 무대 요약', () => {
     }
     // peek 은 저장 데이터를 바꾸지 않는다(다시 불러와도 같은 복구 결과)
     expect(sm.load('quick')).toEqual(loaded);
+  });
+
+  it('latestManual 은 savedAt 을 시각으로 비교하고, 시각으로 읽을 수 없는 savedAt 은 건너뛴다', () => {
+    const story = miniStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    const { state } = play(story, ['a'], 1);
+    const put = (slot: SlotId, savedAt: string) => {
+      expect(sm.write(slot, state, summary)).toBe(true);
+      const key = sm.slotKey(slot);
+      const data = JSON.parse(store.get(key)!) as Record<string, unknown>;
+      store.set(key, JSON.stringify({ ...data, savedAt }));
+    };
+    expect(sm.latestManual()).toBeNull();
+    // 문자열로는 1번이 더 커 보이지만 시각으로는 01:00Z 라 2번(05:00Z)보다 이르다
+    put('1', '2026-11-23T10:00:00+09:00');
+    put('2', '2026-11-23T05:00:00Z');
+    // 문자열 비교라면 가장 '커서' 뽑혔을 값들 — 시각이 아니므로 건너뛴다
+    put('3', 'zzz-not-a-date');
+    put('4', '');
+    expect(sm.latestManual()).toBe('2');
+    // 시각이 없는 슬롯만 남으면 안내할 슬롯이 없다
+    sm.remove('1');
+    sm.remove('2');
+    expect(sm.latestManual()).toBeNull();
   });
 
   it('새 설정 항목(글자 크기·빛망울)은 범위로 보정되고 기본값이 있다', () => {

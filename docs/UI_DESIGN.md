@@ -161,15 +161,23 @@ dusk에서 가져오지 않은 것과 이유:
 | 로고 1줄 / 2줄 | `clamp(26px, min(4.4vw, 7.6vh), 56px)` / `clamp(42px, min(8.2vw, 13.4vh), 104px)` |
 | 토스트·안내·버전 표기 | 16px |
 
-**불러오는 법(`src/main.ts`).**
-```ts
-import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
-import '@fontsource/gowun-dodum';
-import '@fontsource/gowun-batang/700.css';
-import '@fontsource/jua';
+**불러오는 법(`src/ui/styles/tokens.css`, `src/main.ts`가 `styles.css`로 불러온다).**
+```css
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+@import '@fontsource/gowun-dodum/index.css';
+@import '@fontsource/gowun-batang/700.css';
+@import '@fontsource/jua/index.css';
+/* 그 뒤에 타이틀 글자 조각 @font-face 2개(아래) */
 ```
-- 네 패키지 모두 unicode-range로 쪼갠 woff2다. 디스크에는 약 11MB가 생기지만, 실제로는 화면에 나온 글자 조각만 내려받는다(첫 화면 수백 KB).
-- `font-display: swap`을 유지한다. 타이틀을 그리는 것과 동시에 `document.fonts.load('16px "Gowun Dodum"')`를 걸어 둔다.
+- 네 패키지 모두 unicode-range로 쪼갠 woff2다. 디스크에는 약 11MB가 생기지만, 실제로는 화면에 나온 글자 조각만 내려받는다. 타이틀 화면에서 받는 글꼴은 11개 212KB이고, 그중 키 비주얼 전에 받는 것은 9개 189KB다(400kbps·Fast 3G 실측이 같음).
+- **타이틀 글자 조각 2개(`src/ui/styles/fonts/`).** 로고(주아)와 부제(고운바탕 700)는 몇 글자뿐인데, 패키지 조각에는 글자가 흩어져 있어 타이틀에서만 주아 6개(145KB)와 고운바탕 5개(76KB)를 받았다. 그래서 같은 글꼴에서 그 글자만 뽑은 조각을 따로 둔다. `jua-title.woff2`(`GAME_TITLE` 글자)와 `gowun-batang-700-title.woff2`(`GAME_SUBTITLE` 글자)이고, 각각 약 3.5KB다.
+  - `tokens.css`가 패키지 CSS **뒤에** 같은 이름·굵기와 좁은 `unicode-range`로 선언한다. 브라우저는 뒤에 선언한 `@font-face`부터 보므로 이 글자들은 작은 조각에서 받는다. 나머지 글자는 패키지 조각에서 받는다. 글자를 빠뜨려도 깨지지 않고 조각을 더 받을 뿐이다.
+  - 원본은 google/fonts의 OFL TTF이고, @fontsource 5.3.0 조각과 외곽선·글자 폭·세로 지표가 같아 글자 모양은 그대로다. 출처와 라이선스는 `docs/ASSETS.md`의 출처 기록에 적는다.
+  - 제목이나 부제를 바꾸면 두 파일을 다시 만들고 `unicode-range`를 맞춘다. 만드는 명령은 `tokens.css` 주석에 있다. `tests/unit/layout.test.ts`가 두 조각의 `unicode-range`가 제목·부제 글자와 꼭 같은지, 조각이 패키지 CSS 뒤에 선언되는지 검사한다.
+- **숨은 글자 처리.** 브라우저는 *배치된* 글자의 조각을 받는다. `opacity: 0`이나 `visibility: hidden`인 글자도 배치되므로 조각을 받는다. 그래서 타이틀에서 대사 화면 글자의 조각을 받지 않게 두 가지를 둔다.
+  - 빠른 메뉴 `.qbar`는 `display: none`으로 만들고(`qbar.ts`), 대사 화면에서만 보인다(`game.ts` `setMode`).
+  - 빈 대사창은 줄 상자를 만들지 않는다(`play.css` `.textbox .text .hidden-char:empty { display: none }`). 비어 있으면 보이는 것이 없으므로 모양은 같다.
+- `font-display: swap`을 유지한다. 타이틀 키 비주얼이 그려진 뒤에(`game.ts` `whenTitleArt`) `document.fonts.load('16px "Gowun Dodum"')`를 걸어 대사 글꼴을 미리 받는다(느린 망에서 키 비주얼과 대역폭을 나누지 않게).
 - 고운돋움의 한글 폭은 1em이므로 `validate.ts`의 `LINE_MAX_CHARS = 88` 가정(최악 1em/글자)은 그대로 성립한다.
 
 ---
@@ -185,7 +193,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 | `--cx --cy --cw --ch` | 선택지 영역 |
 | `--fs` | 대사 글자 크기 |
 | `--m` | 무대 안 여백 `max(8, sh×.022)` (**새로 추가**) |
-| `--btn` | 이름표·빠른 메뉴 탭 높이 `clamp(fs×1.75, 40, 44)` |
+| `--btn` | 이름표·빠른 메뉴 탭 높이 `clamp(fs×1.75, 44, 48)`(layout.ts `TAB_MIN`·`TAB_MAX`) |
 | `--hy` | 탭 띠의 위끝 = `ty − btn` |
 | `--hr` | 빠른 메뉴 탭의 오른쪽 여백 = `vw − (tx+tw) + fs×.55 + 10` |
 | `--tb-grow` | 넘침 안전장치로 대사창을 늘린 양. **#vn 루트에 설정**한다(대사창과 빠른 메뉴 탭이 함께 올라가게) |
@@ -193,6 +201,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 | `data-layout` | `overlay` 또는 `below`(그대로) |
 | `data-dense` | 0~3(그대로) |
 | `data-qm` | `icons` / `full` / `compact`: 빠른 메뉴 폭 단계(**새로 추가**) |
+| `data-cgfit` | `full` / `low`: 이벤트 CG 구도(6.18). 가로 배치에서 탭 띠 위끝이 무대 높이의 66%(`CG_LOW_BAND`)보다 위면 `low`, 그 밖과 세로 배치는 `full` |
 | `data-tone` | `day` / `evening` / `night`: 배경 톤(**새로 추가**) |
 | `data-hidewin` | `1`이면 대사창 숨김(**새로 추가**) |
 | `data-mode`, `data-frame`, `data-step`, `data-overlay`, `data-auto`, `data-skip`, `data-rotate` | 그대로 둔다 |
@@ -203,7 +212,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 
 ### 6.1 무대 `.stage`
 - 테두리 `0 0 0 1px rgba(255,255,255,.6)`, 그림자 `0 10px 40px rgba(30,70,120,.25)`. `contain: layout paint`는 유지한다(무대 안 베일과 카드가 대사창을 덮지 않게).
-- 인물 `.char`: 드롭섀도 `0 6px 16px rgba(24,60,110,.28)`. 말하지 않는 인물 `.dim`은 어둡게 하지 않고 바래게 한다: `brightness(.9) saturate(.78) contrast(.95)`.
+- 인물 `.char`: 드롭섀도 `0 6px 16px rgba(24,60,110,.28)`. 말하지 않는 인물 `.dim`은 어둡게 하지 않고 바래게 한다: `brightness(.9) saturate(.78) contrast(.95)`. 밤·노을 배경에서는 톤별 보정을 건다(6.19).
 - 낮 장면에는 `.sunwash`(오른쪽 위 햇빛 번짐, screen 합성)를 깔고, 위쪽에 옅은 빛망울 `.motes`(9개)를 둔다.
 
 ### 6.2 대사창 `.textbox`
@@ -246,7 +255,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
   - 버튼 사이에는 1px 세로 구분선(위아래 30% 비움)을 넣는다.
   - 묶음 경계(퀵저장 앞, 숨기기 앞)는 6px 더 띄우고 구분선을 진하게 한다.
 - 버튼:
-  - 높이는 100%(=`--btn`, 40~44px), 최소 폭 44px, 좌우 여백 .55em, Pretendard 600, 글자색 `--ink-2`.
+  - 높이는 100%(=`--btn`, 44~48px), 최소 폭 44px, 좌우 여백 .55em, Pretendard 600, 글자색 `--ink-2`.
   - 마우스를 올리면 `rgba(232,244,255,.9)` 바탕에 `--sky-700` 글자가 된다.
   - 켜짐(`aria-pressed=true`)은 `--grad-on` 바탕에 흰 글자다.
 - 폭 단계 `#vn[data-qm]`:
@@ -271,6 +280,8 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
   - 무대 왼쪽 위 `left: fs×.8; top: fs×.7`(HUD 줄이 없어져 맨 위로 올라간다).
   - 흰 유리 알약에 해 아이콘(밤은 달)을 단다. 날짜와 장소 사이에 1px `.sep`을 넣는다. 3.2초 뒤 사라진다.
   - `place('{d5} · 방과 후 교실')`의 ` · ` 앞부분을 날짜로 나눈다.
+  - **세로 배치(`data-layout=below`)**: 무대가 낮아(390×844에서 약 220px) 알약이 가운데 인물 머리를 가리므로 `StageView.placeHintIn(#vn)`이 장소 표시와 숨기기 안내를 `#vn`으로 옮긴다(무대는 `contain: paint`라 무대 밖으로 못 나간다). 장소 표시는 무대 바로 위 빈 곳 `left: sx + fs×.8; top: max(safe-t + 8px, sy − 8px − 2.3em)`, 폭 상한 `sw − fs×1.6`이다. 위 여백이 모자라면 무대 위끝에 걸친다. 밤·노을 색은 `#vn[data-tone]`으로 같게 칠한다.
+  - 선택지 동안에는 세로 배치와 `data-dense` 1~3(낮은 가로)에서 장소 표시를 감춘다(선택지 첫 줄과 겹치지 않게).
 - 토스트:
   - 흰 유리 알약 + 분홍 별, 16px.
   - 플레이 중에는 **무대 오른쪽 위**(`top: sy + fs×.7; right: 무대 오른쪽 + fs×.8`).
@@ -278,7 +289,9 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
   - 세로 배치에서는 대사창 바로 아래 가운데(`top: ty + th + 12px`).
 
 ### 6.7 선택지 `.choices > .choice`
-- 영역: 무대 위 여백(`sy + m`)부터 탭 띠 위 4px(`hy − 4`)까지. 가운데 정렬, 스크롤, dense 단계 규칙은 그대로다.
+- 영역: 무대 위 여백보다 1px 위(`sy + m − 1`, layout.ts `CHOICE_LIFT`)부터 탭 띠 위 1px(`hy − 1`, layout.ts `CHOICE_CLEAR`)까지. 예전 영역(`sy + m ~ hy − 2`)과 가운데가 같아 버튼 자리는 같고, 3단을 놓을 여유만 2px 늘었다.
+  - 버튼과 탭 사이는 목록 안쪽 여백 4px(`CHOICE_PAD_Y`) + 1px + 남는 높이의 절반이다. 그래서 dense 단계 경계에서도 5px 이상이다(포커스 테 3px과 띄움 2px이 탭 띠를 넘지 않음). 740×320에서는 6.07px이다.
+  - 가운데 정렬, 스크롤, dense 단계 규칙은 그대로다.
 - 무대 베일 `.choice-veil`: `radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232,244,255,.22), rgba(36,70,118,.26))` + 블러 1.5px. 두 인물 모두 `.dim`.
 - 바:
   - 폭 `min(100%, fs×30)`, 최소 높이 `max(48px, fs×2.55)`(dense일 때 44px), 좌우 여백 2.9em, 가운데 정렬.
@@ -301,6 +314,8 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
     - 폭 `clamp(220px, fs×13, 360px)`, 반경 14px, 흰 종이, −1.5° 기울임.
     - `.cal-head`: `--grad-cal` 띠. 높이 `max(40px, fs×1.9)`. 달(Pretendard 700 흰 글자) + 날씨 아이콘을 넣고, 구멍 두 개와 점선 절취선을 그린다.
     - `.cal-body`: `.cal-day`(고운바탕 700 `fs×4.1`), `.cal-dow`(Pretendard 700 `--sky-700`, 일요일은 `--pink-700`), `.cal-line`(──✦──), `.cal-sub`(고운돋움 `--ink-2`)
+    - 부제 `.cal-sub`는 ` · `로 나눠 덩어리(`.cal-sub-part`, inline-block)와 구분점(`.cal-sub-sep`)을 따로 둔다. 덩어리째 줄을 바꿔 '아사히 / 강 여름 축제'처럼 낱말 중간에서 끊기지 않는다.
+      한 줄에 다 들어가지 않으면 `fitSubLine`이 덩어리들의 `offsetTop`을 재서 `data-wrap`을 단다. 그러면 덩어리마다 한 줄씩(`display: block`) 놓고 구분점은 화면에서만 감춘다(줄 끝에 '·'가 홀로 남지 않게. textContent에는 원문 그대로 남는다). 늘 '한 줄' 상태에서 재므로 단 뒤에 흔들리지 않는다.
   - `.week`(선택): 월~금 점. 지난 날은 하늘, 오늘은 분홍 + 후광.
 - 날짜 나누기:
   - `main`이 `/^(\d+)월 (\d+)일 (.)요일$/`이면 달·숫자·요일로 나눈다.
@@ -339,7 +354,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 - 그리드:
   - 넓은 화면은 3열 × 2줄이 남은 높이를 꽉 채운다. 카드는 썸네일(남는 높이 전부) + 정보 2줄이다.
   - 높이 540px 이하 또는 폭 600px 이하에서는 가로형 카드 2열 × 3줄로 바꾸고, 세로 화면에서는 1열 × 6줄로 쓴다.
-  - 썸네일은 카드 높이에 맞춘 16:9(최대 폭 34%)이고, 정보는 3줄(장면 제목+루트 점 / 날짜 / 발췌)이다.
+  - 썸네일은 `min(폭 44%, 카드 높이에 맞춘 16:9)`이다: `width: min(44%, (100cqh − 14px) × 16/9)`, `aspect-ratio: 16/9`(카드 `.slot-wrap`이 `container-type: size`). 카드보다 낮으면 세로 가운데에 두고, cqh를 모르는 브라우저는 폭 44%를 쓴다. 인물·CG가 가장자리에서 잘리지 않는 진짜 16:9다. 정보는 3줄(장면 제목+루트 점 / 날짜 / 발췌)이다.
 - 카드 `button.slot[data-slot]`:
   - 흰 유리 82%, 반경 16px, 패딩 8px. 마우스를 올리면 하늘 2px 테. 가장 최근 저장 `.latest`는 분홍 2px 테.
   - `.slot-no`: 썸네일 왼쪽 위 남색 알약 `01`(Pretendard 800, 16px 이상). 자동·퀵 카드는 `자동` / `퀵`.
@@ -415,12 +430,18 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
     - 첫 줄은 `.dialog-msg` 안의 `<strong class="lead">`로, 주아 `clamp(20px, --ui×1.3, 26px)`에 별을 붙여 제목처럼 보인다.
     - 둘째 줄부터는 본문이고, 마지막 보충 줄은 `<small>`(`--ink-2`)이다.
   - 오른쪽 아래에 `취소`(.btn)와 확인(.btn.primary, 삭제는 .btn.danger)을 둔다. `data-action=ok/cancel`, `data-autofocus`는 유지한다.
+  - **Esc = 취소**(`onEscape: () => answer(false)`). 배경을 눌러도 닫히지 않는다(`dismissable: false`). 메뉴는 배경 클릭(누른 곳과 뗀 곳이 모두 배경일 때)과 Esc로 닫힌다.
 
 ### 6.14 타이틀 `.title-screen`
 - 배경: `title` 그림을 꽉 채운다(cover).
   - 오른쪽 위에 햇빛 원과 원뿔 그라데이션 빛줄기(screen 합성)를 그린다.
   - 왼쪽에는 흰 베일(0→52%)을 깔고, 빛망울 26개를 띄운다.
-- 키 비주얼: 아카네 `left 58%`, 히나 `left 81%`(앞쪽), 높이 120%, bottom −24%, 그림자. 일러스트를 바꾸면 이 두 값만 조정한다. 인라인 style을 쓰지 말고 `.title-heroines .akane/.hina` 클래스로 지정한다.
+- **키 비주얼(최종 그림, `story/cg.ts`의 `KEY_VISUAL` = `cg/kv.webp`, 작은 그림 `cg/thumb/kv.webp`)**이 있으면 `.title-screen.kv`로 그리고 히로인 스프라이트는 쓰지 않는다(`heroines: []`).
+  - 그림은 `.title-art > .art-lo + .art-hi` 두 겹이다(배경 `62% center / cover`). 작은 그림(480×270)을 `.art-lo`에 `blur(6px)`로 먼저 깔고(가장자리가 비치지 않게 −12px 넓힘), 원본은 내려받아 `decode()`가 끝난 뒤에야 `.art-hi`에 넣어 0.6s 페이드로 띄운다(`.kv-ready`). 느린 망에서 위에서부터 반쯤 그려진 원본이 보이지 않게 하기 위해서다. 페이드가 끝나면(0.7s) `.art-lo`는 숨긴다.
+  - 한 번 해독한 원본은 다시 그릴 때 연출 없이 바로 보인다(`.kv-instant`). 받기에 실패하면 원본을 CSS 배경으로 바로 건다. 타이틀을 떠나면 받던 원본을 취소한다(`cancelTitleArt`).
+  - 그림이 오른쪽 2/3를 쓰므로 왼쪽 흰 베일은 0→40%로 좁히고(.82→.55→0) 햇빛은 .55로 옅게 한다.
+  - 세로 화면(`max-aspect-ratio: 1/1`): cover면 그림 폭의 1/4만 보여 히나 얼굴이 잘리므로 그림을 높이 80%(`background-size: auto 80%`), 가로 위치 64%로 놓고 66%→80% 구간을 마스크로 지워 메뉴 뒤 하늘색 바탕(`#cfe6f8`)으로 스며들게 한다.
+- 키 비주얼이 없을 때(대체): 히로인 스프라이트 두 장. 아카네 `left 58%`, 히나 `left 81%`(앞쪽), 높이 120%, bottom −24%, 그림자. 세로 화면은 높이 64%, bottom 12%, 30%·70%. 인라인 style을 쓰지 말고 `.title-heroines .akane/.hina` 클래스로 지정한다.
 - 왼쪽 열(`left: clamp(18px, 5vw, 80px)`, 폭 `min(46vw, 560px)`):
   - 로고 `h1.logo[aria-label="내일도 같이 갈래?"]`:
     - 1줄 "내일도"는 분홍 그라데이션, 2줄 "같이 갈래?"는 하늘 그라데이션이고 "?"만 분홍이다.
@@ -469,7 +490,7 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 - 본문 `.panel-body.album[data-seen][data-total]`(스크롤은 이 요소 하나, 남는 높이는 위아래로 나눠 가운데):
   - `.album-sum`: "✦ 모은 추억"(주아) + `.album-total`(`3 / 11`, 숫자는 `--sky-700` 800, 다 모으면 `--pink-700`) + 진행 막대 `.album-bar[role=progressbar]`(하늘→분홍) + 안내 한 줄(0장 / 일부 / 전부에 따라 문구가 바뀜).
   - 묶음 `section.album-group[data-route=osana|tenko]`: 머리 `.album-head` = 이름 알약 `h3.album-name`(이름표와 같은 인물 색 칠) + `.album-count`(`1 / 5`) + 옅어지는 선. 소나기 CG(`rain_*`)는 각 히로인 줄에 들어간다(`CGS[id].route`). 루트가 없는 CG 는 맨 뒤 '공통' 묶음.
-  - 그리드 `ul.album-grid`: 넓은 화면은 한 줄 6칸(히로인 한 명 = 한 줄), 좁으면 칸 최소 폭(168px, 높이 540px 이하 136px)에 맞춰 줄어든다(844×390 → 5칸, 667×375 → 4칸, 세로 → 2칸, 세로 스크롤).
+  - 그리드 `ul.album-grid`: 넓은 화면은 한 줄 6칸(히로인 한 명 = 한 줄), 좁으면 칸 최소 폭(168px, 높이 540px 이하 136px, 폭 600px 이하 140px)에 맞춰 줄어든다(844×390 → 5칸, 667×375 → 4칸, 세로 → 2칸, 세로 스크롤).
   - 칸 `button.cg-card[data-cg][data-seen]` = **폴라로이드**: 흰 테 7px + 16:9 작은 그림(`cgThumbUrl`, lazy, 받으면 페이드) + 제목(고운바탕 700 16px, 두 줄까지 균형 줄바꿈). −1.1°~1° 번갈아 기울이고 위 가운데에 테이프 한 조각(하늘·분홍 번갈아). 올리면 똑바로 서며 하늘 2px 테.
   - 못 본 칸 `.locked[aria-disabled=true]`: 기울이지 않은 점선 빈 칸 + 하늘 사선 무늬 + 자물쇠, 제목 `???`. 누르면 자물쇠만 흔들린다(아무것도 열지 않음).
   - 아래 안내 `.panel-hint`: 크게 보기·넘기기·숨기기 안내 + `3 / 11장`.
@@ -481,14 +502,46 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 - 입력 안전: 오버레이는 `[data-noadvance]`이고 클릭은 안에서 전파를 멈춘다. 키는 game.ts `onKey`가 맨 위 오버레이 패널의 `onKey`에 먼저 넘긴다. 감상 중 아래 시트·타이틀은 `inert`. 타이틀에서 연 오버레이는 닫히면 늘 연 버튼으로 포커스를 돌려준다(감상 → 마지막으로 본 칸, 앨범 → [추억 앨범]).
 - 기록: game.ts 는 무대에 CG 가 뜰 때마다(`cg` 이벤트, 불러오기 직후, 장면 처음부터 복구, 건너뛰기 중 모두) `saves.markCg`로 전역 기록에 남긴다.
 
+### 6.18 이벤트 CG `.stage > .cg-layer`·`#vn[data-cgfit]`·CG 중 유리 (최종 그림 적용)
+- 레이어: `.cg-layer`는 무대 가득(`background: center / cover`)이고, 쌓는 순서는 배경 → 인물 → 햇빛 → 빛망울 → **CG** → 선택지 베일 → 장소 표시 → 날짜 카드 → 숨기기 안내 → 암전 막 → 불러오는 중 알약이다. 대사창·빠른 메뉴는 무대 밖(`#vn`의 형제)이라 CG 위에 온다.
+- `StageView.showCg(id)`는 그림 해독(`decode`)이 끝난 뒤에만 `.on`을 붙여 0.55s 크로스페이드한다. 해독 전에는 무대를 그대로 두고, 파일이 없거나 깨졌으면 끝내 켜지 않는다(바탕색을 칠하지 않으므로 단색 판이 무대를 덮지 않는다). 연출 없이 켜라는 CG(불러오기·건너뛰기)라도 150ms 넘게 늦으면 페이드로 켠다.
+- CG가 켜져 있는 동안 무대에 `data-cg=<id>`를 단다(레이어에도 같은 `data-cg`).
+- **구도 `#vn[data-cgfit]`**(layout.ts, 9.1): 가로 배치에서 탭 띠 위끝 `(hy − sy) / sh`가 `CG_LOW_BAND = 0.66`보다 작으면 `low`(667×375 0.58 · 844×390 0.60 · 932×430 0.63), 그 밖(1280×720 0.695 · 1024×768 0.68 등 넓은 화면, 세로 배치)은 `full`이다. 글자 크기 '더 크게'면 1280×720도 `low`다.
+  - `low`에서는 대사의 핵심이 빠른 메뉴 탭·대사창 위끝에 가리는 CG만 확대해 아래 기준으로 붙여 위로 올린다(위쪽이 조금 잘림). 무대와 CG가 모두 16:9라 `background-position`만으로는 움직이지 않아 크기를 키운다.
+  - `shutter_tenko`(t6.220): `background-size: 130% auto; background-position: 30% 100%`. 웃는 입(원본 세로 0.60~0.68)이 탭 위끝 아래로 들어가던 것을 무대 0.48~0.58로 올린다(리본·정수리 일부 잘림).
+  - `cats_tenko`(t1.140~): `background-size: 115% auto; background-position: 50% 100%`. 히나 옆에 앉은 다이후쿠(원본 세로 0.55~0.62)의 머리가 '기록·자동' 탭 뒤에 가리던 것을 탭 위로 올린다(히나 얼굴은 남는다).
+  - 그 밖의 CG는 `full`과 같은 구도다. 일러스트를 바꾸면 이 두 규칙(`styles/play.css`)만 다시 잰다.
+- **CG 중 대사창·빠른 메뉴 유리**(`.vn > .stage[data-cg] ~ .textbox`, `~ .qbar`): CG의 핵심 동작(맞잡은 손 등)이 대사창 높이에 있는 경우가 많아 유리를 옅고 덜 흐리게 해 그림이 비치게 한다.
+  - 불투명도 `--cg-a = clamp(.3, win-alpha² × .78, .8)`(설정 불투명도를 따르되 낮춤: 기본 82% → 약 .52, 100% → .78, 40% → .3). 대사창은 `rgba(255,255,255,a) → rgba(244,250,255,min(1, a×1.1))`, 탭은 `a×.94 → a`로 칠하고 아래 오목 이음새도 같은 a로 칠해 대사창 윗변과 이어진다.
+  - 흐림은 `blur(3px) saturate(1.1)`(평소보다 약함). 글자 읽힘은 흰 번짐(`0 0 2px #fff, 0 0 6px, 0 0 14px`)으로 지킨다. 밤 톤은 남색 유리(`rgba(26,38,70,a)`)에 어두운 번짐이다.
+  - 무대의 형제로 고르므로 `:has()`가 필요 없고, 설정 미리보기의 대사창은 건드리지 않는다.
+
+### 6.19 밤·노을 인물 보정 `.stage[data-tone] .char`
+- `stage.ts`가 무대에 `data-tone`(배경 매니페스트 `BACKGROUNDS[id].tone`, 기본 낮)을 단다. 낮 색 그대로면 밤 배경 위에서 인물이 오려 붙인 듯 떠 보여 톤별로 필터를 건다. filter 전환(0.35s)이라 배경 크로스페이드와 함께 바뀐다.
+
+| 톤 | 말하는 인물 | 말하지 않는 인물(`.dim`)·선택지 중 |
+|---|---|---|
+| 낮 | 그대로 + 그림자 `rgba(24,60,110,.28)` | `brightness(.9) saturate(.78) contrast(.95)` |
+| 밤 | `brightness(.86) saturate(.88) contrast(.98)` + 남색 그림자 `rgba(10,20,60,.35)` | `brightness(.78) saturate(.7) contrast(.95)` |
+| 노을 | `sepia(.08) brightness(.97)` + 붉은 그림자 `rgba(110,50,40,.26)` | `sepia(.08) brightness(.88) saturate(.78) contrast(.95)` |
+
+- 톤 규칙(0,3,0)이 `.char.dim`(0,2,0)을 덮지 않게 dim·선택지 중 바램을 톤별로 다시 건다. 햇빛 `.sunwash`는 노을이면 살구빛, 밤이면 끈다.
+
+### 6.20 그림 기다리기 `StageView.ready()`·`.stage-loading`
+- 배경·인물·CG는 바꿀 그림을 먼저 해독한 뒤에만 보여 준다(새 인물은 `.entering`으로 숨긴 채, 표정 교체는 이전 그림, 배경은 이전 배경을 둔다).
+- `ready(ms = 8000)`: 지금 요청된 배경·인물·CG가 모두 해독될 때까지 기다린다. 다 준비되면 `true`, 시간 초과나 `hurry()`면 `false`. 이미 해독된 그림이면 마이크로태스크 안에서 끝나 깜빡임이 없다.
+- 1.2초(`DECODE_MAX_MS`)가 넘게 기다리면 무대 가운데에 `.stage-loading[role=status]` 알약("그림을 불러오는 중…", 도는 분홍 별, 16px)을 띄운다. 암전 막 위에도 보이도록 무대의 맨 뒤 요소다. 보통 네트워크에서는 보이지 않는다.
+- 암전 막(`veilOut`)도 걷기 전에 `ready(8000)`을 거친다.
+- 화면 쪽(game.ts `present`): 이번 스텝이 배경·인물·CG를 바꿨거나 불러오기·이어하기 직후면 대사·선택지·카드를 그리기 전에 `ready()`를 기다린다. 그동안 `transitioning`이라 클릭·키는 대사를 넘기지 않고 `hurry()`로 기다림만 끝낸다. 건너뛰기 중과 엔딩 스텝은 기다리지 않고, 암전·번쩍임 막이 이미 기다린 스텝은 한 번 더 기다리지 않는다.
+
 ---
 
 ## 7. 화면별 구성 (아래부터 쌓이는 순서)
 
 | 화면 | 구성 |
 |---|---|
-| 타이틀 | 배경(title) → 햇빛·빛줄기 → 왼쪽 흰 베일 → 두 히로인 → 빛망울 → 왼쪽 열(로고·부제·세로 메뉴·엔딩 배지) → 버전 알약 |
-| 대사(낮) | 레터박스(밝게 흐림) → 무대(배경·인물·햇빛·옅은 빛망울·장소 표시) → 대사창(이름표 탭) → 빠른 메뉴 탭 → 토스트(무대 오른쪽 위) |
+| 타이틀 | 키 비주얼 두 겹(흐린 작은 그림 → 원본, 6.14) 또는 배경(title) → 햇빛·빛줄기 → 왼쪽 흰 베일 → (키 비주얼이 없을 때) 두 히로인 → 빛망울 → 왼쪽 열(로고·부제·세로 메뉴·엔딩 배지) → 버전 알약 |
+| 대사(낮) | 레터박스(밝게 흐림) → 무대(배경·인물·햇빛·옅은 빛망울·이벤트 CG·장소 표시) → 대사창(이름표 탭) → 빠른 메뉴 탭 → 토스트(무대 오른쪽 위). CG 중에는 대사창·탭 유리가 옅어진다(6.18) |
 | 대사(밤) | 위와 같고 `data-tone=night`: 남색 유리 창·탭·장소 표시(달), 금·분홍 빛망울 |
 | 선택지 | 무대 + 베일(두 인물 dim) → 대사창(질문 문구) + 빠른 메뉴 탭 → 선택지 목록(탭 띠 위까지) |
 | 날짜 카드 | 무대 → 카드(흐린 다음 배경·베일·빛망울·kicker·일력·주간 점) → 빠른 메뉴 캡슐(무대 오른쪽 아래, .78) |
@@ -533,48 +586,57 @@ layout.ts의 `applyLayout`이 `#vn`에 다음을 넣는다.
 
 ### 9.1 배치 공식 (`src/ui/layout.ts`)
 
-`scale`은 글자 크기 설정의 배율이다(보통 1, 크게 1.12, 더 크게 1.25).
+`scale`은 글자 크기 설정의 배율이다(보통 1, 크게 1.12, 더 크게 1.25). 가로/세로는 안전 영역 비율 `aw / ah ≥ 1.3`으로 가른다.
 
 가로(overlay):
 ```
 fs     = clamp(sh × 0.034 × scale, 16 × scale, 26 × scale)
 margin = max(8, sh × 0.022)                                          → --m
-th     = clamp(max(sh × 0.22, textBoxHeightFor(3, fs)), 0, sh × 0.45) (지금 0.265 → 0.22, 3줄 용량은 그대로)
-tw     = min(sw − margin×2, fs × 46);  tx = sx + (sw − tw)/2;  ty = sy + sh − th − margin   (그대로)
-btn    = clamp(fs × 1.75, 40, 44)
+th     = clamp(max(sh × 0.22, textBoxHeightFor(3, fs)), 0, sh × 0.45) (3줄 용량은 늘 보장)
+tw     = min(sw − margin×2, fs × 46);  tx = sx + (sw − tw)/2;  ty = sy + sh − th − margin
+btn    = clamp(fs × 1.75, 44, 48)       (TAB_MIN·TAB_MAX: 휴대폰 가로도 터치 44px)
 hy     = ty − btn                       (이름표·빠른 메뉴 탭 띠 위끝)
 hr     = vw − (tx + tw) + fs × 0.55 + 10
-cy     = sy + margin;  ch = max(0, hy − CHOICE_CLEAR − cy)   (CHOICE_CLEAR = 4)
-cx/cw  = 지금과 같음(레터박스가 있으면 안전 영역 폭)
+cy     = sy + margin − 1;  ch = max(0, hy − 1 − cy)   (CHOICE_LIFT = 1, CHOICE_CLEAR = 1)
+cx/cw  = 레터박스가 있으면(aw − sw > 2) 안전 영역 폭(safe.l + m, aw − 2m), 아니면 무대 폭
 cband  = cy − sy                        (호환용으로만 둔다)
 qm     = tw ≥ 900 ? 'icons' : tw ≥ 620 ? 'full' : 'compact'
+cgfit  = (hy − sy) / sh < 0.66 ? 'low' : 'full'               (CG_LOW_BAND, 6.18)
 ```
 
 세로(below):
 ```
 fs  = clamp(aw × 0.042 × scale, 16 × scale, 22 × scale)
-btn = clamp(fs × 1.75, 40, 44)
+btn = clamp(fs × 1.75, 44, 48)
 gap = btn + 8          (무대와 대사창 사이에 이름표·빠른 메뉴 탭이 들어간다)
-나머지(sh, th, sy, tw) 계산은 지금과 같고, gap만 바뀐다
-hy  = ty − btn;  cy = sy + 8;  ch = max(0, hy − 4 − cy)
+sh  = aw / (16/9);  넘치면 sh = max(ah × 0.45, ah − gap − fs × 7.2)
+th  = clamp(ah − sh − gap − 10, fs × 7.2, fs × 10);  tw = min(aw − 16, fs × 40)
+hy  = ty − btn;  cy = sy + 7;  ch = max(0, hy − 1 − cy);  cx = safe.l + 8, cw = aw − 16   (cy = sy + m − 1, m = 8)
+cgfit = 'full'         (대사창이 무대 아래라 CG 를 가리지 않는다)
 ```
 
-계산 결과(목업의 `computeLayout`으로 실측):
+계산 결과(`computeLayout` 값. `tests/unit/layout.test.ts`의 '명세 9.1 실측표'가 fs·대사창 높이·창 폭·선택지 영역·qm을 ±1px로 검사한다):
 
-| 화면 | fs | 대사창 높이 | 창 폭 | 탭 띠 위끝(무대 대비) | 선택지 영역(새/지금) | dense | qm |
-|---|---|---|---|---|---|---|---|
-| 1920×1080 | 26 | 238 | 1196 | 71.7% | 747 / 702 | 0 | icons |
-| 1280×720 | 24.5 | 159 | 1126 | 69.7% | 482 / 450 | 0 | icons |
-| 1024×768 | 19.6 | 128 | 901 | 68.6% | 379 | 0 | icons |
-| 844×390 (노치 47/21) | 16 | 105 | 640 | 58.5% | 204 | 0 | full |
-| 844×390 | 16 | 105 | 676 | 60.6% | 224 / 223 | 0 | full |
-| 667×375 | 16 | 105 | 650 | 59.1% | 209 / 209 | 0 | full |
-| 740×320 | 16 | 105 | 553 | 52.2% | 155 | 1 | compact |
-| 740×280 | 16 | 105 | 482 | 45.3% | 115 / 114 | 2 | compact |
-| 740×232 (지원 범위 밖) | 16 | 104 | 396 | — | 68 | 3 | compact |
-| 390×844 (세로) | 16.4 | 164 | 374 | — | 215 | 0 | compact |
+| 화면 | fs | 대사창 높이 | 창 폭 | 탭 띠 위끝(무대 대비) | 선택지 영역 ch | dense | qm | cgfit |
+|---|---|---|---|---|---|---|---|---|
+| 1920×1080 | 26 | 238 | 1196 | 71.6% | 749 | 0 | icons | full |
+| 1280×720 | 24.5 | 159 | 1126 | 69.5% | 485 | 0 | icons | full |
+| 1024×768 | 19.6 | 128 | 901 | 67.9% | 379 | 0 | icons | full |
+| 844×390 (노치 47/21) | 16 | 105 | 640 | 57.4% | 204 | 0 | full | low |
+| 844×390 | 16 | 105 | 676 | 59.6% | 224 | 0 | full | low |
+| 667×375 | 16 | 105 | 650 | 58.1% | 209 | 0 | full | low |
+| 740×320 | 16 | 105 | 553 | 50.9% | 155 | 1 | compact | low |
+| 740×280 | 16 | 105 | 482 | 43.9% | 115 | 2 | compact | low |
+| 740×232 (지원 범위 밖) | 16 | 104 | 396 | 32.6% | 68 | 3 | compact | low |
+| 390×844 (세로) | 16.4 | 164 | 374 | — | 219 | 0 | compact | full |
 
-dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740×320 1, 740×280 2, 740×232 3)과 모두 같다.
+- 예전 값(탭 `clamp(fs×1.75, 40, 44)`, 목록 `sy + m ~ hy − 4`)과 비교한다.
+  - 탭이 40px이던 가로 화면(1024×768·휴대폰 가로)은 탭이 4px 커진 만큼을 목록 위아래 간격에서 돌려받아 선택지 영역이 같다(844×390 224 → 224).
+  - 세로(390×844)는 선택지 영역이 무대 높이 − 간격이라 4px 늘었다(215 → 219).
+  - 1280×720·1920×1080은 2~3px 늘었다(1280×720 482 → 485).
+  - dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740×320 1, 740×280 2, 740×232 3)과 모두 같다.
+- 탭은 휴대폰 가로(844×390 노치·667×375·740×280)에서 44px, 1920×1080에서 45.5px이다.
+- 1280×720 탭 띠 위끝 69.5%는 단위 테스트가 `toBeCloseTo(0.695, 2)`로 지킨다. 글자 크기 '더 크게'(1.25)면 대사창이 커져 63.5%가 되어 1280×720도 `cgfit=low`다('크게' 1.12는 66.4%로 full).
 
 ### 9.2 넘침 안전장치 (`textbox.ts`)
 - `--tb-grow`를 **`#vn` 루트에** 설정한다. 그러면 `.textbox`와 `.qbar`가 같이 위로 올라간다.
@@ -589,7 +651,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
 | `max-width: 760px` | 시스템 탭 아이콘 숨김, 머리 별 숨김 |
 | `max-width: 700px` | 닫기 버튼 아이콘만 |
 | `max-width: 600px` | 시스템 탭 가로 스크롤, 저장 1열 × 6, 설정 탭 가로 줄·1열, 기록 1열, 설정 바닥 안내 숨김 |
-| `max-aspect-ratio: 1/1` | 타이틀 세로 배치(로고 위, 메뉴 아래, 히로인 가운데 64%), 엔딩 1열 |
+| `max-aspect-ratio: 1/1` | 타이틀 세로 배치(로고 위, 메뉴 아래. 키 비주얼은 높이 80%·가로 위치 64%·아래 66→80% 마스크, 대체 스프라이트는 높이 64%), 엔딩 1열 |
 
 ### 9.4 노치·안전 영역
 - 무대는 지금처럼 안전 영역 안에 contain으로 놓고, 레터박스가 노치 쪽을 덮는다.
@@ -606,7 +668,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
   - 밤 유리 글자는 13.9:1이다.
   - 대사창 불투명도 하한을 40으로 올렸다. 저장된 30~39는 `sanitizeSettings`가 범위에 맞춰 40으로 바꾼다.
 - **포커스**: 6.16의 이중 링. 버튼·탭·슬롯·슬라이더·스위치 모두에 적용한다. 목업의 메뉴 화면 '저장하기' 타일이 그 예다.
-- **터치 영역**: 버튼 44px 이상, 빠른 메뉴 40px 이상, 선택지 48px 이상(dense일 때 44px). 목업 자동 점검에서 4가지 크기 46장 모두 위반 0건이다.
+- **터치 영역**: 버튼 44px 이상, 빠른 메뉴 44px 이상(`--btn` 44~48px), 선택지 48px 이상(dense일 때 44px). 목업 자동 점검에서 4가지 크기 46장 모두 위반 0건이다.
 - **글자**:
   - 휴대폰 가로에서 16px 미만 글자는 없다(목업 자동 점검 0건).
   - 글자 크기 3단계, 글자 속도 미리보기를 제공한다.
@@ -659,7 +721,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
 
 ### `src/engine/save.ts`
 - [ ] `SlotId = 'auto' | 'quick' | \`${number}\``. 키는 `ashita.save.quick`이다(스키마 버전은 그대로 두고 슬롯 키만 추가).
-- [ ] `MANUAL_SLOTS` 6 → 30. `latestManual()`의 반복 범위도 같이 바뀐다.
+- [ ] `MANUAL_SLOTS` 6 → 30. `latestManual()`의 반복 범위도 같이 바뀐다. `latestManual()`은 `savedAt`을 `Date.parse`로 시각 비교하고, 시각으로 읽을 수 없는 값(빈 문자열 등)은 건너뛴다.
 - [ ] `peek()`의 결과에 `stage`(bg, chars, order)를 더한다. 이미 전체를 파싱하므로 비용이 없다. 손상·구버전은 `stage` 없음.
 
 ### `src/engine/settings.ts`
@@ -702,7 +764,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
    - 이름 span과 본문 `span.log-text`로 나눈다.
    - 선택 항목은 표시할 때 `▶ `를 뗀다. 마지막 항목에 `.now`.
    - `NAME_COLORS`와 인라인 `--name-color`는 없앤다. 화자 id가 LogEntry에 없으면 이름으로 거꾸로 찾는 방식을 유지한다.
-8. [ ] **확인창 `ask()`**: 메시지 첫 줄은 `.dialog-msg > strong.lead`, 나머지 줄은 텍스트(`white-space: pre-line`), 보충 줄은 `<small>`. h2는 sr-only "확인". ✕ 없이 취소 버튼만 둔다(Esc 처리는 지금과 같음).
+8. [ ] **확인창 `ask()`**: 메시지 첫 줄은 `.dialog-msg > strong.lead`, 나머지 줄은 텍스트(`white-space: pre-line`), 보충 줄은 `<small>`. h2는 sr-only "확인". ✕ 없이 취소 버튼만 둔다. Esc = 취소, 배경 클릭으로는 닫히지 않음(`openOverlay(…, { dismissable: false, onEscape })`).
 9. [ ] **메뉴**: 3열 아이콘 타일 + `.btn.primary.wide` 돌아가기.
 10. [ ] **타이틀**: 로고(`l1/l2` span + `data-text`), 비행기구름 SVG, `.title-menu .btn`, 이어하기 `.sub` 날짜, `.title-heroines .akane/.hina`, `.ver`, `.motes`.
 11. [ ] **엔딩**: `.end-bg`(마지막 배경), 불꽃, `.ending-layout > figure.polaroid(.mini + figcaption) + .ending-inner`(배지·제목·선·메달·버튼). "END"는 뺀다.
@@ -730,7 +792,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
 |---|---|
 | `#vn[data-mode/frame/step/layout/dense/overlay/auto/skip/rotate]` | 그대로 |
 | `.hud button` 4개, 글자 `자동`·`스킵`·`기록`·`메뉴` | `.qbar > .hud` 안. compact에서도 4개는 항상 보인다. 새 버튼 글자(퀵저장·퀵로드·숨기기·설정)는 이 네 글자를 포함하지 않는다(`hasText` 부분 일치 충돌 없음) |
-| `.hud` 버튼 ≥40px, 서로·대사창과 겹치지 않음 | 탭 아랫변 = 대사창 윗변(겹침 판정 0.5px 허용 안) |
+| `.hud` 버튼 가로·세로 ≥44px(mobile.spec 단언. 실제 높이는 `--btn` 44~48px), 서로·대사창과 겹치지 않음 | 탭 아랫변 = 대사창 윗변(겹침 판정 0.5px 허용 안) |
 | `.textbox`, `.textbox .text`(`aria-hidden=true`, `.hidden-char`), `.textbox` role 없음 | 그대로 |
 | `.choices`(`.on`, `data-armed`, `.locked`), `.choice[data-option]` | 그대로. 번호는 `span.num[aria-hidden]` |
 | `.toast` | 위치만 바뀜(무대 오른쪽 위 / 선택지 중 대사창 아래쪽 / 세로는 대사창 아래) |
@@ -759,7 +821,7 @@ dense 단계는 단위 테스트의 기대값(844×390 노치 0, 667×375 0, 740
 | 슬롯 30칸·퀵 | 저장 목록 순회 범위 | `latestManual`과 처음 쪽 판단은 `peek`을 30번 부른다. 쪽당 6칸만 그린다 |
 | 글꼴 | 휴대폰 첫 진입 지연 | swap + 미리 불러오기. 화면에 나온 글자 조각만 받는다 |
 | backdrop-filter | 구형 안드로이드 성능 | `@supports` 대체 + 빛망울 끄기 |
-| 일러스트 교체 | 위치 조정 | 타이틀 히로인 2값(58%·81%), 엔딩은 미니 무대(무대 비율 그대로)라 조정 불필요 |
+| 일러스트 교체 | 위치 조정 | 타이틀 키 비주얼은 가로 위치 62%(cover)와 세로 화면 80%·64% 두 값, 대체 스프라이트는 58%·81%. 낮은 가로 화면의 CG 구도는 CG별 확대·위치(6.18). 엔딩은 미니 무대(무대 비율 그대로)라 조정 불필요 |
 
 전체 분량은 2.5~3일로 본다(디자인 이식 1일, 시트·저장·설정 기능 1일, 숨기기·퀵·테스트·휴대폰 검수 0.5~1일).
 

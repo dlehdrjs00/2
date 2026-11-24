@@ -140,7 +140,7 @@ export const COMMON_SCENES: Scene[] = [
     say('c4.b40', 'osana', '이 동네 고양이 이름은 거의 다 얘가 지었어. 반에서도 고양이 박사라고 불려.', 'neutral'),
 
     label('c4.join'),
-    mono('c4.j10', '{tenko:는} 손바닥만 한 수첩을 꺼내 무언가를 적었다. 칸마다 글씨가 빽빽했다.'),
+    mono('c4.j10', '{tenko:는} 늘 안고 다니던 분홍 수첩에 무언가를 적었다. 칸마다 글씨가 빽빽했다.'),
     jump('c5_gym'),
   ]),
 
@@ -157,7 +157,7 @@ export const COMMON_SCENES: Scene[] = [
     say('c5.020', 'osana', '목마르다. 음료 내기 하자. 통산 412전 209승 203패, 내가 여섯 판 앞서.', 'smile'),
     say('c5.025', 'tenko', '나도 낄래! 가위바위보라면 자신 있어.', 'smile'),
     show('osana', { expr: 'fluster' }),
-    mono('c5.030', '첫 판도, 둘째 판도, 셋째 판도 {tenko} 혼자 이겼다. {osana:는} 수첩을 든 채 굳었다.'),
+    mono('c5.030', '첫 판도, 둘째 판도, 셋째 판도 {tenko} 혼자 이겼다. {osana:는} 허리에 손을 짚은 채 굳었다.'),
     say('c5.040', 'tenko', '전학 첫날 친구 만들기엔 이게 최고거든. 그리고 {osana}짱, 지기 싫으면 꼭 주먹 내더라.', 'smile'),
     say('c5.050', 'osana', '한 판 더! 방금 건 몸풀기였어.', 'pout'),
     mono('c5.060', '{osana:는} 정말로 주먹을 냈다. {tenko:는} 보. 덩달아 주먹을 낸 나는, 그 뒤로도 꼬박꼬박 졌다.'),
@@ -200,8 +200,8 @@ export const COMMON_SCENES: Scene[] = [
     show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     show('tenko', { pos: 'right', expr: 'smile', outfit: 'uniform', hair: 'ponytail' }),
     cg('rain_osana'),
-    mono('c6.a20', '{osana}의 우산은 둘이 쓰기엔 작았다. 걸을수록 우산이 슬그머니 내 쪽으로 기울었다.'),
-    me('c6.a30', '너 어깨 젖는다. 내 쪽으로 기울이지 마.'),
+    mono('c6.a20', '{osana}의 우산은 둘이 쓰기엔 작았다. 우산대는 내가 들었는데, {osana:가} 자꾸 그걸 슬그머니 내 쪽으로 밀었다.'),
+    me('c6.a30', '너 어깨 젖는다. 내 쪽으로 밀지 마.'),
     say('c6.a40', 'osana', '…네가 감기 걸리면 아침에 기다리는 내가 곤란하거든.', 'shy'),
     goto('c6.join'),
 

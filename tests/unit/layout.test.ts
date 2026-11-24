@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CG_LOW_BAND,
@@ -14,6 +15,7 @@ import {
 import { bgAfterCard, weatherOf } from '../../src/ui/stage';
 import type { Step } from '../../src/engine/types';
 import { STORY } from '../../src/story';
+import { GAME_SUBTITLE, GAME_TITLE } from '../../src/story/config';
 
 const none = { t: 0, r: 0, b: 0, l: 0 };
 const notch = { t: 0, r: 47, b: 21, l: 47 }; // 아이폰 가로(노치) 대략값
@@ -92,6 +94,28 @@ describe('화면 배치', () => {
     expect(L.ty + L.th).toBeLessThanOrEqual(vh + 0.5);
   });
 
+  it('선택지 여유: 버튼 자리(목록 가운데)는 예전(sy + m ~ hy − 2)과 같고, 740x320 촘촘한 3단(dense 1)은 2px 이상 남으며 탭과 6px 이상 띄운다', () => {
+    for (const scale of [1, 1.12, 1.25]) {
+      for (const [, vw, vh, safe] of [...cases, ...tooShort]) {
+        const L = computeLayout(vw, vh, safe, { textScale: scale });
+        // 목록을 위아래로 같은 양만큼 넓혔으므로 가운데 정렬된 버튼은 움직이지 않는다(보이는 변화 없음)
+        expect(L.cy + L.ch / 2, `${vw}x${vh} ×${scale}`).toBeCloseTo((L.sy + L.m + L.hy - 2) / 2, 6);
+        if (L.dense > 1) continue;
+        // 3단 세로 배치가 들어가는 화면: 아래 버튼과 탭 띠 사이가 포커스 테(3px + 띄움 2px)보다 좁지 않다
+        const stack = choiceStackHeight(3, L.fs, L.dense === 1);
+        const bottom = L.cy + L.ch / 2 + stack / 2;
+        expect(L.hy - bottom, `${vw}x${vh} ×${scale} 탭과 간격`).toBeGreaterThanOrEqual(5 - 1e-9);
+      }
+    }
+    // 휴대폰 가로(브라우저 UI 포함) 740x320: dense 1 의 여유가 2px 이상(예전 0.14px — 소수점 배치 오차에 3단이 흔들리지 않게)
+    const L = computeLayout(740, 320, none);
+    expect(L.dense).toBe(1);
+    const spare = choiceSpace(L) - choiceStackHeight(3, L.fs, true);
+    expect(spare).toBeGreaterThanOrEqual(2);
+    const bottom = L.cy + L.ch / 2 + choiceStackHeight(3, L.fs, true) / 2;
+    expect(L.hy - bottom).toBeGreaterThanOrEqual(6);
+  });
+
   it('선택지 배치 단계: 화면 높이가 낮을수록 촘촘해진다', () => {
     expect(computeLayout(844, 390, notch).dense).toBe(0);
     expect(computeLayout(667, 375, none).dense).toBe(0);
@@ -112,16 +136,16 @@ describe('화면 배치', () => {
   it('명세 9.1 실측표: 대사창 높이·폭, 탭 띠 위치, 선택지 영역, 빠른 메뉴 폭 단계', () => {
     const rows: Array<[number, number, typeof none, number, number, number, number, string]> = [
       // vw, vh, safe, fs, th, tw, ch, qm
-      // 탭 44~48px(예전 40~44px)·선택지와 탭 띠 사이 2px(예전 4px) 기준
-      [1920, 1080, none, 26, 238, 1196, 747, 'icons'],
-      [1280, 720, none, 24.5, 159, 1126, 483, 'icons'],
-      [1024, 768, none, 19.6, 128, 901, 377, 'icons'],
-      [844, 390, notch, 16, 105, 640, 202, 'full'],
-      [844, 390, none, 16, 105, 676, 222, 'full'],
-      [667, 375, none, 16, 105, 650, 207, 'full'],
-      [740, 320, none, 16, 105, 553, 153, 'compact'],
-      [740, 280, none, 16, 105, 482, 113, 'compact'],
-      [390, 844, none, 16.4, 164, 374, 217, 'compact'],
+      // 탭 44~48px(예전 40~44px)·선택지 목록 sy + m − 1 ~ hy − 1(예전 sy + m ~ hy − 2, 버튼 자리는 같음) 기준
+      [1920, 1080, none, 26, 238, 1196, 749, 'icons'],
+      [1280, 720, none, 24.5, 159, 1126, 485, 'icons'],
+      [1024, 768, none, 19.6, 128, 901, 379, 'icons'],
+      [844, 390, notch, 16, 105, 640, 204, 'full'],
+      [844, 390, none, 16, 105, 676, 224, 'full'],
+      [667, 375, none, 16, 105, 650, 209, 'full'],
+      [740, 320, none, 16, 105, 553, 155, 'compact'],
+      [740, 280, none, 16, 105, 482, 115, 'compact'],
+      [390, 844, none, 16.4, 164, 374, 219, 'compact'],
     ];
     for (const [vw, vh, safe, fs, th, tw, ch, qm] of rows) {
       const L = computeLayout(vw, vh, safe);
@@ -237,5 +261,44 @@ describe('날짜 카드: 카드가 그릴 다음 배경(bgAfterCard)과 날씨',
       });
     }
     expect(cards).toBeGreaterThan(0);
+  });
+});
+
+describe('타이틀 글자 조각(tokens.css): 로고·부제 글자를 작은 조각 하나씩으로 받는다', () => {
+  const css = readFileSync(new URL('../../src/ui/styles/tokens.css', import.meta.url), 'utf8');
+  /** tokens.css 에서 src 가 fonts/<file> 인 @font-face 의 설명자 */
+  const face = (file: string) => {
+    const block = [...css.matchAll(/@font-face\s*{([^}]*)}/g)].map((m) => m[1]).find((b) => b.includes(`./fonts/${file}`));
+    expect(block, `${file} 의 @font-face`).toBeTruthy();
+    const get = (k: string) => new RegExp(`${k}:\\s*([^;]+);`).exec(block!)?.[1].trim() ?? '';
+    const range = new Set<number>();
+    for (const part of get('unicode-range').split(',')) {
+      const [lo, hi] = part.trim().replace(/^U\+/i, '').split('-').map((x) => parseInt(x, 16));
+      for (let c = lo; c <= (hi ?? lo); c++) range.add(c);
+    }
+    return { family: get('font-family').replace(/['"]/g, ''), weight: get('font-weight'), display: get('font-display'), range };
+  };
+  const codepoints = (s: string) => new Set([...s].map((c) => c.codePointAt(0)!));
+  /** title.ts 가 그리는 글자: 로고는 제목 전체(줄 나눔·'?' 분리·외곽선 겹은 같은 글자), 부제는 앞뒤 줄표를 떼고 */
+  const logo = codepoints(GAME_TITLE);
+  const sub = codepoints(GAME_SUBTITLE.replace(/^[\s—–-]+|[\s—–-]+$/g, ''));
+  const hex = (s: Set<number>) => [...s].sort((x, y) => x - y).map((c) => `U+${c.toString(16).toUpperCase()}`);
+
+  it('로고(주아 400)와 부제(고운바탕 700) 조각의 unicode-range 가 그 글자와 정확히 같다(제목을 바꾸면 tokens.css 주석대로 다시 만든다)', () => {
+    const jua = face('jua-title.woff2');
+    expect([jua.family, jua.weight, jua.display]).toEqual(['Jua', '400', 'swap']);
+    expect(hex(jua.range)).toEqual(hex(logo));
+    const batang = face('gowun-batang-700-title.woff2');
+    expect([batang.family, batang.weight, batang.display]).toEqual(['Gowun Batang', '700', 'swap']);
+    expect(hex(batang.range)).toEqual(hex(sub));
+  });
+
+  it('조각 파일은 작고(8KB 미만), 패키지 조각보다 뒤에 선언된다(뒤에 선언한 것부터 고르므로)', () => {
+    for (const f of ['jua-title.woff2', 'gowun-batang-700-title.woff2']) {
+      const size = statSync(new URL(`../../src/ui/styles/fonts/${f}`, import.meta.url)).size;
+      expect(size, f).toBeGreaterThan(500);
+      expect(size, f).toBeLessThan(8 * 1024);
+      expect(css.indexOf(`./fonts/${f}`)).toBeGreaterThan(css.lastIndexOf('@import'));
+    }
   });
 });

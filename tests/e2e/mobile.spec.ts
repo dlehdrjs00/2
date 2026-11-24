@@ -21,7 +21,7 @@ test('가로: 대사창·HUD·선택지·메뉴가 잘리거나 겹치지 않고
   await advanceOne(page);
   const hud = await inViewport(page, '.hud button');
   expect(hud.length).toBe(4);
-  for (const b of hud) expect(Math.min(b.width, b.height)).toBeGreaterThanOrEqual(40);
+  for (const b of hud) expect(Math.min(b.width, b.height)).toBeGreaterThanOrEqual(44);
   for (let i = 0; i < hud.length; i++) for (let j = i + 1; j < hud.length; j++) expect(overlap(hud[i], hud[j])).toBe(false);
   const [tb] = await inViewport(page, '.textbox');
   for (const b of hud) expect(overlap(b, tb)).toBe(false);

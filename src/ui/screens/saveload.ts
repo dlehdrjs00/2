@@ -9,6 +9,7 @@
  * 카드: .slot-wrap > button.slot[data-slot](.latest .empty .can-save .broken) + .slot-del
  *   썸네일은 저장된 무대 상태로 그린 미니 무대, 왼쪽 위 .slot-no(01·자동·퀵), 루트 배지 .slot-route
  *   정보: .slot-line1(.slot-r? .slot-name .slot-meta) + .slot-text
+ *         '장면 처음부터' 복구 저장(SlotPeek.recover)은 .slot.recover, 발췌 줄이 .slot-line2(.slot-recover 배지 + .slot-text)
  * 테스트 훅: .slot[data-slot], .slot-wrap > .slot + .slot-del, .slot-meta, .slot-name, .slot-text, .broken, 빈 칸 disabled(불러오기)
  */
 import { MANUAL_SLOTS, type SaveManager, type SlotId, type SlotPeek } from '../../engine/save';
@@ -186,12 +187,22 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
       const text = s?.text ?? '';
       // 저장 시각·발췌를 읽을 수 없어도(일부 손상) 정보 줄 높이는 그대로 둔다(썸네일만 커지지 않게)
       line1.append(el('span', 'slot-name', title), el('span', 'slot-meta', date || '날짜 모름'));
-      infoEl.append(line1, el('span', 'slot-text', text || '\u00a0'));
+      const textEl = el('span', 'slot-text', text || '\u00a0');
+      if (info.recover) {
+        // 저장한 문장이 대본에서 바뀌어 '장면 처음부터' 이어지는 저장: 발췌 앞에 작은 배지(같은 줄, 정보 줄 높이 그대로)
+        const row = el('span', 'slot-line2');
+        const badge = el('span', 'slot-recover', '장면 처음부터');
+        badge.title = '저장한 문장이 바뀌어 이 장면 처음부터 이어져요';
+        row.append(badge, textEl);
+        infoEl.append(line1, row);
+      } else infoEl.append(line1, textEl);
       b.append(thumb, infoEl);
       if (slot === latest) b.classList.add('latest');
+      if (info.recover) b.classList.add('recover');
       // 읽어 줄 이름: 빈 구절은 빼고 이어 붙인다('슬롯 5: 슬롯 5, . ' 처럼 읽히지 않게)
       const what = [title !== name ? title : '', route ? `${o.heroineName(route)} 루트` : ''].filter(Boolean).join(' · ');
-      label = `${name}${what ? `: ${what}` : ''}${date ? `, ${date}` : ''}.${text ? ` ${text}` : ''}`;
+      const recoverNote = info.recover ? ' 저장한 문장이 바뀌어 장면 처음부터 이어져요.' : '';
+      label = `${name}${what ? `: ${what}` : ''}${date ? `, ${date}` : ''}.${recoverNote}${text ? ` ${text}` : ''}`;
     }
     b.setAttribute('aria-label', label);
 

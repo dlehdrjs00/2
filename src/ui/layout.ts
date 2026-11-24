@@ -7,7 +7,7 @@
  *   최소 글자 크기를 지키느라 대사창이 커지면 무대 대비 비율이 커질 뿐 글자는 줄지 않는다.
  * - 이름표 탭(왼쪽)과 빠른 메뉴 탭(오른쪽)은 대사창 위 테두리에 붙어 같은 높이 띠(btn)를 나눠 쓴다
  *   (무대 위쪽 HUD 줄은 없앰 — 일러스트의 얼굴 부분을 비운다). 띠의 위끝이 hy = ty − btn 이다.
- * - 선택지 목록은 무대 위 여백(sy + m)부터 그 탭 띠 바로 위까지만 쓴다(빠른 메뉴·이름표·대사창과 겹치지 않게).
+ * - 선택지 목록은 무대 위 여백 언저리(sy + m − 1)부터 그 탭 띠 바로 위(hy − 1)까지만 쓴다(빠른 메뉴·이름표·대사창과 겹치지 않게).
  *   높이가 모자라는 화면은 dense 단계로 버튼을 촘촘하게 하거나 가로로 나란히 놓고, 그래도 넘치면 목록 안에서
  *   스크롤된다(styles/play.css).
  * - 글자 크기 설정(textScale 배율 1 / 1.12 / 1.25)은 fs 의 상·하한까지 함께 키운다. 3줄을 넘는 문장은
@@ -32,7 +32,7 @@ export interface Layout {
   ty: number;
   tw: number;
   th: number;
-  /** 선택지 목록 영역: 무대 위 여백(cy = sy + m)부터 탭 띠 바로 위까지. 위아래 안쪽 여백 CHOICE_PAD_Y 포함 */
+  /** 선택지 목록 영역: 무대 위 여백 언저리(cy = sy + m − CHOICE_LIFT)부터 탭 띠 바로 위(hy − CHOICE_CLEAR)까지. 위아래 안쪽 여백 CHOICE_PAD_Y 포함 */
   cx: number;
   cy: number;
   cw: number;
@@ -92,11 +92,15 @@ export const CHOICE_DENSE_MIN_H = 44;
 export const CHOICE_GAP_EM = 0.75;
 export const CHOICE_DENSE_GAP_EM = 0.4;
 /**
- * 탭 띠(이름표·빠른 메뉴)와 선택지 목록 사이 간격. 목록 안쪽 여백(CHOICE_PAD_Y 4px)과 합쳐 버튼과 탭 사이는 6px 이상
- * (포커스 테 3px + 간격 2px 보다 넓다). 탭이 44px 로 커진 만큼(4px)의 절반을 여기서 돌려받아 740×320 의 촘촘한
- * 3단 세로 배치(dense 1)를 지킨다
+ * 선택지 목록의 위·아래 끝: 위끝은 무대 위 여백(sy + m)보다 CHOICE_LIFT 위, 아래끝은 탭 띠(이름표·빠른 메뉴)보다
+ * CHOICE_CLEAR 위. 버튼은 목록 가운데에 놓이므로 위아래를 같은 양만큼 넓히면 버튼 자리는 그대로이고(예전 sy + m ~ hy − 2 와
+ * 가운데가 같다) 3단을 놓을 여유만 2px 늘어난다. 740×320 의 촘촘한 3단 세로 배치(dense 1) 여유 0.14px → 2.14px.
+ * 버튼과 탭 사이 = 목록 안쪽 여백(CHOICE_PAD_Y 4px) + CHOICE_CLEAR + 남는 높이의 절반: 단계 경계에서도 5px
+ * (포커스 테 3px + 띄움 2px 가 탭 띠를 넘지 않음), 740×320 에서는 6.07px. 목록 경계에서 잘리던 버튼 그림자·포커스 테는
+ * 1px 덜 잘린다.
  */
-const CHOICE_CLEAR = 2;
+const CHOICE_CLEAR = 1;
+const CHOICE_LIFT = 1;
 /** 빠른 메뉴 폭 단계 경계(대사창 폭, px). 실측 탭 폭: 아이콘+글자 약 616px, 글자만 약 429px */
 const QM_ICONS_MIN_TW = 900;
 const QM_FULL_MIN_TW = 620;
@@ -163,7 +167,7 @@ export function computeLayout(vw: number, vh: number, safe: Insets, opts: Layout
     const btn = tabHeight(fs);
     const hy = ty - btn;
     // 선택지: 무대 위 여백 ~ 탭 띠 위. 무대가 높이에 맞춰 줄어 좌우가 비면(레터박스) 그 폭까지 써서 줄바꿈을 줄인다
-    const cy = sy + m;
+    const cy = sy + m - CHOICE_LIFT;
     const ch = Math.max(0, hy - CHOICE_CLEAR - cy);
     const wide = aw - sw > 2;
     const cx = wide ? safe.l + m : sx;
@@ -219,7 +223,7 @@ export function computeLayout(vw: number, vh: number, safe: Insets, opts: Layout
   const m = 8;
   const hy = ty - btn;
   // 선택지: 무대 위 여백부터 탭 띠 바로 위까지(무대와 대사창 사이 간격 포함), 안전 영역 폭 전체
-  const cy = sy + m;
+  const cy = sy + m - CHOICE_LIFT;
   const ch = Math.max(0, hy - CHOICE_CLEAR - cy);
   const cx = safe.l + 8;
   const cw = aw - 16;

@@ -29,6 +29,12 @@ export interface QuickBar {
   el: HTMLElement;
   setAuto(on: boolean): void;
   setSkip(on: boolean): void;
+  /**
+   * 탭 글자(기록·자동·스킵·메뉴·퀵저장·퀵로드·숨기기·설정)의 글꼴 조각을 미리 받는다. 탭은 대사 화면에서만 배치되므로
+   * (타이틀에서는 받지 않음) 타이틀 키 비주얼이 그려진 뒤 부르면 첫 장면에서 탭 글자가 대체 글꼴로 보이거나
+   * 첫 장면 그림과 대역폭을 나누지 않는다. 글꼴 API 가 없으면 아무것도 하지 않는다.
+   */
+  preloadFont(): void;
 }
 
 type QuickKey = keyof QuickBarHandlers;
@@ -60,6 +66,9 @@ const DEFS: readonly QuickDef[] = [
 
 export function createQuickBar(h: QuickBarHandlers): QuickBar {
   const bar = el('div', 'qbar');
+  // 처음에는 숨긴 채로 만든다(게임이 대사 화면에서만 보인다). 문서에 붙자마자 한 번 배치될 때 탭 글자
+  // (기록·스킵·퀵저장·숨기기…)의 글꼴 조각까지 타이틀에서 받아 키 비주얼과 대역폭을 나누지 않게
+  bar.style.display = 'none';
   bar.dataset.noadvance = '';
   bar.setAttribute('role', 'toolbar');
   bar.setAttribute('aria-label', '빠른 메뉴');
@@ -104,5 +113,15 @@ export function createQuickBar(h: QuickBarHandlers): QuickBar {
     el: bar,
     setAuto: (on) => press(buttons.auto, on),
     setSkip: (on) => press(buttons.skip, on),
+    preloadFont() {
+      try {
+        // 굵기·크기·글꼴 목록은 CSS(play.css .qbar button)가 정한 그대로 읽는다(숨겨 둔 상태에서도 계산된다)
+        const cs = getComputedStyle(buttons.log);
+        const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        void document.fonts?.load(font, DEFS.map((d) => d.label).join('')).catch(() => undefined);
+      } catch {
+        /* 글꼴 API 없음: 무시 */
+      }
+    },
   };
 }

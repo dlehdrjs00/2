@@ -662,13 +662,20 @@ export class SaveManager {
     return { state, stage, entryStage: entry?.stage ?? null };
   }
 
-  /** 가장 최근에 저장된 수동 슬롯(자동 저장이 손상됐을 때 안내용) */
+  /**
+   * 가장 최근에 저장된 수동 슬롯(자동 저장이 손상됐을 때 안내용).
+   * savedAt 은 시각으로 바꿔 비교한다(문자열 비교는 시간대 표기·자릿수가 다르면 틀린다).
+   * 시각으로 읽을 수 없는 savedAt(빈 문자열·손으로 고친 값 등)은 건너뛴다.
+   */
   latestManual(): SlotId | null {
-    let best: { slot: SlotId; at: string } | null = null;
+    let best: { slot: SlotId; at: number } | null = null;
     for (let i = 1; i <= MANUAL_SLOTS; i++) {
       const slot = String(i) as SlotId;
       const p = this.peek(slot);
-      if (!p.empty && !p.broken && p.savedAt && (!best || p.savedAt > best.at)) best = { slot, at: p.savedAt };
+      if (p.empty || p.broken || !p.savedAt) continue;
+      const at = Date.parse(p.savedAt);
+      if (Number.isNaN(at)) continue;
+      if (!best || at > best.at) best = { slot, at };
     }
     return best?.slot ?? null;
   }

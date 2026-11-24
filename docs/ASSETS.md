@@ -292,6 +292,7 @@ npm run validate && npm run docs                   # 연결 확인, 문서 갱�
 | 배경(임시) | 이 저장소의 `scripts/art/backgrounds.mjs` 가 코드로 생성 | 외부 소재 없음 | 최종 교체 대상 |
 | 음악·효과음(임시) | 이 저장소의 `scripts/gen-placeholder-audio.mjs` 가 합성 | 외부 음원·샘플 없음 | 최종 교체 대상 |
 | 글꼴 | `@fontsource/gowun-batang`, `@fontsource/gowun-dodum`, `@fontsource/jua`, `pretendard` (npm) | SIL Open Font License 1.1 | `package.json` dependencies |
+| 글꼴 타이틀 조각 `src/ui/styles/fonts/jua-title.woff2`, `gowun-batang-700-title.woff2` | google/fonts 의 OFL TTF(`ofl/jua/Jua-Regular.ttf`, `ofl/gowunbatang/GowunBatang-Bold.ttf`)에서 로고·부제 글자만 뽑은 부분 글꼴(pyftsubset) | SIL Open Font License 1.1(원본과 같음). 이름 표(저작권·OFL 안내)는 원본 그대로 둔다 | 타이틀이 받는 글꼴을 줄이려는 파생 파일(UI_DESIGN 4장). `GAME_TITLE`·`GAME_SUBTITLE`(src/story/config.ts)을 바꾸면 `tokens.css` 주석의 명령으로 다시 만들고 `unicode-range` 를 맞춘다(`tests/unit/layout.test.ts` 가 검사) |
 
 최종 배경·음악·효과음을 넣으면 이 표에 한 줄씩 더한다(예: `| 배경 classroom_day | ○○ 작가 직접 제작 | 상업 이용·수정 허락(계약서 날짜) | 2026-xx-xx 확인 |`). 이 표는 `scripts/export-assets.ts` 안에 있다.
 
