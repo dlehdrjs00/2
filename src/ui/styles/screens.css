@@ -2271,6 +2271,11 @@
 .title-screen.kv-instant .art-lo {
   transition: none;
 }
+/* 데이터 절약 모드: 원본을 받지 않고 작은 그림만 쓴다(title.ts). 마지막 그림이므로 '불러오는 중' 흐림을 걷는다 */
+.title-screen.kv-lite .art-lo {
+  inset: 0;
+  filter: none;
+}
 .title-screen.kv .leftveil {
   background: linear-gradient(90deg, rgba(244, 250, 255, 0.82) 0%, rgba(244, 250, 255, 0.55) 24%, rgba(244, 250, 255, 0) 40%);
 }

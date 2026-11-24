@@ -8,11 +8,17 @@
  * - 새 배경을 기다리는 동안(bgPending)에는 장면이 섞여 보이지 않게, 그동안 들어온 인물 교체(나가기·들어오기·표정)와
  *   장소 표시를 새 배경이 실제로 붙는 순간(크로스페이드 시작)까지 미룬다. 장소 표시의 3.2초 자동 숨김도 그때부터,
  *   같은 묶음의 인물·CG 그림이 아직이면 그 그림이 붙을 때부터 센다(느린 망에서 대사보다 먼저 꺼지지 않게).
+ *   새 배경도 같은 묶음(applyVisual 한 번)의 인물 그림이 해독될 때까지 기다렸다 함께 붙는다(작은 배경만 먼저 붙어
+ *   '새 배경 + 인물 없음'이 앞 대사 아래 남지 않게). 배경 요청부터 8초(BG_HOLD_MAX_MS)가 지나면 받는 중인 그대로 붙인다
+ *   (배경 요청이 멈춰도 무대가 앞 장면에 고정되지 않게).
+ * - 불러오기·타이틀처럼 무대를 새로 그리면 무대 세대(gen)를 올린다. 앞 세대의 막 연출(veilOut·flash)은 새 무대를
+ *   건드리지 않고 끝나고, 앞 세대에서 미뤄 둔 퇴장은 불러온 배경이 붙을 때 연출 없이 빠진다.
  * - CG 는 해독에 쓴 <img> 를 그대로 .cg-layer 안에 붙이고, 페이드 전에 거의 투명하게(.prime) 두 프레임 그려 래스터를
  *   끝내 둔다. 투명도 0 에서 바로 페이드하면 래스터가 느린 환경(GPU 없는 소프트웨어 래스터)에서 페이드가 빈 레이어로
  *   흘러가고 그림이 0.3~1.1초 뒤 툭 튀어나왔다(배경·인물·CG 가 함께 바뀌는 c6.a20 등).
  * - 화면 팀이 대사를 그리기 전에 무대 준비를 기다릴 수 있게 ready(ms) 를 둔다(최대 ms, 누르면 hurry 로 즉시 끝).
- *   1.2초가 넘게 기다리면 무대 가운데에 '불러오는 중' 알약을 띄운다. 암전 막(veilOut)도 같은 방식으로 기다린다.
+ *   ready() 는 마지막 ready() 뒤에 들어온 그림 요청만 기다리고, 시간 초과·누름으로 넘긴 그림은 다시 기다리지 않는다.
+ *   1.2초가 넘게 기다리면 무대 가운데에 '불러오는 중' 알약을 띄운다(켜면 최소 0.4초). 암전 막(veilOut)도 같은 방식으로 기다린다.
  * - 이벤트 CG 가 떠 있는 동안 무대에 data-cg 를 단다(styles/play.css 가 대사창·빠른 메뉴 유리를 옅게 해 그림이 비치게).
  *   #vn[data-cgfit=low](layout.ts: 탭 띠가 무대 높이의 66% 보다 위)이면 CG 마다 정한 확대·위치로 얼굴·동작을 탭 위로 올린다.
  * - 배경 톤(낮·노을·밤)은 에셋 매니페스트(BACKGROUNDS[id].tone)로 정하고, 그림이 실제로 바뀌는 순간
@@ -49,6 +55,14 @@ const DECODE_MAX_MS = 1200;
 const VEIL_WAIT_MS = 8000;
 /** ready() 기본 대기 상한 */
 const READY_MAX_MS = 8000;
+/**
+ * 새 배경(과 같은 묶음의 인물 그림)을 기다리며 앞 장면을 붙잡아 두는 최대 시간(배경 요청부터).
+ * 지나면 받는 중인 배경을 그대로 붙이고(바탕색 + 받는 대로 그려짐) 미뤄 둔 인물 교체·장소 표시를 푼다.
+ * 배경 요청이 응답 없이 멈추면 무대가 앞 장면에 고정된 채 새 장면 대사가 흘러가던 것을 막는다(막 경로의 VEIL_WAIT_MS 와 같은 값).
+ */
+const BG_HOLD_MAX_MS = 8000;
+/** '불러오는 중' 알약을 한 번 켜면 이만큼은 보인다(켜진 지 0.1초 만에 꺼져 반쯤 보였다 사라지는 깜빡임 방지) */
+const LOADING_MIN_MS = 400;
 /** 연출 없이(animate=false) 그리라는 그림이 이보다 늦게 준비되면 툭 튀어나오지 않게 페이드로 보인다 */
 const LATE_MS = 150;
 /** 장소 표시가 떠 있는 시간(명세 7장 '3.2s 뒤 퇴장') */
@@ -75,7 +89,7 @@ const CARD_SPARE_FS = 1;
 // 그림 해독(같은 주소는 한 번만, 해독한 Image 를 붙잡아 두어 다시 쓸 때 즉시 그려지게)
 // ---------------------------------------------------------------------------
 
-const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<boolean> }>();
+const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<boolean>; settled: boolean }>();
 
 /**
  * 해독 결과: 성공 true, 실패(파일 없음·손상) false. 시간 상한 없이 해독(또는 실패)이 끝나야 풀린다.
@@ -99,10 +113,17 @@ function decodeOnce(url: string): Promise<boolean> {
             () => loaded,
           )
         : loaded;
-    hit = { img, done };
+    const entry = { img, done, settled: false };
+    void done.then(() => (entry.settled = true));
+    hit = entry;
     decodeCache.set(url, hit);
   }
   return hit.done;
+}
+
+/** 해독(또는 실패)이 끝난 주소인지. 요청한 적 없는 주소는 false */
+function decodeSettled(url: string): boolean {
+  return decodeCache.get(url)?.settled ?? false;
 }
 
 /** decodeOnce 가 해독에 쓴 Image(같은 주소를 그대로 화면에 붙이면 해독 결과를 다시 쓴다) */
@@ -301,24 +322,45 @@ export class StageView {
   /** 마지막으로 요청한 배경(해독을 기다리는 중이어도 이 값) */
   private bgId: BgId | undefined;
   private bgToken = 0;
-  /** 마지막 배경 요청이 화면에 나타날 준비(해독)가 되면 풀리는 약속 */
-  private bgReady: Promise<void> = Promise.resolve();
   /** 해독을 기다리는 배경 적용 함수(암전 막을 걷어야 하는데 아직이면 flushBg 가 바로 그린다) */
   private bgPending: (() => void) | null = null;
   /** 대기 중인 배경이 실제로 붙으면(해독 뒤, 또는 막을 걷으며 flushBg) 풀리는 약속. 그사이 새 요청이 오면 마지막 요청을 기다린다 */
   private bgShown: { promise: Promise<void>; resolve: () => void } | null = null;
+  /** 대기 중인 배경을 BG_HOLD_MAX_MS 뒤 그대로 붙이는 타이머 */
+  private bgHoldTimer: ReturnType<typeof setTimeout> | null = null;
   private bgFadeTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * 무대 세대: 불러오기(renderSnapshot)·비우기(clearAll)·막 즉시 걷기(clearVeilInstant)마다 올린다.
+   * 앞 세대의 막 연출(veilOut·flash)이 새 무대의 배경을 해독 전에 붙이거나(flushBg) 새 무대를 기다리지 않게,
+   * 앞 세대에서 미뤄 둔 퇴장이 불러온 무대 위에서 페이드하지 않게 한다.
+   */
+  private gen = 0;
+  /**
+   * 아직 어떤 ready() 도 기다리지 않은 그림 준비(배경·CG 는 마지막 요청, 인물은 인물마다 마지막 요청).
+   * ready() 는 이것만 기다리고 비운다: 앞 줄에서 이미 상한까지 기다렸거나 누름으로 넘긴 그림을 다음 줄에서 또 기다리지 않게.
+   * urls 는 그 요청이 해독을 기다리는 그림(ready() 가 포기할 때 givenUp 에 넣는다). giveUp 은 포기할 때 부른다.
+   */
+  private fresh = new Map<string, { promise: Promise<unknown>; urls: string[]; giveUp?: () => void }>();
+  /** ready() 가 기다리다 포기한(시간 초과·누름) 그림 주소. 아직 해독 전이면 다음 요청에서 다시 기다리지 않는다 */
+  private givenUp = new Set<string>();
+  /**
+   * 같은 묶음(applyVisual·renderSnapshot 한 번처럼 한 동기 흐름)에서 요청된 인물 그림 해독. 같은 묶음의 새 배경은
+   * 이것까지 해독된 뒤 함께 붙는다(작은 배경 그림만 먼저 붙어 '새 배경 + 인물 없음' 무대가 앞 대사 아래 남지 않게)
+   */
+  private batch: Promise<unknown>[] | null = null;
   private tone: BgTone = 'day';
   private charsEl: HTMLElement;
   private chars = new Map<CharId, CharImg>();
   private charTokens = new Map<CharId, number>();
-  /** 인물별로 해독을 기다리는 새 그림(다 붙이면 지운다) */
+  /** 인물별로 붙기를 기다리는 새 그림(해독·배경 대기 뒤 붙으면 지운다). 장소 표시의 3.2초를 언제부터 셀지 정한다 */
   private charReady = new Map<CharId, Promise<void>>();
-  /** 마지막 CG 요청이 해독(또는 실패)으로 끝나면 풀리는 약속 */
+  /** 마지막 CG 요청이 켜지거나(예열 포함) 실패로 끝나면 풀리는 약속 */
   private cgReady: Promise<void> = Promise.resolve();
   /** '불러오는 중' 알약과, 그것을 띄워 달라는 대기 수 */
   private loadingEl: HTMLElement;
   private loadingWaits = 0;
+  private loadingOnAt = 0;
+  private loadingOffTimer: ReturnType<typeof setTimeout> | null = null;
   private sunwash: HTMLElement;
   private motes: HTMLElement;
   private motesKey = '';
@@ -401,23 +443,27 @@ export class StageView {
 
   wait(ms: number): Promise<void> {
     if (ms <= 0) return Promise.resolve();
-    return this.waitFor(null, ms);
+    return this.waitFor(null, ms).then(() => undefined);
   }
 
-  /** p 가 끝나거나, ms 가 지나거나, hurry() 가 불릴 때까지 */
-  private waitFor(p: Promise<unknown> | null, ms: number): Promise<void> {
+  /** p 가 끝나거나(done), ms 가 지나거나(timeout), hurry() 가 불릴 때까지(hurry). 끝난 까닭을 돌려준다 */
+  private waitFor(p: Promise<unknown> | null, ms: number): Promise<'done' | 'timeout' | 'hurry'> {
     return new Promise((resolve) => {
       let done = false;
-      const finish = () => {
+      const finish = (why: 'done' | 'timeout' | 'hurry') => {
         if (done) return;
         done = true;
         clearTimeout(t);
-        this.hurryFns.delete(finish);
-        resolve();
+        this.hurryFns.delete(onHurry);
+        resolve(why);
       };
-      const t = setTimeout(finish, ms);
-      this.hurryFns.add(finish);
-      p?.then(finish, finish);
+      const onHurry = () => finish('hurry');
+      const t = setTimeout(() => finish('timeout'), ms);
+      this.hurryFns.add(onHurry);
+      p?.then(
+        () => finish('done'),
+        () => finish('done'),
+      );
     });
   }
 
@@ -446,7 +492,24 @@ export class StageView {
   }
 
   /**
+   * 같은 묶음의 그림 해독 목록(없으면 새로 연다). 동기 흐름이 끝나면(마이크로태스크) 닫힌다. 배경 요청은 닫힌 뒤에
+   * 목록을 읽으므로 대본에서 show 가 bg 보다 앞에 와도 같은 묶음이면 함께 기다린다.
+   */
+  private batchDecodes(): Promise<unknown>[] {
+    if (!this.batch) {
+      const b: Promise<unknown>[] = [];
+      this.batch = b;
+      queueMicrotask(() => {
+        if (this.batch === b) this.batch = null;
+      });
+    }
+    return this.batch;
+  }
+
+  /**
    * 배경 요청 공통: 그림 해독이 끝난 뒤 apply(덜 받은 그림을 붙이지 않는다. 그동안은 이전 배경이 그대로 보인다).
+   * 같은 묶음의 인물 그림이 아직이면 그 해독까지 기다렸다가 함께 붙는다(장면이 섞여 보이지 않게).
+   * BG_HOLD_MAX_MS 가 지나도 아직이면 받는 중인 그대로 붙인다(앞 장면에 무대가 고정되지 않게).
    * 그사이 새 요청이 오면 버린다. 배경이 바뀌면 이전 장소 표시는 걷는다(같은 묶음의 place 가 뒤따르면 다시 뜬다).
    */
   private requestBg(id: BgId, apply: () => void) {
@@ -457,6 +520,7 @@ export class StageView {
     const run = () => {
       if (token !== this.bgToken || this.bgPending !== run) return;
       this.bgPending = null;
+      this.clearBgHold();
       apply();
       // 새 배경이 붙은 지금: 미뤄 둔 장소 표시를 띄우고, 미뤄 둔 인물 교체(whenBgShown)를 풀어 크로스페이드와 함께 바뀌게
       const place = this.placeQueued;
@@ -467,9 +531,30 @@ export class StageView {
       shown?.resolve();
     };
     this.bgPending = run;
-    const ready = url ? decodeOnce(url).then(() => undefined) : Promise.resolve();
-    this.bgReady = ready;
-    void ready.then(run);
+    this.clearBgHold();
+    this.bgHoldTimer = setTimeout(() => {
+      this.bgHoldTimer = null;
+      if (token === this.bgToken) this.flushBg();
+    }, BG_HOLD_MAX_MS);
+    const own: Promise<unknown> = url ? decodeOnce(url) : Promise.resolve();
+    // 기다리다 포기한 적이 있는 그림(아직 받는 중)이면 대사(ready)는 다시 기다리지 않는다. 무대는 해독(또는 상한) 뒤에 붙인다
+    const given = !!url && this.givenUp.has(url);
+    const batch = this.batchDecodes();
+    // 이 배경을 기다리던 ready() 가 시간 초과·누름으로 끝나면(대사가 먼저 그려짐) 같은 묶음 인물은 더 기다리지 않고
+    // 배경 자신의 해독만 기다린다(누른 뒤에는 그림이 준비되는 대로 붙는다)
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    void Promise.resolve()
+      .then(() => Promise.race([Promise.all([own, ...batch]), released.then(() => own)]))
+      .then(run, run);
+    // ready() 는 이 배경이 실제로 붙을 때까지 기다린다(같은 묶음 인물 그림 포함, 최대 BG_HOLD_MAX_MS)
+    const shown = this.whenBgShown()!;
+    this.fresh.set('bg', { promise: given ? Promise.resolve() : shown, urls: url && !given ? [url] : [], giveUp: release });
+  }
+
+  private clearBgHold() {
+    if (this.bgHoldTimer) clearTimeout(this.bgHoldTimer);
+    this.bgHoldTimer = null;
   }
 
   /** 해독을 기다리는 배경을 지금 붙인다(암전 막을 걷는데 아직 받는 중이면, 앞 장면 배경보다 받는 중인 새 배경이 낫다) */
@@ -479,7 +564,7 @@ export class StageView {
 
   /**
    * 대기 중인 배경이 화면에 붙을 때까지(없으면 null). 새 장면 인물이 앞 장면 배경 위에 먼저 붙지 않게
-   * showChar·hideChar 가 이것을 기다린다. 해독이 끝나거나 막을 걷으며 flushBg 로 붙이면 풀린다.
+   * showChar·hideChar 가 이것을 기다린다. 해독이 끝나거나, 막을 걷으며·BG_HOLD_MAX_MS 가 지나 flushBg 로 붙이면 풀린다.
    */
   private whenBgShown(): Promise<void> | null {
     if (!this.bgPending) return null;
@@ -572,23 +657,34 @@ export class StageView {
   /**
    * 막 뒤에서 바꾼 무대(배경·인물·CG)가 해독될 때까지 기다렸다가 걷는다(최대 8초, 1.2초가 넘으면 '불러오는 중',
    * 누르면 hurry 로 바로). 그때까지 배경이 덜 받아졌으면 받는 중인 새 배경을 붙이고 걷는다.
+   * 기다리는 사이 무대를 새로 그렸으면(불러오기·타이틀: 세대가 바뀜) 아무것도 하지 않고 끝낸다. 그때 bgPending 은
+   * 불러온 장면의 배경이라, 여기서 flushBg 하면 그 배경이 해독 전에 붙고 미뤄 둔 인물 교체까지 함께 풀렸다.
+   * gen: 막을 친 세대(flash 가 넘긴다. 없으면 지금)
    */
-  async veilOut(): Promise<void> {
+  async veilOut(gen = this.gen): Promise<void> {
+    if (gen !== this.gen) return;
     await this.ready(VEIL_WAIT_MS);
+    if (gen !== this.gen) return;
     this.flushBg();
     this.veil.classList.remove('on');
     await this.wait(DUR.veil);
   }
 
   /**
-   * 지금 요청된 배경·인물·이벤트 CG 그림이 모두 해독될 때까지 기다린다. 최대 ms, hurry() 가 불리면 바로 끝난다.
+   * 아직 기다리지 않은 배경·인물·이벤트 CG 그림 요청(마지막 ready() 뒤의 요청 = 보통 이번 스텝이 바꾼 그림)이 모두
+   * 붙을 준비가 될 때까지 기다린다. 최대 ms, hurry() 가 불리면 바로 끝난다.
+   * 앞선 ready() 가 이미 기다린 요청은 다시 기다리지 않는다. 상한(8초)까지 기다렸거나 hurry 로 끝나면 그때 아직 해독 전이던
+   * 그림은 '포기함'으로 두어, 같은 그림을 다시 요청해도 기다리지 않는다(멈춘 그림 하나 때문에 뒤의 줄마다 8초씩 서지 않게).
    * 1.2초 넘게 걸리면 무대 가운데에 '그림을 불러오는 중…' 알약을 띄운다(끝나면 걷음).
    * 화면 팀용: 장면 진입·이어하기·CG 가 바뀌는 스텝에서 대사를 그리기 전에 await 하면 대사가 그림보다 먼저 나오지 않는다
    * (이 동안 transitioning 으로 두어 클릭이 hurry 가 되게). 다 준비됐으면 true, 시간 초과·hurry 면 false.
    */
   async ready(ms = READY_MAX_MS): Promise<boolean> {
+    const waits = [...this.fresh.values()];
+    this.fresh.clear();
+    const gen = this.gen;
     let settled = false;
-    const all = Promise.all([this.bgReady, this.cgReady, ...this.charReady.values()]).then(() => {
+    const all = Promise.all(waits.map((w) => w.promise.catch(() => undefined))).then(() => {
       settled = true;
     });
     let shown = false;
@@ -597,18 +693,48 @@ export class StageView {
       shown = true;
       this.setLoading(+1);
     }, DECODE_MAX_MS);
-    await this.waitFor(all, ms);
+    const why = await this.waitFor(all, ms);
     clearTimeout(timer);
     if (shown) this.setLoading(-1);
+    // 포기는 누름(hurry)이나 상한(READY_MAX_MS 이상)까지 기다린 시간 초과만. 짧게 잡은 기다림(화면 팀의 표정 줄 등)이
+    // 끝난 것은 포기가 아니다(뒤에 그 그림이 새로 등장하는 줄은 끝까지 기다린다). 불러오기·타이틀 이동이 끝낸 기다림
+    // (세대가 바뀜)도 사용자가 그림을 포기한 것이 아니므로 표시하지 않는다
+    if (!settled && gen === this.gen && (why === 'hurry' || ms >= READY_MAX_MS)) {
+      for (const w of waits) {
+        for (const u of w.urls) if (!decodeSettled(u)) this.givenUp.add(u);
+        w.giveUp?.();
+      }
+    }
     return settled;
   }
 
   private setLoading(delta: number) {
     this.loadingWaits = Math.max(0, this.loadingWaits + delta);
-    this.loadingEl.classList.toggle('on', this.loadingWaits > 0);
+    const pill = this.loadingEl;
+    if (this.loadingWaits > 0) {
+      if (this.loadingOffTimer) clearTimeout(this.loadingOffTimer);
+      this.loadingOffTimer = null;
+      if (!pill.classList.contains('on')) {
+        this.loadingOnAt = now();
+        pill.classList.add('on');
+      }
+      return;
+    }
+    if (!pill.classList.contains('on') || this.loadingOffTimer) return;
+    // 켜진 지 얼마 안 됐으면 LOADING_MIN_MS 까지 두었다가 걷는다
+    const left = LOADING_MIN_MS - (now() - this.loadingOnAt);
+    if (left <= 0) {
+      pill.classList.remove('on');
+      return;
+    }
+    this.loadingOffTimer = setTimeout(() => {
+      this.loadingOffTimer = null;
+      if (this.loadingWaits === 0) pill.classList.remove('on');
+    }, left);
   }
 
   clearVeilInstant(): void {
+    this.gen++;
     withoutTransition([this.veil], () => this.veil.classList.remove('on'));
   }
 
@@ -654,14 +780,22 @@ export class StageView {
     // 새 배경이 아직 해독 중이면(같은 묶음의 장면 전환) 그 배경이 붙을 때까지 더 기다린다: 새 장면 인물이
     // 앞 장면 배경 위에 먼저 붙지 않고 배경 크로스페이드와 같은 순간에 바뀐다. 배경 여부는 그림 해독이 끝난
     // 시점에 본다(대본에서 show 가 bg 보다 앞에 와도 같은 묶음이면 기다린다).
+    // ready() 쪽 기다림은 이 그림의 해독뿐이다. 같은 묶음의 새 배경은 배경 요청이 따로 기다리고(fresh 'bg'),
+    // 앞 줄에서 이미 기다렸거나 포기한 배경은 다시 기다리지 않는다(그림은 배경이 붙을 때 함께 바뀐다)
+    const key = `char:${char}`;
     const same = !url || target.getAttribute('src') === url;
     if (same && !this.bgPending) {
       this.charReady.delete(char);
+      this.fresh.delete(key);
       apply();
       return;
     }
     const decoded: Promise<unknown> = same ? Promise.resolve() : decodeOnce(url!);
+    // 기다리다 포기한 적이 있는 그림(아직 받는 중)은 대사·같은 묶음 배경이 다시 기다리지 않는다(받는 대로 붙는다)
+    const waitDecode = !same && !this.givenUp.has(url!);
+    if (waitDecode) this.batchDecodes().push(decoded);
     this.charReady.set(char, decoded.then(() => this.whenBgShown()).then(apply));
+    this.fresh.set(key, { promise: waitDecode ? decoded : Promise.resolve(), urls: waitDecode ? [url!] : [] });
   }
 
   private revealChar(img: CharImg, animate: boolean) {
@@ -679,8 +813,11 @@ export class StageView {
     this.chars.delete(char);
     this.charTokens.delete(char);
     this.charReady.delete(char);
+    this.fresh.delete(`char:${char}`);
+    const gen = this.gen;
     const leave = () => {
-      if (!animate) {
+      // 기다리는 사이 무대를 새로 그렸으면(불러오기·타이틀) 불러온 배경 위에서 페이드하지 않고 그 배경과 함께 바로 뺀다
+      if (!animate || gen !== this.gen) {
         img.remove();
         return;
       }
@@ -702,6 +839,7 @@ export class StageView {
   }
 
   renderSnapshot(stage: StageState): void {
+    this.gen++;
     this.setBgInstant(stage.bg);
     for (const c of [...this.chars.keys()]) if (!stage.chars[c]) this.hideChar(c, false);
     for (const c of stage.order) {
@@ -720,6 +858,7 @@ export class StageView {
   }
 
   clearAll(): void {
+    this.gen++;
     for (const c of [...this.chars.keys()]) this.hideChar(c, false);
     this.showCg(null, false);
     this.setBgInstant('black');
@@ -735,9 +874,11 @@ export class StageView {
     setTimeout(() => this.el.classList.remove('shake'), 500);
   }
 
+  /** 번쩍임. 흰 막을 치는 사이 무대를 새로 그렸으면(불러오기·타이틀) 새 무대를 기다리거나 막을 걷지 않고 끝낸다 */
   async flash(): Promise<void> {
+    const gen = this.gen;
     await this.veilIn('white');
-    await this.veilOut();
+    await this.veilOut(gen);
   }
 
   // =========================================================================
@@ -776,6 +917,7 @@ export class StageView {
     };
     if (!id) {
       this.cgReady = Promise.resolve();
+      this.fresh.delete('cg');
       set(false);
       delete layer.dataset.cg;
       return;
@@ -783,30 +925,41 @@ export class StageView {
     const url = this.cgUrlOf(id);
     if (!url) {
       this.cgReady = Promise.resolve();
+      this.fresh.delete('cg');
       set(false);
       return;
     }
     const started = now();
-    this.cgReady = decodeOnce(url).then(async (ok) => {
+    // 같은 묶음의 새 배경은 CG 를 기다리지 않는다(CG 는 무대 위를 덮으며 따로 페이드로 켜진다. 큰 그림 하나 때문에
+    // 배경·인물 교체까지 상한만큼 서 있지 않게)
+    const decoded = decodeOnce(url);
+    // 기다리다 포기한 적이 있는 그림(아직 받는 중)은 대사가 다시 기다리지 않는다(받는 대로 켠다)
+    const waitDecode = !this.givenUp.has(url);
+    this.cgReady = decoded.then(async (ok) => {
       if (token !== this.cgToken) return;
       if (!ok) {
         set(false);
         return;
       }
+      // 늦음 판정은 해독이 끝난 지금 한다(예열에 드는 시간은 넣지 않는다)
+      const fade = animate || now() - started > LATE_MS;
       this.paintCg(url);
       layer.dataset.cg = id;
-      // 예열: 꺼져 있던 레이어를 거의 투명하게(0.004) 두 프레임 그려, 페이드를 시작하기 전에 그림을 래스터해 둔다.
+      // 예열: 꺼져 있던 레이어를 페이드로 켤 때는 먼저 거의 투명하게(0.004) 두 프레임 그려, 페이드를 시작하기 전에 그림을 래스터해 둔다.
       // 투명도 0 에서 바로 페이드를 시작하면 브라우저가 그 레이어의 래스터를 기다리지 않고 애니메이션을 돌려,
       // 그림 래스터가 느린 환경(GPU 없는 소프트웨어 래스터: 1920×1080 한 장에 0.3~1.1초)에서는 페이드 시간이
       // 빈 레이어로 지나가고 그림이 중간에 툭 튀어나왔다. 이 약속(cgReady)이 풀린 뒤 대사를 그리므로 대사도 페이드와 함께 나온다.
-      if (!layer.classList.contains('on')) {
+      // 연출 없이 켜는 CG(불러오기·건너뛰기, 늦지 않음)는 예열 없이 이 자리에서 켠다: 애니메이션이 없으니 래스터가 끝난
+      // 프레임부터 보이고, 예열하면 그 두 프레임(느린 래스터에서 약 0.24초) 동안 CG 없는 배경만 보이다가 늦음 판정으로 페이드했다.
+      if (fade && !layer.classList.contains('on')) {
         layer.classList.add('prime');
         await afterFrames(2, PRIME_MAX_MS);
         if (token !== this.cgToken) return;
       }
       // 연출 없이 켜라는 CG(불러오기·건너뛰기)라도 늦게 준비됐으면 페이드로
-      set(true, animate || now() - started > LATE_MS);
+      set(true, fade);
     });
+    this.fresh.set('cg', { promise: waitDecode ? this.cgReady : Promise.resolve(), urls: waitDecode ? [url] : [] });
   }
 
   /**

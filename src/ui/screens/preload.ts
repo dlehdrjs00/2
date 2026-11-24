@@ -9,6 +9,8 @@
  * - 동시에 3개(데이터 절약 모드·2G/3G 로 보이는 연결은 2개)까지, fetchPriority 'low' 로 받는다.
  *   'low' 는 요청을 '시작하는 순서'에만 듣고, 이미 받는 중인 요청끼리 대역폭을 나누는 데에는 효과가 없다. 그래서
  *   지금 무대가 받는 그림(장면 진입·이어하기·새 CG)이 있으면 그 그림을 다 받을 때까지 새 요청을 시작하지 않는다(hold).
+ *   붙잡는 시간은 그림마다 '처음 붙잡은 때부터' 센다(스텝마다 다시 붙잡아도 늘지 않는다). 무대에서 빠진 그림은 놓아 준다.
+ * - 받는 데 FETCH_SLOT_MS 넘게 걸리는 미리 불러오기(멈춘 연결)는 자리만 비운다(요청은 그대로 두고, 다 받으면 받은 것으로 친다).
  * - 바로 몇 줄 뒤에 처음 쓰는 그림(plan 의 decode)은 받은 뒤 해독(decode)까지 해 둔다. 무대(stage.ts)는 처음 쓰는 그림을
  *   해독한 뒤에야 대사를 그리므로(present → stage.ready) 미리 해독해 두면 그 줄에서 해독을 기다리지 않는다. 브라우저의 해독
  *   캐시는 같은 주소의 새 Image 가 함께 쓴다(Chromium 에서 받기만 한 그림 20~100ms → 미리 해독한 그림 0~5ms, 20초·다른 그림
@@ -16,6 +18,8 @@
  *   해독한다(먼저 해독한 급한 그림이 나중 그림에 밀려 지워지지 않게). 해독은 한 번에 하나씩.
  *   해독한 Image 는 최근 것 몇 개만 붙잡아 둔다(메모리 캐시에서 빠져 무대가 다시 받지 않게).
  * - 장면 그림은 대본(배경·등장·표정 변화·CG)을 앞에서부터 훑어 계산한다. 조건 분기는 양쪽 다 받는다.
+ *   아직 고르지 않은 선택지가 앞에 없으면 같은 장면 안의 goto(앞으로 가는 것)를 따라가, 고른 갈래 뒤에 놓인 다른 갈래의
+ *   그림(가지 않을 갈래의 CG 등)을 받지 않는다. 선택지 뒤의 그림은 어느 갈래에서 쓰일지 모르므로 branch 로 표시한다.
  */
 import type { CharId, CharState, StageState, Story } from '../../engine/types';
 
@@ -32,6 +36,20 @@ export interface PreloadItem {
   url: string;
   kind: PreloadKind;
   at: number;
+  /** 아직 고르지 않은 선택지 뒤에서 처음 쓰인다(고르는 갈래에 따라 쓰이지 않을 수 있다) */
+  branch?: boolean;
+}
+
+/** 붙잡은 무대 그림 하나 */
+interface HeldImage {
+  /** 다 받았는지 지켜보는 Image */
+  img: HTMLImageElement;
+  /** 처음 붙잡은 시각(performance.now) */
+  since: number;
+  /** 마감 시각: 처음 붙잡은 시각 + 그 그림을 붙잡은 hold 들의 ms 중 가장 긴 것 */
+  until: number;
+  /** 마감에 걸리면 다시 붙잡지 않는다(gaveUp) */
+  giveUp: boolean;
 }
 
 interface NetworkInfo {
@@ -59,8 +77,17 @@ export function preloadConcurrency(): number {
   return /^(slow-2g|2g|3g)$/.test(c?.effectiveType ?? '') ? 2 : 3;
 }
 
-/** 무대 그림을 기다리는 최대 시간(그 뒤에는 미리 불러오기를 다시 시작한다. 같은 그림으로 다시 붙잡지 않음) */
-const HOLD_MAX_MS = 20000;
+/**
+ * 무대 그림 하나를 붙잡는 최대 시간(처음 붙잡은 때부터. 그 뒤에는 미리 불러오기를 다시 시작하고, 같은 그림으로 다시 붙잡지 않는다).
+ * 스텝마다 다시 붙잡아도 늘지 않는다(멈춘 요청 하나가 있어도 한 줄씩 넘기는 동안 미리 불러오기가 끝없이 멈추지 않게).
+ */
+export const HOLD_MAX_MS = 20000;
+/**
+ * 미리 불러오기 한 장이 자리(동시 받기 수)를 차지하는 최대 시간. 넘으면 자리만 비운다(요청은 그대로 두고, 늦게라도 다 받으면
+ * 받은 것으로 친다. 다시 요청하지 않음). 응답 없이 멈춘 가까운 묶음 요청 하나가 나머지 대기열을 영영 막지 않게.
+ * 느린 망(2G 수준)에서 큰 CG 한 장이 정상적으로 이만큼 걸릴 수 있어 넉넉히 잡는다(그래도 그 요청은 끊지 않는다).
+ */
+const FETCH_SLOT_MS = 30000;
 /** 미리 해독한 Image 를 붙잡아 두는 수(최근 것부터) */
 const HOT_MAX = 8;
 
@@ -76,15 +103,17 @@ export class ImagePreloader {
   private activeNear = 0;
   private activeBulk = 0;
   private readonly max: number;
-  /** 무대가 받는 중이라 다 받을 때까지 새 요청을 미루는 그림(주소 → 지켜보는 Image) */
-  private holding = new Map<string, HTMLImageElement>();
+  /** 무대가 받는 중이라 다 받을 때까지 새 요청을 미루는 그림(주소 → 지켜보는 Image·마감) */
+  private holding = new Map<string, HeldImage>();
   /** 기다리다 상한에 걸린 그림(다시 붙잡지 않는다) */
   private gaveUp = new Set<string>();
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
-  /** 붙잡기 상한 시각(performance.now 기준). 붙잡는 중에 다시 붙잡으면 늦은 쪽으로 늘린다 */
-  private holdUntil = 0;
-  /** 붙잡은 그림을 다 받으면(또는 상한이 지나면) 부를 것 */
-  private holdWaiters: (() => void)[] = [];
+  /** holdTimer 가 울릴 시각(가장 이른 마감) */
+  private holdTimerAt = 0;
+  /** 붙잡은 그림이 있는 상태인지(다 풀리는 순간 미리 불러오기를 잇는다) */
+  private holdActive = false;
+  /** hold 가 돌려준 약속: 그 호출의 그림이 모두 붙잡힘에서 빠지면(받음·상한·놓아 줌) 부른다 */
+  private holdWaiters: Array<{ urls: string[]; resolve: () => void }> = [];
   /** pauseUntil 로 멈춘 수(0 보다 크면 새 받기·해독을 시작하지 않는다) */
   private paused = 0;
   /** 받는 대로 해독할 그림(plan 의 decode) */
@@ -148,49 +177,68 @@ export class ImagePreloader {
   }
 
   /**
-   * 지금 무대가 쓰는 그림(urls)을 다 받을 때까지(최대 ms) 미리 불러오기의 새 요청(받기·해독)을 시작하지 않는다.
-   * 이미 받은 그림이면 아무것도 붙잡지 않는다. 무대가 같은 주소를 받는 중이면 브라우저가 한 요청으로 합친다
+   * 지금 무대가 쓰는 그림(urls)을 다 받을 때까지(그림마다 처음 붙잡은 때부터 최대 ms) 미리 불러오기의 새 요청(받기·해독)을
+   * 시작하지 않는다. 이미 받은 그림이면 아무것도 붙잡지 않는다. 무대가 같은 주소를 받는 중이면 브라우저가 한 요청으로 합친다
    * (지켜보는 Image 가 따로 내려받지 않는다). 아직 아무도 받지 않는 주소면 지켜보는 Image 가 받기 시작한다
    * (타이틀에서 첫 화면 그림을 먼저 받을 때). 이미 받는 중인 미리 불러오기는 그대로 둔다.
-   * 돌려주는 약속은 붙잡은 그림을 모두 받았거나(다른 곳에서 붙잡은 것 포함) 상한이 지나면 풀린다.
+   * - 이미 붙잡은 그림을 다시 붙잡아도 마감은 '처음 붙잡은 때 + ms' 를 넘지 않는다(present 가 스텝마다 부르므로, 늘리면
+   *   멈춘 요청 하나에 상한이 '마지막 스텝부터 ms' 가 되어 미리 불러오기가 끝없이 멈췄다). 새 그림이 없으면 마감도 그대로다.
+   * - only: urls 가 '지금 무대 그림 전부'다. 붙잡고 있던 그림 중 urls 에 없는 것(무대에서 걷힌 CG, 타이틀에서 붙잡은
+   *   [이어하기] 위치 그림을 새 게임에서는 쓰지 않을 때 등)은 놓아 준다(지켜보는 Image 만 받던 것이면 받기를 거둔다).
+   * - giveUp: 마감에 걸린 그림을 다시 붙잡지 않는다(기본). false 면 마감에 걸려도 다음 hold 에서 다시 붙잡는다
+   *   (타이틀의 첫 화면 기다림 상한은 '글꼴·나머지 미리 불러오기를 시작할 때'일 뿐, 그 화면에 들어가면 다시 붙잡는다).
+   * 돌려주는 약속은 이 호출의 그림이 모두 붙잡힘에서 빠지면(받음·마감·놓아 줌) 풀린다.
    */
-  hold(urls: Iterable<string>, ms = HOLD_MAX_MS): Promise<void> {
+  hold(urls: Iterable<string>, ms = HOLD_MAX_MS, opts: { only?: boolean; giveUp?: boolean } = {}): Promise<void> {
     if (typeof Image === 'undefined') return Promise.resolve();
+    const giveUp = opts.giveUp ?? true;
+    const now = performance.now();
+    const mine: string[] = [];
     for (const u of urls) {
-      if (!u || this.settled.has(u) || this.holding.has(u) || this.gaveUp.has(u)) continue;
+      if (!u || mine.includes(u)) continue;
+      const held = this.holding.get(u);
+      if (held) {
+        // 다시 붙잡음: 마감은 처음 붙잡은 때 기준(더 긴 ms 를 주면 그만큼까지만 늘린다)
+        held.until = Math.max(held.until, held.since + ms);
+        if (giveUp) held.giveUp = true;
+        mine.push(u);
+        continue;
+      }
+      if (this.settled.has(u) || this.gaveUp.has(u)) continue;
       const img = new Image();
       img.decoding = 'async';
       const done = () => {
-        if (this.holding.get(u) !== img) return;
-        this.holding.delete(u);
+        img.onload = img.onerror = null;
         this.settled.add(u);
-        if (!this.holding.size) this.release();
+        if (this.holding.get(u)?.img !== img) return;
+        this.holding.delete(u);
+        this.holdChanged();
       };
       img.onload = done;
       img.onerror = done;
       img.src = u;
       // 메모리 캐시에 있는 그림(이 문서에서 이미 받은 그림)은 곧바로 complete
       if (img.complete) {
+        img.onload = img.onerror = null;
         this.settled.add(u);
         continue;
       }
-      this.holding.set(u, img);
+      this.holding.set(u, { img, since: now, until: now + ms, giveUp });
+      mine.push(u);
     }
-    if (!this.holding.size) return Promise.resolve();
-    const waiting = new Promise<void>((resolve) => this.holdWaiters.push(resolve));
-    // 상한: 이미 붙잡는 중이면(타이틀의 첫 화면 그림을 받는 중에 [이어하기] 등) 늦은 쪽으로 늘린다
-    const until = performance.now() + ms;
-    if (until > this.holdUntil || !this.holdTimer) {
-      this.holdUntil = Math.max(until, this.holdUntil);
-      if (this.holdTimer) clearTimeout(this.holdTimer);
-      this.holdTimer = setTimeout(() => {
-        this.holdTimer = null;
-        for (const u of this.holding.keys()) this.gaveUp.add(u);
-        this.holding.clear();
-        this.release();
-      }, this.holdUntil - performance.now());
+    if (opts.only) {
+      for (const [u, h] of [...this.holding]) if (!mine.includes(u)) this.letGo(u, h);
     }
+    const waiting = mine.length ? new Promise<void>((resolve) => this.holdWaiters.push({ urls: mine, resolve })) : Promise.resolve();
+    this.holdChanged();
     return waiting;
+  }
+
+  /** 붙잡은 그림 하나를 놓아 준다(무대에서 빠짐). 지켜보는 Image 만 받던 그림이면 브라우저가 받기를 거둔다 */
+  private letGo(u: string, h: HeldImage) {
+    this.holding.delete(u);
+    h.img.onload = h.img.onerror = null;
+    h.img.removeAttribute('src');
   }
 
   /**
@@ -211,14 +259,44 @@ export class ImagePreloader {
     return { near: this.near.length, bulk: this.bulk.length, active: this.activeNear + this.activeBulk, held: this.holding.size, decoded: this.hot.size };
   }
 
-  private release() {
+  /** 붙잡은 그림이 바뀐 뒤: 다 끝난 약속을 풀고, 가장 이른 마감에 타이머를 맞추고, 다 풀렸으면 미리 불러오기를 잇는다 */
+  private holdChanged() {
+    if (this.holdWaiters.length) {
+      const ready = this.holdWaiters.filter((w) => !w.urls.some((u) => this.holding.has(u)));
+      if (ready.length) {
+        this.holdWaiters = this.holdWaiters.filter((w) => !ready.includes(w));
+        for (const w of ready) w.resolve();
+      }
+    }
+    let next = Infinity;
+    for (const h of this.holding.values()) next = Math.min(next, h.until);
+    if (next === Infinity) {
+      if (this.holdTimer) clearTimeout(this.holdTimer);
+      this.holdTimer = null;
+      // 붙잡고 있다가 다 풀렸을 때만 잇는다(아무것도 붙잡지 않은 hold 는 대기열을 건드리지 않는다: present 가 곧 다시 세운다)
+      if (this.holdActive) {
+        this.holdActive = false;
+        this.pump();
+      }
+      return;
+    }
+    this.holdActive = true;
+    if (this.holdTimer && this.holdTimerAt === next) return;
     if (this.holdTimer) clearTimeout(this.holdTimer);
+    this.holdTimerAt = next;
+    this.holdTimer = setTimeout(() => this.expireHolds(), Math.max(0, next - performance.now()));
+  }
+
+  /** 마감이 지난 그림을 붙잡힘에서 뺀다(무대 그림은 다시 붙잡지 않는다). 지켜보는 Image 는 계속 받는다 */
+  private expireHolds() {
     this.holdTimer = null;
-    this.holdUntil = 0;
-    const waiters = this.holdWaiters;
-    this.holdWaiters = [];
-    for (const w of waiters) w();
-    this.pump();
+    const now = performance.now();
+    for (const [u, h] of [...this.holding]) {
+      if (h.until > now + 1) continue;
+      this.holding.delete(u);
+      if (h.giveUp) this.gaveUp.add(u);
+    }
+    this.holdChanged();
   }
 
   private pump() {
@@ -248,11 +326,24 @@ export class ImagePreloader {
     (img as HTMLImageElement & { fetchPriority?: string }).fetchPriority = 'low';
     img.setAttribute('fetchpriority', 'low');
     let finished = false;
+    let slot = true;
+    /** 동시 받기 자리를 비운다(한 번만) */
+    const free = () => {
+      if (!slot) return;
+      slot = false;
+      if (near) this.activeNear--;
+      else this.activeBulk--;
+    };
+    // 응답 없이 멈춘 요청이 자리를 영영 차지하지 않게(가까운 묶음이면 나머지 대기열 전체를 막는다): 자리만 비운다
+    const slotTimer = setTimeout(() => {
+      free();
+      this.pump();
+    }, FETCH_SLOT_MS);
     const done = (ok: boolean) => {
       if (finished) return;
       finished = true;
-      if (near) this.activeNear--;
-      else this.activeBulk--;
+      clearTimeout(slotTimer);
+      free();
       this.settled.add(url);
       if (ok && this.wantDecode.has(url)) this.queueDecode(url);
       else this.wantDecode.delete(url);
@@ -303,7 +394,10 @@ export class ImagePreloader {
  * 장면 하나가 쓰는 그림 주소와 이어지는 장면 id.
  * start: 훑기 시작할 때의 무대(모르면 빈 무대). route: 확정 루트(분기 장면을 하나로 좁힌다).
  * from: 훑기 시작할 스텝 위치(지금 위치 다음부터 볼 때. start 는 그 위치의 무대).
+ * pastChoice: 훑기 시작하는 곳이 아직 고르지 않은 선택지 바로 뒤다(지금 선택지가 떠 있음).
  * items 의 at 은 from 부터 그 그림이 처음 쓰이는 곳까지의 블로킹 스텝 수, steps 는 장면 끝까지의 블로킹 스텝 수.
+ * 고르지 않은 선택지를 지나기 전에는 goto 를 따라간다(앞으로 가는 것만. 고른 갈래에서 다른 갈래를 건너뛴다).
+ * 선택지를 지난 뒤에는 모든 갈래를 차례로 훑는다(goto 를 따르지 않음).
  */
 export function sceneImages(
   story: Story,
@@ -312,6 +406,7 @@ export function sceneImages(
   r: PreloadResolver,
   route: string | null,
   from = 0,
+  pastChoice = false,
 ): { urls: string[]; items: PreloadItem[]; next: string[]; end: StageState; steps: number } {
   const scene = story.scenes[sceneId];
   const chars: Partial<Record<CharId, CharState>> = {};
@@ -321,11 +416,12 @@ export function sceneImages(
   const items: PreloadItem[] = [];
   const next: string[] = [];
   let at = 0;
+  let branching = pastChoice;
   if (!scene) return { urls, items, next, end, steps: 0 };
   const push = (u: string | null, kind: PreloadKind) => {
     if (u && !urls.includes(u)) {
       urls.push(u);
-      items.push({ url: u, kind, at });
+      items.push(branching ? { url: u, kind, at, branch: true } : { url: u, kind, at });
     }
   };
   for (let i = Math.max(0, from); i < scene.steps.length; i++) {
@@ -360,9 +456,18 @@ export function sceneImages(
         break;
       }
       case 'card':
-      case 'choice':
         at++;
         break;
+      case 'choice':
+        at++;
+        branching = true;
+        break;
+      case 'goto': {
+        if (branching) break;
+        const j = scene.steps.findIndex((s) => s.id === step.to);
+        if (j > i) i = j - 1;
+        break;
+      }
       case 'hide': {
         const targets = step.char === 'all' ? [...end.order] : [step.char];
         for (const c of targets) delete chars[c];

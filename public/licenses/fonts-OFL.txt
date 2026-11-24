@@ -1,8 +1,7 @@
 이 게임에 포함된 글꼴은 모두 SIL Open Font License 1.1 로 배포됩니다.
-jua-title.woff2·gowun-batang-700-title.woff2 는 타이틀·엔딩에 쓰는 글자만 남긴 부분 집합(subset)입니다.
 
 == @fontsource/gowun-batang
-Copyright 2021 The Gowun Batang Project Authors (https://github.com/yangheeryu/Gowun-Batang) GowunBatang-Bold.ttf: Copyright 2021 The Gowun Batang Project Authors (https://github.com/yangheeryu/Gowun-Batang)
+Copyright 2021 The Gowun Batang Project Authors (https://github.com/yangheeryu/Gowun-Batang)
 
 == @fontsource/gowun-dodum
 Copyright 2021 The Gowun Dodum Project Authors (https://github.com/yangheeryu/Gowun-Dodum)
@@ -13,6 +12,17 @@ Copyright 2018 The BM JUA Project Authors
 == pretendard
 Copyright (c) 2021, Kil Hyung-jin (https://github.com/orioncactus/pretendard),
 with Reserved Font Name Pretendard.
+
+== 타이틀 글자 조각(부분 글꼴)
+아래 두 파일은 google/fonts 의 OFL 원본 글꼴에서 타이틀 로고·부제 글자만 남긴 부분 집합(subset)입니다.
+원본과 같은 SIL Open Font License 1.1 이고, 글꼴 안의 이름 표(저작권·라이선스 안내)는 원본 그대로 두었습니다.
+두 원본 모두 예약 글꼴 이름(Reserved Font Name)이 없어 원래 글꼴 이름을 그대로 씁니다.
+
+jua-title.woff2 (원본: ofl/jua/Jua-Regular.ttf)
+Copyright 2018 The BM JUA Project Authors
+
+gowun-batang-700-title.woff2 (원본: ofl/gowunbatang/GowunBatang-Bold.ttf)
+Copyright 2021 The Gowun Batang Project Authors (https://github.com/yangheeryu/Gowun-Batang)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:

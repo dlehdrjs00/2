@@ -12,9 +12,11 @@
  *    (더블클릭·더블탭의 나머지)은 루트의 캡처 단계에서 흡수한다(uiLockUntil). 키보드 활성화는 막지 않는다.
  *  - 선택지는 나타나는 연출이 끝나고 잠깐 뒤에야 누를 수 있다(choicesArmedAt). 준비 전에 누르기 시작한 클릭도 무시한다.
  *  - 이번 스텝이 바꾼 무대 그림(배경·인물·CG)이나 불러온 무대의 그림이 아직 해독되지 않았으면(느린 네트워크) 대사·선택지·카드를
- *    그리기 전에 기다린다(present → stage.ready, 최대 8초). 그동안은 transitioning 이라 클릭·키는 대사를 넘기지 않고 기다림만
- *    끝낸다(stage.hurry). 그 뒤 잠깐(HURRY_LOCK_MS)은 같은 연타(더블클릭·더블탭·키 연타)의 나머지 입력이 방금 그린 줄을
- *    넘기지 않는다(타자 효과 마무리는 된다). 자동 진행 타이머는 대사가 그려진 뒤에 걸린다. 건너뛰기 중에는 기다리지 않는다.
+ *    그리기 전에 기다린다(present → stage.ready, 최대 8초. 이미 보이는 인물의 표정·옷만 바뀐 스텝은 최대 EXPR_WAIT_MS).
+ *    그동안은 transitioning 이라 클릭·키(선택지 스텝의 진행·숫자 키 포함)는 대사를 넘기지 않고 기다림만 끝낸다(stage.hurry).
+ *    그 뒤 잠깐(HURRY_LOCK_MS)은 같은 연타(더블클릭·더블탭·키 연타)의 나머지 입력이 방금 그린 줄을 넘기지 않는다(타자 효과
+ *    마무리는 된다). 기다리는 동안 일어났지만 기다림이 저절로 끝난 뒤에 처리된 입력도 같게 본다(stageWaitSpan).
+ *    자동 진행 타이머는 대사가 그려진 뒤에 걸린다. 건너뛰기 중에는 기다리지 않는다.
  *  - 선택지는 한 번 누르면 잠긴다(choiceLocked). 실행기(choose)도 선택지가 아닌 위치에서는 아무것도 하지 않는다.
  *  - 오버레이가 열려 있으면 그 밖의 화면은 inert 로 막아 Tab·Enter 로 아래 버튼을 누를 수 없다.
  *  - 키 자동 반복(e.repeat)은 모두 무시한다(메뉴 깜빡임, 자동/건너뛰기 토글 반복, 확인창 즉시 확정 방지).
@@ -41,7 +43,7 @@ import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
 import { buildConfirm, buildMenu, type AskMessage, type AskOptions, type MenuItem } from './screens/menu';
 import { buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
-import { ImagePreloader, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
+import { HOLD_MAX_MS, ImagePreloader, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
 import { buildSaveLoad, type SaveLoadView, type SlotPage } from './screens/saveload';
 import { buildSettings, type CfgCat } from './screens/settings';
 import { buildSheet, type Sheet, type SheetPanel, type SheetTab, type SheetView } from './screens/sheet';
@@ -108,6 +110,11 @@ const SKIP_STOP_LOCK_MS = 450;
 const HURRY_LOCK_MS = 400;
 /** 그림 대기가 이보다 길어지면 이전 대사의 '다음' 표시를 걷는다(누른 것이 먹혔다는 반응) */
 const WAIT_FEEDBACK_MS = 60;
+/**
+ * 이미 무대에 있는 인물의 표정·옷·자리만 바뀐 스텝에서 그림을 기다리는 최대 시간. 그동안 이전 그림이 그대로 보이므로
+ * 오래 기다릴 까닭이 없다(느린 망에서 표정 한 장 때문에 대사가 몇 초씩 막히던 것). '불러오는 중' 알약(1.2초)보다 짧게.
+ */
+const EXPR_WAIT_MS = 1000;
 /** 타이틀에서 첫 화면 그림을 혼자 먼저 받는 최대 시간(그 뒤 글꼴 조각·나머지 미리 불러오기를 시작한다) */
 const FIRST_FRAME_WAIT_MS = 4000;
 /** 선택지 준비 시간: 첫 버튼 등장 연출(0.35s) + 여유. 버튼마다 등장 지연(0.07s)만큼 더한다 */
@@ -131,7 +138,8 @@ const PRELOAD_NEAR_STEPS = 15;
 /**
  * 미리 불러오기 우선순위 당김(스텝 수). CG·배경은 무대 전체를 덮고(CG 는 파일도 커서) 늦으면 빈 화면이 보인다.
  * 그래서 같은 거리의 스프라이트보다 이만큼 먼저 받는다(CG 는 12스텝 뒤에 쓰여도 지금 쓰는 스프라이트만큼 급하다).
- * 너무 크게 잡으면 바로 다음 몇 줄의 표정 그림이 CG 에 밀려 늦게 뜬다.
+ * 너무 크게 잡으면 바로 다음 몇 줄의 표정 그림이 CG 에 밀려 늦게 뜬다. 그래서 PRELOAD_DECODE_STEPS 안의 그림은 당김과
+ * 상관없이 맨 앞에 두고, 아직 고르지 않은 선택지 뒤의 CG(갈래마다 한 장)는 당기지 않는다(preloadFrom).
  */
 const PRELOAD_LEAD: Record<PreloadKind, number> = { cg: 12, bg: 6, sprite: 0 };
 /**
@@ -194,6 +202,8 @@ export class Game {
   private presentToken = 0;
   /** 무대 그림을 기다리는 present 의 토큰(0 이면 기다리는 중 아님). 기다리는 동안 건너뛰기를 켜면 기다림을 끝낸다 */
   private stageWaitToken = 0;
+  /** 마지막으로 무대 그림을 기다린 구간(performance.now 기준). 그 안에 일어난 입력은 늦게 처리돼도 대사를 넘기지 않는다 */
+  private stageWaitSpan: { from: number; to: number } | null = null;
   private rotateDismissed = false;
   private rotateShown = false;
   private lastWheel = 0;
@@ -307,8 +317,18 @@ export class Game {
   private startPreload() {
     if (this.preloadStarted) return;
     this.preloadStarted = true;
-    if (this.mode !== 'play') this.preloadFrom(this.story.start, null, null, null);
+    if (this.mode !== 'play') this.preloadFromTitle();
     if (!prefersDataSaving()) this.preloader.add(this.c.allImageUrls());
+  }
+
+  /**
+   * 타이틀에서의 미리 불러오기 기준: 타이틀 다음 첫 화면(firstFrame 과 같은 기준. 자동 저장이 있으면 [이어하기] 위치,
+   * 없으면 새 게임 첫 장면) 다음 스텝부터. 첫 화면 그림 자체는 showTitle 이 hold 로 먼저 받는다.
+   */
+  private preloadFromTitle() {
+    const st = this.firstFrameState();
+    if (st) this.preloadFrom(st.sceneId, st.stepId, st.stage, st.route);
+    else this.preloadFrom(this.story.start, null, null, null);
   }
 
   private setMode(m: Mode) {
@@ -479,6 +499,16 @@ export class Game {
 
     const cur = this.current;
     if (cur?.step.t === 'choice') {
+      // 선택지가 아직 그려지기 전(무대 그림을 기다리는 중·암전 연출 중): 진행 키와 숫자 키는 클릭처럼 기다림만 끝낸다
+      // (requestAdvance → stage.hurry. 선택지에서는 대사를 넘기지 않는다. 숫자 키로 고르는 것은 선택지가 나타난 뒤)
+      const n0 = Number(e.key);
+      const pickKey = Number.isInteger(n0) && n0 >= 1 && n0 <= cur.step.options.length;
+      if (this.transitioning && (pickKey || e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight' || e.key === 'PageDown')) {
+        e.preventDefault();
+        this.audio.unlock();
+        this.requestAdvance(eventTime(e));
+        return;
+      }
       // 선택지: 숫자 키로 고른다. 진행 키는 아무것도 하지 않고, 기록(L)·자동(A)·스킵(S 안내)은 그대로 쓴다
       const n = Number(e.key);
       if (Number.isInteger(n) && n >= 1 && n <= cur.step.options.length) {
@@ -525,6 +555,13 @@ export class Game {
       // 잠깐 대사 넘기기를 막는다(암전·번쩍임 연출 중의 누름은 연출만 줄이므로 그대로)
       if (this.stageWaitToken) this.hurryLockUntil = Math.max(this.hurryLockUntil, at + HURRY_LOCK_MS);
       this.stage.hurry();
+      return;
+    }
+    // 그림 대기 '중에' 일어났지만 대기가 저절로 끝난 뒤에 처리된 입력(그림이 막 준비돼 대사를 그리느라 메인 스레드가 바빴던
+    // 때): 기다림을 끝내려던 누름으로 보고, 방금 그린 줄을 넘기지 않는다(대기 중 누름과 같게 연타 잠금만 건다)
+    const span = this.stageWaitSpan;
+    if (span && at >= span.from && at < span.to) {
+      this.hurryLockUntil = Math.max(this.hurryLockUntil, at + HURRY_LOCK_MS);
       return;
     }
     if (cur.step.t === 'say' && this.textbox.isTyping) {
@@ -627,11 +664,6 @@ export class Game {
     const token = ++this.presentToken;
     const state = this.state!;
     this.current = res;
-    // 이번 스텝의 무대(state.stage 는 이미 이 스텝의 연출이 반영된 상태)가 쓰는 그림을 다 받기 전에는 미리 불러오기를
-    // 새로 시작하지 않는다. fetchPriority 'low' 는 이미 받는 중인 요청끼리의 대역폭 분배에는 듣지 않아서, 느린 망에서
-    // 이어하기·장면 진입 때 몇 스텝 뒤의 CG·다음 장면 그림이 지금 무대 그림과 함께 받아져 둘 다 늦던 것.
-    // 이미 받은 그림이면 아무것도 붙잡지 않는다. 건너뛰기 중에는 그림을 기다리지 않으므로 붙잡지도 않는다.
-    if (!this.skip && res.step.t !== 'ending') this.preloader.hold(this.stageImageUrls(state.stage));
     // 표시 중인 스텝과 선택지 DOM 이 어긋나지 않게: 선택지가 아니면 남은 선택지를 항상 지운다
     if (res.step.t !== 'choice') this.hideChoices();
     // 건너뛰기는 읽은 대사만: 처음 보는 대사·선택지·엔딩에 닿으면 '그리기 전에' 멈춰서
@@ -648,12 +680,31 @@ export class Game {
         this.inputLockUntil = Math.max(this.inputLockUntil, performance.now() + SKIP_STOP_LOCK_MS);
       }
     }
+    // 이번 스텝의 무대(state.stage 는 이미 이 스텝의 연출이 반영된 상태)가 쓰는 그림을 다 받기 전에는 미리 불러오기를
+    // 새로 시작하지 않는다. fetchPriority 'low' 는 이미 받는 중인 요청끼리의 대역폭 분배에는 듣지 않아서, 느린 망에서
+    // 이어하기·장면 진입 때 몇 스텝 뒤의 CG·다음 장면 그림이 지금 무대 그림과 함께 받아져 둘 다 늦던 것.
+    // 이미 받은 그림이면 아무것도 붙잡지 않는다. 그림마다 처음 붙잡은 때부터 최대 HOLD_MAX_MS(스텝마다 다시 불러도 늘지 않음).
+    // 지금 무대 그림 전부를 넘겨(only) 무대에서 빠진 그림(걷힌 CG, 타이틀에서 붙잡은 [이어하기] 위치 그림 등)은 놓아 준다.
+    // 건너뛰는 중(그림을 기다리지 않음)과 엔딩(무대를 덮음)에는 붙잡지 않는다(붙잡던 것도 놓는다). 건너뛰기가 이 스텝에서
+    // 멈췄으면(위에서 skip 이 꺼짐) 이 스텝은 그림을 기다리므로 붙잡는다.
+    const holding = !this.skip && res.step.t !== 'ending';
+    this.preloader.hold(holding ? this.stageImageUrls(state.stage) : [], HOLD_MAX_MS, { only: true });
     this.clearAutoTimer();
     this.root.dataset.frame = res.step.t;
     this.root.dataset.step = res.step.id;
     this.textbox.el.dataset.step = res.step.id;
     const instant = this.skip || !!opts.fromLoad;
 
+    // 그림을 기다릴 스텝이면(암전 막 포함) 기다리는 동안 이 줄 글자의 글꼴 조각도 받아 둔다. 키 비주얼 전에 게임을
+    // 시작했거나 처음 나오는 글자 조각이면, 대사가 그려지는 순간에야 요청되어 첫 문장이 대체 글꼴로 나왔다 바뀌었다.
+    // 이미 받은 조각이면 곧바로 끝난다
+    if (
+      !this.skip &&
+      res.step.t !== 'ending' &&
+      (opts.fromLoad || opts.restored || skipStopped || res.events.some((e) => e.kind === 'bg' || e.kind === 'show' || e.kind === 'cg'))
+    ) {
+      this.loadFonts(this.stepLines(res));
+    }
     /** 암전·번쩍임 막이 이미 그림을 기다렸는지(막을 걷기 전에 stage.ready 를 거친다) */
     let stageWaited = false;
     if (opts.fromLoad) {
@@ -667,14 +718,20 @@ export class Game {
     // 그림이 해독되기를 기다린다(대사가 그림보다 먼저 나오지 않게). 이미 받은 그림이면 곧바로 지나간다.
     // 건너뛰기 중에는 기다리지 않는다(속도 유지 — 그림은 준비되는 대로 붙는다). 건너뛰기가 여기서 멈췄으면 지나온 그림까지 기다린다.
     // 엔딩은 엔딩 화면이 무대를 덮어 기다릴 까닭이 없다.
-    if (
-      !stageWaited &&
-      !this.skip &&
-      res.step.t !== 'ending' &&
-      (opts.fromLoad || opts.restored || skipStopped || res.events.some((e) => e.kind === 'bg' || e.kind === 'show' || e.kind === 'cg'))
-    ) {
-      await this.waitStageReady(token);
-      if (token !== this.presentToken) return;
+    // 이미 무대에 있는 인물의 표정·옷·자리만 바뀐 스텝은 잠깐만(EXPR_WAIT_MS) 기다린다: 그동안 이전 그림이 그대로 보이므로
+    // 덜 받은 그림은 보이지 않고, 대사가 몇 초씩 막히지 않는다(늦으면 대사 뒤에 표정이 바뀐다). 배경·CG·새 인물 등장과
+    // 불러오기·이어하기 직후·건너뛰기가 멈춘 스텝은 끝까지(최대 8초) 기다린다.
+    if (!stageWaited && !this.skip && res.step.t !== 'ending') {
+      const full =
+        opts.fromLoad ||
+        opts.restored ||
+        skipStopped ||
+        res.events.some((e) => e.kind === 'bg' || e.kind === 'cg' || (e.kind === 'show' && e.entering));
+      const swap = !full && res.events.some((e) => e.kind === 'show');
+      if (full || swap) {
+        await this.waitStageReady(token, full ? undefined : EXPR_WAIT_MS);
+        if (token !== this.presentToken) return;
+      }
     }
     // 지금 위치에서 가까운 그림부터 미리 불러오기 대기열을 다시 세운다(스텝마다: 곧 볼 CG·배경이 먼저. 몇 줄 안의 그림은 해독까지).
     // 무대 그림을 기다린 뒤에 세운다: 새로 해독할 그림이 이 줄의 무대 그림 해독과 겹치면 무대 쪽 해독이 함께 늦어진다
@@ -783,23 +840,28 @@ export class Game {
    * 자동 진행 타이머도 이 동안은 걸리지 않고, 대사가 그려진 뒤(타자 효과가 끝난 뒤) 시작된다.
    * 이미 해독된 그림이면 마이크로태스크 안에서 끝나 화면이 그려지기 전에 지나간다(깜빡임·지연 없음).
    */
-  private async waitStageReady(token: number) {
+  private async waitStageReady(token: number, ms?: number) {
     this.transitioning = true;
     this.stageWaitToken = token;
+    const startedAt = performance.now();
     // 기다림이 잠깐이라도 길어지면(해독 중·받는 중) 이전 대사의 '다음' 표시(반짝이)를 걷어 누른 것이 먹혔다는 반응을 준다.
     // 곧바로 끝나는 기다림(이미 해독한 그림)에서는 손대지 않는다(별 깜빡임 없음). 새 대사가 그려지면 대사창이 다시 켠다
     const feedback = setTimeout(() => {
       if (this.stageWaitToken === token) this.textbox.el.classList.remove('done');
     }, WAIT_FEEDBACK_MS);
     try {
-      const ready = this.stage.ready();
+      const ready = this.stage.ready(ms);
       // 기다리는 동안에는 미리 불러오기의 남은 해독·받기도 새로 시작하지 않는다(무대 그림 해독과 겹치지 않게)
       this.preloader.pauseUntil(ready);
       await ready;
     } finally {
       clearTimeout(feedback);
       if (this.stageWaitToken === token) this.stageWaitToken = 0;
-      if (token === this.presentToken) this.transitioning = false;
+      if (token === this.presentToken) {
+        this.transitioning = false;
+        // 기다린 구간을 기록한다: 그동안 일어났지만 끝난 뒤에 처리된 입력도 '기다림을 끝내는 누름'으로 본다(requestAdvance)
+        this.stageWaitSpan = { from: startedAt, to: performance.now() };
+      }
     }
   }
 
@@ -1228,8 +1290,8 @@ export class Game {
     this.setMode('title');
     this.state = null;
     this.current = null;
-    // 미리 불러오기 순서를 첫 장면 기준으로 되돌린다(마지막으로 보던 위치의 그림이 계속 앞에 서 있지 않게)
-    if (this.preloadStarted) this.preloadFrom(this.story.start, null, null, null);
+    // 미리 불러오기 순서를 타이틀 다음 첫 화면 기준으로 되돌린다(마지막으로 보던 위치의 그림이 계속 앞에 서 있지 않게)
+    if (this.preloadStarted) this.preloadFromTitle();
     this.root.dataset.frame = 'none';
     this.root.dataset.step = '';
     this.textbox.setVisible(false);
@@ -1249,49 +1311,86 @@ export class Game {
     //     대사(고운돋움): 첫 대사 문장 · 이름표·장소 표시(Pretendard): 그 문장의 이름표와 첫 장소 표시 · 빠른 메뉴 탭 글자(qbar)
     //  3) 나머지 미리 불러오기(start → startPreload, 붙잡은 첫 화면 그림을 받은 뒤 이어서)
     this.whenTitleArt(() => {
-      const fonts = (first: { text: string; ui: string }) => {
-        try {
-          void document.fonts?.load('16px "Gowun Dodum"', first.text || ' ').catch(() => undefined);
-          if (first.ui) void document.fonts?.load('600 16px "Pretendard Variable"', first.ui).catch(() => undefined);
-        } catch {
-          /* 글꼴 API 없음: 무시 */
-        }
-        this.qbar.preloadFont();
-      };
-      // 이미 대사 화면이면(키 비주얼 전에 시작) 대사창이 제 글자를 받으므로 탭 글자만
-      if (this.mode !== 'title') return fonts({ text: '', ui: '' });
+      // 이미 대사 화면이면(키 비주얼 전에 시작) 탭 글자만. 그 줄 글자는 present 가 그림을 기다리는 동안 받는다
+      if (this.mode !== 'title') return this.qbar.preloadFont();
       const first = this.firstFrame();
-      void this.preloader.hold(first.urls, FIRST_FRAME_WAIT_MS).then(() => fonts(first.text));
+      // 타이틀에서 붙잡은 것 말고는 놓아 준다(게임에서 돌아왔을 때 앞 무대 그림). 상한(4초)은 '글꼴·나머지를 시작할 때'일 뿐이라
+      // 그 그림을 포기하지 않는다(giveUp: false): 타이틀에 오래 머문 뒤 [이어하기]를 눌러도 present 가 다시 붙잡는다
+      void this.preloader.hold(first.urls, FIRST_FRAME_WAIT_MS, { only: true, giveUp: false }).then(() => {
+        this.loadFonts(first.text);
+        this.qbar.preloadFont();
+      });
     });
+  }
+
+  /**
+   * 글꼴 조각 미리 받기(글꼴은 unicode-range 조각이라 '그려지는 글자'의 조각만 받는다).
+   * text: 대사창·선택지(고운돋움) · ui: 장소 표시(Pretendard 600) · name: 이름표(주아)
+   */
+  private loadFonts(l: { text: string; ui: string; name: string }) {
+    try {
+      const f = document.fonts;
+      if (!f) return;
+      if (l.text) void f.load('16px "Gowun Dodum"', l.text).catch(() => undefined);
+      if (l.ui) void f.load('600 16px "Pretendard Variable"', l.ui).catch(() => undefined);
+      if (l.name) void f.load('16px "Jua"', l.name).catch(() => undefined);
+    } catch {
+      /* 글꼴 API 없음: 무시 */
+    }
+  }
+
+  /** 이 스텝이 그릴 글자(loadFonts 용): 대사·선택지 문장, 이름표, 같은 묶음의 장소 표시 */
+  private stepLines(res: StepResult): { text: string; ui: string; name: string } {
+    const out = { text: '', ui: '', name: '' };
+    for (const e of res.events) if (e.kind === 'place') out.ui += this.t(e.text);
+    const st = res.step;
+    if (st.t === 'say') {
+      out.text = this.t(st.text);
+      out.name = this.speaker(st).name ?? '';
+    } else if (st.t === 'choice') {
+      out.text = (st.prompt ? this.t(st.prompt) : '') + st.options.map((o) => this.t(o.text)).join('');
+    }
+    return out;
   }
 
   /**
    * 타이틀 다음 첫 화면: 자동 저장이 있으면 [이어하기] 위치, 없으면 새 게임 첫 대사.
    * urls: 그 화면의 무대 그림. text: 글꼴 조각을 미리 받을 글자(text 대사창 고운돋움 / ui 이름표·장소 표시 Pretendard).
    */
-  private firstFrame(): { urls: string[]; text: { text: string; ui: string } } {
-    let urls: string[] = [];
-    let state: GameState | null = null;
+  private firstFrame(): { urls: string[]; text: { text: string; ui: string; name: string } } {
+    const st = this.firstFrameState();
+    return { urls: st ? this.stageImageUrls(st.stage) : [], text: this.firstFrameLines(this.autoState()) };
+  }
+
+  /** [이어하기]가 불러올 자동 저장의 상태(없거나 읽을 수 없으면 null) */
+  private autoState(): GameState | null {
     try {
       const r = this.saves.exists('auto') ? this.saves.load('auto') : null;
-      if (r && (r.status === 'ok' || r.status === 'recoverable')) state = r.data.state;
+      if (r && (r.status === 'ok' || r.status === 'recoverable')) return r.data.state;
     } catch {
       /* 저장 읽기 실패: 새 게임 기준 */
     }
+    return null;
+  }
+
+  /**
+   * 타이틀 다음 첫 화면의 상태: 자동 저장(없으면 새 게임)을 실행기로 첫 블로킹 스텝까지 진행한 복사본
+   * (저장·진행 상태는 그대로). 실패하면 null.
+   */
+  private firstFrameState(): GameState | null {
+    const state = this.autoState();
     try {
-      // 실행기로 첫 블로킹 스텝까지 진행한 무대(복사본·새 상태라 저장·진행 상태는 그대로)
       const st = state ? (JSON.parse(JSON.stringify(state)) as GameState) : newGameState(this.story);
       settle(this.story, st);
-      urls = this.stageImageUrls(st.stage);
+      return st;
     } catch {
-      urls = [];
+      return null;
     }
-    return { urls, text: this.firstFrameLines(state) };
   }
 
   /** 첫 화면 글자: state 의 위치(없는 위치면 그 장면 처음, state 가 없으면 새 게임 첫 장면)부터 첫 대사·선택지까지 */
-  private firstFrameLines(state: GameState | null): { text: string; ui: string } {
-    const out = { text: '', ui: '' };
+  private firstFrameLines(state: GameState | null): { text: string; ui: string; name: string } {
+    const out = { text: '', ui: '', name: '' };
     const sceneId = state?.sceneId ?? this.story.start;
     const from = state ? findStep(this.story, sceneId, state.stepId)?.index ?? 0 : 0;
     const steps = this.story.scenes[sceneId]?.steps ?? [];
@@ -1300,7 +1399,7 @@ export class Game {
       if (st.t === 'place') out.ui += this.t(st.text);
       else if (st.t === 'say') {
         out.text += this.t(st.text);
-        out.ui += this.speaker(st).name ?? '';
+        out.name += this.speaker(st).name ?? '';
         break;
       } else if (st.t === 'choice') {
         out.text += (st.prompt ? this.t(st.prompt) : '') + st.options.map((o) => this.t(o.text)).join('');
@@ -2105,8 +2204,9 @@ export class Game {
   /**
    * 지금 위치(sceneId·stepId 다음 스텝부터, 무대 stage)에서 지금 장면 끝 + 바로 다음 장면까지의 그림을
    * '지금 위치에서의 거리 - 종류별 당김(PRELOAD_LEAD)' 순으로 줄 세워 미리 불러오기 대기열에 넣는다.
+   * 단 PRELOAD_DECODE_STEPS 안에서 처음 쓰는 그림은 당김과 상관없이 맨 앞이고(받은 뒤 해독까지 해 둔다),
+   * 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다.
    * PRELOAD_NEAR_STEPS 안의 그림은 가까운 묶음(받는 동안 다른 그림은 새로 시작하지 않음), 나머지는 곧 쓸 그림.
-   * PRELOAD_DECODE_STEPS 안에서 처음 쓰는 그림은 받은 뒤 해독까지 해 둔다.
    * stepId 가 null 이면 장면 처음부터(빈 무대).
    */
   private preloadFrom(sceneId: string, stepId: string | null, stage: StageState | null, route: string | null) {
@@ -2117,8 +2217,9 @@ export class Game {
     };
     try {
       const loc = stepId ? findStep(this.story, sceneId, stepId) : null;
-      // 지금 스텝의 그림은 무대가 직접 받고 있으므로 다음 스텝부터
-      const cur = sceneImages(this.story, sceneId, stage, r, route, loc ? loc.index + 1 : 0);
+      // 지금 스텝의 그림은 무대가 직접 받고 있으므로 다음 스텝부터. 지금 선택지가 떠 있으면 그 뒤는 갈래를 모른다
+      const atChoice = !!loc && loc.scene.steps[loc.index]?.t === 'choice';
+      const cur = sceneImages(this.story, sceneId, stage, r, route, loc ? loc.index + 1 : 0, atChoice);
       const items: PreloadItem[] = [...cur.items];
       for (const next of cur.next) {
         for (const it of sceneImages(this.story, next, cur.end, r, route).items) items.push({ ...it, at: it.at + cur.steps });
@@ -2127,13 +2228,22 @@ export class Game {
       /** 처음 쓰이는 곳까지의 거리(당김 없이) */
       const dist = new Map<string, number>();
       for (const it of items) {
-        const p = it.at - PRELOAD_LEAD[it.kind];
+        // 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다(갈래마다 하나씩이라 고르기 전에는 반은 쓰지 않는다. 큰 CG 두 장이
+        // 동시 받기 자리를 차지해 바로 몇 줄 뒤의 표정 그림이 늦던 것)
+        const lead = it.kind === 'cg' && it.branch ? 0 : PRELOAD_LEAD[it.kind];
+        const p = it.at - lead;
         const old = rank.get(it.url);
         if (old === undefined || p < old) rank.set(it.url, p);
         const d = dist.get(it.url);
         if (d === undefined || it.at < d) dist.set(it.url, it.at);
       }
-      const ordered = [...rank.entries()].sort((a, b) => a[1] - b[1]);
+      // 미리 해독할 만큼 가까운 그림(PRELOAD_DECODE_STEPS 안)은 당김과 상관없이 맨 앞(가까운 것부터), 나머지는 당긴 거리 순
+      const urgent = (u: string) => dist.get(u)! <= PRELOAD_DECODE_STEPS;
+      const ordered = [...rank.entries()].sort((a, b) => {
+        const ua = urgent(a[0]);
+        if (ua !== urgent(b[0])) return ua ? -1 : 1;
+        return ua ? dist.get(a[0])! - dist.get(b[0])! : a[1] - b[1];
+      });
       this.preloader.plan(
         ordered.filter(([, p]) => p <= PRELOAD_NEAR_STEPS).map(([u]) => u),
         ordered.filter(([, p]) => p > PRELOAD_NEAR_STEPS).map(([u]) => u),

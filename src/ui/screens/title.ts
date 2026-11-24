@@ -14,6 +14,7 @@ import type { EndingId, HeroineId } from '../../engine/types';
 import { button, cssUrl, el } from '../dom';
 import { HEROINE_COLORS } from './common';
 import { buildMotes } from './fx';
+import { prefersDataSaving } from './preload';
 
 export interface TitleEnding {
   id: EndingId;
@@ -110,6 +111,8 @@ export function cancelTitleArt(): void {
 /**
  * 키 비주얼 두 겹: 작은 그림(흐림) → 원본(해독 뒤 페이드). 원본이 준비되면 scr 에 .kv-ready 를 붙이고 ready() 를 부른다.
  * 받기에 실패하면 원본을 CSS 배경으로 바로 걸어 둔다(브라우저가 다시 시도하거나, 그래도 없으면 흐린 작은 그림이 남는다).
+ * 데이터 절약 모드(navigator.connection.saveData)에서는 원본을 받지 않고 작은 그림만 쓴다(.kv-lite, 곧바로 ready).
+ * 이 문서에서 이미 해독한 원본이 있으면 그것을 그대로 쓴다.
  */
 function keyVisualArt(scr: HTMLElement, url: string, thumb: string | null, ready: () => void): HTMLElement {
   const art = el('div', 'title-art');
@@ -125,7 +128,12 @@ function keyVisualArt(scr: HTMLElement, url: string, thumb: string | null, ready
     ready();
   };
   if (decodedArt.has(url)) show(true);
-  else {
+  else if (thumb && prefersDataSaving()) {
+    // 데이터 절약 모드: 원본(약 300KB)은 받지 않고 작은 그림(약 30KB)만 흐림 없이 깐다(.kv-lite). 기다릴 원본이 없으니
+    // 미뤄 둔 첫 화면 그림·글꼴 받기를 곧바로 시작한다
+    scr.classList.add('kv-lite');
+    ready();
+  } else {
     void loadArt(url).then((ok) => {
       // 타이틀을 떠나 취소된 경우(이 화면이 이미 문서에 없음)에는 아무것도 하지 않는다
       if (!scr.isConnected && !ok) return;
