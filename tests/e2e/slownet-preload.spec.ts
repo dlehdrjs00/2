@@ -9,6 +9,8 @@
  *  - 이미 보이는 인물의 표정만 바뀌는 줄은 그림을 오래 기다리지 않는다(이전 표정으로 대사 먼저)
  *  - 키 비주얼 전에 새 게임을 시작해도 그림을 기다리는 동안 첫 대사 글꼴 조각을 받는다
  *  - 데이터 절약 모드에서는 타이틀 키 비주얼 원본을 받지 않는다
+ *  - 새 배경을 기다리며 맡아 둔 장소 표시는 그사이 건너뛰기가 줄을 넘기면 버린다(배경이 붙어도 뜨지 않는다).
+ *    건너뛰기가 한 줄도 넘기지 않고 곧바로 멈추면 버리지 않는다(배경이 붙을 때 뜬다)
  */
 import { expect, test, type Page } from '@playwright/test';
 import { boot, info, newGame, tapStage, tapStageAt, toTitle, waitSettled, continueAt } from './helpers';
@@ -379,5 +381,108 @@ test('타이틀: 자동 저장이 있으면 미리 불러오기를 [이어하기
     expect(road === -1 || (shy < road && fluster < road), JSON.stringify({ shy, fluster, road })).toBe(true);
   } finally {
     await ctx.close();
+  }
+});
+
+/** 지금부터 장소 표시가 켜질 때마다 그 글을 기록한다(이미 켜져 있으면 'already:' 를 붙여 남긴다) */
+async function recordPlaceOn(page: Page) {
+  await page.evaluate(() => {
+    const w = window as unknown as { __placeOn: string[] };
+    w.__placeOn = [];
+    const chip = document.querySelector('.place-chip')!;
+    if (chip.classList.contains('on')) w.__placeOn.push('already:' + (chip.textContent ?? ''));
+    new MutationObserver(() => {
+      if (chip.classList.contains('on')) w.__placeOn.push(chip.textContent ?? '');
+    }).observe(chip, { attributes: true, attributeFilter: ['class'], childList: true, subtree: true });
+  });
+}
+const placeOnLog = (page: Page) => page.evaluate(() => (window as unknown as { __placeOn: string[] }).__placeOn);
+
+test('느린 망: 새 배경을 기다리며 맡아 둔 장소 표시는 그사이 건너뛰기가 줄을 넘기면 배경이 붙어도 뜨지 않는다', async ({ page }) => {
+  // 건너뛰기는 장소 표시를 하지 않는다. 예전에는 배경 해독을 기다리며 맡아 둔 c2 장소 문구가 건너뛰는 중에 배경이 붙는 순간
+  // 떠서, 같은 배경이 이어지는 c3 선택지 화면까지 3.2초 남았다
+  const ids = [
+    ...['010', '020', '030', '040', '050', '060', '070', '080', '090', '100', '110'].map((s) => `c1.${s}`),
+    ...['010', '020', '030', '050', '060', '070', '080', '090', '100', '110'].map((s) => `c2.${s}`),
+    'c3.010',
+    'c3.020',
+    'c3.030',
+  ];
+  await page.addInitScript((ids) => {
+    localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: ids, endings: [], cgs: [] }));
+  }, ids);
+  const hold = await holdRequests(page, '**/assets/placeholder/bg/classroom_day.svg');
+  try {
+    await boot(page);
+    await continueAt(page, {
+      sceneId: 'c1_morning',
+      stepId: 'c1.110',
+      stage: { bg: 'road_morning', bgm: 'daily', chars: { osana: { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' } }, order: ['osana'], cg: null },
+    });
+    // c2.010: 새 배경(교실)을 기다린다. 장소 표시는 배경이 붙을 때 띄우려고 맡아 둔다
+    await tapUntilStep(page, 'c2.010');
+    expect((await info(page)).transitioning).toBe(true);
+    await page.waitForTimeout(700);
+    await tapStage(page); // 기다림을 끝낸다(대사 먼저, 배경은 받는 대로 붙는다)
+    await expect.poll(async () => (await info(page)).transitioning).toBe(false);
+    // 교실 배경은 아직 붙지 않았다(info().bg 는 요청한 배경이라 그림 층으로 본다)
+    await expect(page.locator('.stage .bg-layer[data-bg=classroom_day]')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    // 이제부터 장소 표시가 켜지면 기록한다
+    await recordPlaceOn(page);
+    await page.keyboard.press('s');
+    await expect.poll(async () => (await info(page)).skip, { timeout: 2000 }).toBe(true);
+    await page.waitForTimeout(150);
+    hold.release(); // 건너뛰는 중에 교실 배경이 붙는다
+    await expect(page.locator('.stage .bg-layer.on[data-bg=classroom_day]')).toHaveCount(1, { timeout: 5000 });
+    // 건너뛰기는 같은 배경의 c3 선택지에서 멈춘다
+    await expect.poll(async () => (await info(page)).step, { timeout: 8000 }).toBe('c3.ch');
+    expect((await info(page)).skip).toBe(false);
+    await page.waitForTimeout(800);
+    expect(await placeOnLog(page)).toEqual([]);
+    await expect(page.locator('.place-chip.on')).toHaveCount(0);
+  } finally {
+    hold.release();
+  }
+});
+
+test('느린 망: 새 배경을 기다리는 줄에서 건너뛰기를 켰는데 곧바로 다음 줄(처음 보는 줄)에서 멈추면 맡아 둔 장소 표시는 배경이 붙을 때 뜬다', async ({ page }) => {
+  // 건너뛰기가 한 줄도 건너뛰지 않았으니 c2 장소 표시(c2.010 을 보통으로 보여 줄 때 맡아 둔 것)는 버리지 않는다.
+  // 예전에는 건너뛰기를 켜는 순간 버려서, 느린 망에서는 c2 장소 표시가 한 번도 뜨지 않았다
+  const ids = [...['010', '020', '030', '040', '050', '060', '070', '080', '090', '100', '110'].map((s) => `c1.${s}`), 'c2.010'];
+  await page.addInitScript((ids) => {
+    localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: ids, endings: [], cgs: [] }));
+  }, ids);
+  const hold = await holdRequests(page, '**/assets/placeholder/bg/classroom_day.svg');
+  try {
+    await boot(page);
+    await continueAt(page, {
+      sceneId: 'c1_morning',
+      stepId: 'c1.110',
+      stage: { bg: 'road_morning', bgm: 'daily', chars: { osana: { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' } }, order: ['osana'], cg: null },
+    });
+    await tapUntilStep(page, 'c2.010');
+    expect((await info(page)).transitioning).toBe(true);
+    await page.waitForTimeout(700);
+    await tapStage(page); // 기다림을 끝낸다(대사 먼저, 배경은 받는 대로 붙는다)
+    await expect.poll(async () => (await info(page)).transitioning).toBe(false);
+    await expect(page.locator('.stage .bg-layer[data-bg=classroom_day]')).toHaveCount(0);
+    await page.waitForTimeout(500);
+    await recordPlaceOn(page);
+    await page.keyboard.press('s');
+    // c2.020 은 처음 보는 줄이라 건너뛰기는 거기서 멈춘다(아무 줄도 건너뛰지 않음)
+    await expect.poll(async () => (await info(page)).step, { timeout: 5000 }).toBe('c2.020');
+    await expect.poll(async () => (await info(page)).skip).toBe(false);
+    await page.waitForTimeout(300);
+    expect(await placeOnLog(page)).toEqual([]); // 배경이 붙기 전에는 뜨지 않는다
+    hold.release();
+    await expect(page.locator('.stage .bg-layer.on[data-bg=classroom_day]')).toHaveCount(1, { timeout: 9000 });
+    await expect.poll(async () => (await placeOnLog(page)).length, { timeout: 2000 }).toBeGreaterThan(0);
+    const log = await placeOnLog(page);
+    expect(log.every((t) => t.includes('조례'))).toBe(true);
+    expect((await info(page)).step).toBe('c2.020');
+    await expect(page.locator('.place-chip.on')).toHaveCount(1);
+  } finally {
+    hold.release();
   }
 });

@@ -211,7 +211,7 @@ const pyOptions: Array<{ flags: string[]; help: string }> = [];
 for (const m of importPy.matchAll(/ap\.add_argument\(([^\n]*)\)\s*$/gm)) {
   const args = m[1];
   const flags = [...args.matchAll(/'(-{1,2}[\w-]+)'/g)].map((x) => x[1]);
-  let help = (/help=f?'([^']*)'/.exec(args)?.[1] ?? '').replace('{DEFAULT_SRC}', 'art-inbox/').replace('{DEFAULT_OUT}', 'public/assets/');
+  let help = (/help=f?'([^']*)'/.exec(args)?.[1] ?? '').replace('{DEFAULT_SRC}', 'art-inbox/').replace('{DEFAULT_OUT}', 'public/assets/').replace('{SPRITE_QUALITY}', pyConst('SPRITE_QUALITY'));
   const choices = /choices=\(([^)]*)\)/.exec(args)?.[1];
   if (choices) help += ` — ${[...choices.matchAll(/'([^']+)'/g)].map((x) => `\`${x[1]}\``).join(' 또는 ')}`;
   const def = pyArg(args, 'default');

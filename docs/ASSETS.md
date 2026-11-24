@@ -116,17 +116,17 @@
 
 | 순서 | id | 앨범 제목 | 루트 | 대본 위치(cg.ts desc) | 화면에 떠 있는 구간 | 파일 | 픽셀 | 크기 | 썸네일 |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `rain_osana` | 작은 우산 | 아카네(공통 선택) | 공통 c6 소나기 — 아카네 우산을 함께 쓴 하굣길 | `c6_rain` `c6.a20`~`c6.a40` 3문장 → `c6.join` 로 이동 뒤 걷힘 | `rain_osana.webp` ✅ | 1920×1080 | 210KB | ✅ 480×270 23KB |
-| 2 | `rain_tenko` | 기울어진 우산 | 히나(공통 선택) | 공통 c6 소나기 — 히나와 우산을 함께 쓴 하굣길 | `c6_rain` `c6.b30`~`c6.b50` 3문장 → CG 걷기 명령 | `rain_tenko.webp` ✅ | 1920×1080 | 252KB | ✅ 480×270 25KB |
-| 3 | `door_osana` | 체인 너머 | 아카네 | 아카네 루트 o2 — 감기 문병, 체인 걸린 현관문 | `o2_cold` `o2.130`~`o2.210` 10문장 → CG 걷기 명령 | `door_osana.webp` ✅ | 1920×1080 | 102KB | ✅ 480×270 12KB |
-| 4 | `ramune_osana` | 토요일이거든 | 아카네 | 아카네 루트 o4 — 노을 강변의 라무네 | `o4_promise` `o4.170`~`o4.180` 2문장 → CG 걷기 명령 | `ramune_osana.webp` ✅ | 1920×1080 | 260KB | ✅ 480×270 31KB |
-| 5 | `fireworks_osana` | 첫 불꽃 | 아카네 | 아카네 루트 o6 — 고백 뒤 첫 불꽃 | `o6_confession` `o6.180`~`o6.200` 3문장 → 다음 장면 `o7_homeward` 의 배경 전환 | `fireworks_osana.webp` ✅ | 1920×1080 | 159KB | ✅ 480×270 19KB |
-| 6 | `homeward_osana` | 처음 바래다주는 길 | 아카네 | 아카네 루트 o7 — 손잡고 걷는 귀갓길 | `o7_homeward` `o7.060`~`o7.110` 6문장 → CG 걷기 명령 | `homeward_osana.webp` ✅ | 1920×1080 | 205KB | ✅ 480×270 24KB |
-| 7 | `cats_tenko` | 기다리면 오는 것 | 히나 | 히나 루트 t1 — 신사 돌계단의 다이후쿠 | `t1_cats` `t1.140`~`t1.170` 4문장 → CG 걷기 명령 | `cats_tenko.webp` ✅ | 1920×1080 | 351KB | ✅ 480×270 36KB |
-| 8 | `bench_tenko` | 그거, 내 대사인데 | 히나 | 히나 루트 t4 — 노을 언덕 벤치 | `t4_invite` `t4.190`~`t4.200` 2문장 → 다음 장면 `t5_festival` 의 배경 전환 | `bench_tenko.webp` ✅ | 1920×1080 | 277KB | ✅ 480×270 30KB |
-| 9 | `selfie_tenko` | 이번엔 둘이 같이 | 히나 | 히나 루트 t6 — 불꽃 아래 셀카 | `t6_confession` `t6.210` 1문장 → 다음 CG(`shutter_tenko`)로 교체 | `selfie_tenko.webp` ✅ | 1920×1080 | 233KB | ✅ 480×270 31KB |
-| 10 | `shutter_tenko` | 셔터가 눌린 순간 | 히나 | 히나 루트 t6 — 사진에 담긴 순간 | `t6_confession` `t6.220` 1문장 → 다음 장면 `t7_homeward` 의 배경 전환 | `shutter_tenko.webp` ✅ | 1920×1080 | 217KB | ✅ 480×270 26KB |
-| 11 | `polaroid_tenko` | 첫 장에 넣을 사진 | 히나 | 히나 루트 t7 — 현상된 즉석사진 | `t7_homeward` `t7.040`~`t7.060` 3문장 → CG 걷기 명령 | `polaroid_tenko.webp` ✅ | 1920×1080 | 177KB | ✅ 480×270 23KB |
+| 1 | `rain_osana` | 작은 우산 | 아카네(공통 선택) | 공통 c6 소나기 — 소꿉친구의 우산을 함께 쓴 하굣길 | `c6_rain` `c6.a20`~`c6.a40` 3문장 → `c6.join` 로 이동 뒤 걷힘 | `rain_osana.webp` ✅ | 1920×1080 | 210KB | ✅ 480×270 23KB |
+| 2 | `rain_tenko` | 기울어진 우산 | 히나(공통 선택) | 공통 c6 소나기 — 전학생과 우산을 함께 쓴 하굣길 | `c6_rain` `c6.b30`~`c6.b50` 3문장 → CG 걷기 명령 | `rain_tenko.webp` ✅ | 1920×1080 | 252KB | ✅ 480×270 25KB |
+| 3 | `door_osana` | 체인 너머 | 아카네 | 소꿉친구 루트 o2 — 감기 문병, 체인 걸린 현관문 | `o2_cold` `o2.130`~`o2.210` 10문장 → CG 걷기 명령 | `door_osana.webp` ✅ | 1920×1080 | 102KB | ✅ 480×270 12KB |
+| 4 | `ramune_osana` | 토요일이거든 | 아카네 | 소꿉친구 루트 o4 — 노을 강변의 라무네 | `o4_promise` `o4.170`~`o4.180` 2문장 → CG 걷기 명령 | `ramune_osana.webp` ✅ | 1920×1080 | 260KB | ✅ 480×270 31KB |
+| 5 | `fireworks_osana` | 첫 불꽃 | 아카네 | 소꿉친구 루트 o6 — 고백 뒤 첫 불꽃 | `o6_confession` `o6.180`~`o6.200` 3문장 → 다음 장면 `o7_homeward` 의 배경 전환 | `fireworks_osana.webp` ✅ | 1920×1080 | 159KB | ✅ 480×270 19KB |
+| 6 | `homeward_osana` | 처음 바래다주는 길 | 아카네 | 소꿉친구 루트 o7 — 손잡고 걷는 귀갓길 | `o7_homeward` `o7.060`~`o7.110` 6문장 → CG 걷기 명령 | `homeward_osana.webp` ✅ | 1920×1080 | 205KB | ✅ 480×270 24KB |
+| 7 | `cats_tenko` | 기다리면 오는 것 | 히나 | 전학생 루트 t1 — 신사 돌계단의 다이후쿠 | `t1_cats` `t1.140`~`t1.170` 4문장 → CG 걷기 명령 | `cats_tenko.webp` ✅ | 1920×1080 | 351KB | ✅ 480×270 36KB |
+| 8 | `bench_tenko` | 그거, 내 대사인데 | 히나 | 전학생 루트 t4 — 노을 언덕 벤치 | `t4_invite` `t4.190`~`t4.200` 2문장 → 다음 장면 `t5_festival` 의 배경 전환 | `bench_tenko.webp` ✅ | 1920×1080 | 277KB | ✅ 480×270 30KB |
+| 9 | `selfie_tenko` | 이번엔 둘이 같이 | 히나 | 전학생 루트 t6 — 불꽃 아래 셀카 | `t6_confession` `t6.210` 1문장 → 다음 CG(`shutter_tenko`)로 교체 | `selfie_tenko.webp` ✅ | 1920×1080 | 233KB | ✅ 480×270 31KB |
+| 10 | `shutter_tenko` | 셔터가 눌린 순간 | 히나 | 전학생 루트 t6 — 사진에 담긴 순간 | `t6_confession` `t6.220` 1문장 → 다음 장면 `t7_homeward` 의 배경 전환 | `shutter_tenko.webp` ✅ | 1920×1080 | 217KB | ✅ 480×270 26KB |
+| 11 | `polaroid_tenko` | 첫 장에 넣을 사진 | 히나 | 전학생 루트 t7 — 현상된 즉석사진 | `t7_homeward` `t7.040`~`t7.060` 3문장 → CG 걷기 명령 | `polaroid_tenko.webp` ✅ | 1920×1080 | 177KB | ✅ 480×270 23KB |
 
 ### 타이틀 키 비주얼
 
@@ -138,8 +138,8 @@
 
 엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG.
 
-- 아카네 엔딩 → `homeward_osana` 「처음 바래다주는 길」 (아카네 루트 o7 — 손잡고 걷는 귀갓길)
-- 히나 엔딩 → `polaroid_tenko` 「첫 장에 넣을 사진」 (히나 루트 t7 — 현상된 즉석사진)
+- 아카네 엔딩 → `homeward_osana` 「처음 바래다주는 길」 (소꿉친구 루트 o7 — 손잡고 걷는 귀갓길)
+- 히나 엔딩 → `polaroid_tenko` 「첫 장에 넣을 사진」 (전학생 루트 t7 — 현상된 즉석사진)
 
 ## 배경 — 임시 SVG
 
@@ -260,7 +260,7 @@ public/assets/cg/thumb/{id}.webp                               480x270
 | `--src` | 입력 폴더(기본 art-inbox/) |
 | `--out` | 출력 폴더(기본 public/assets/) |
 | `--only` | 한 종류만 처리 — `char` 또는 `cg` |
-| `--quality` | 스프라이트 WebP 품질(기본 {SPRITE_QUALITY}) |
+| `--quality` | 스프라이트 WebP 품질(기본 82) |
 | `--alpha-quality` | 스프라이트 알파 품질(기본 90) |
 | `--cg-quality` | CG WebP 품질(기본 85) |
 | `--thumb-quality` | CG 썸네일 품질(기본 80) |

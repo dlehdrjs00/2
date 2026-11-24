@@ -12,6 +12,7 @@ import {
   pick,
   readSlot,
   tapBackground,
+  tapStage,
   toTitle,
   waitChoicesArmed,
   waitSettled,
@@ -345,4 +346,32 @@ test('기록 시트: 글자를 드래그해 빈 곳에서 떼도 닫히지 않�
   // 배경을 눌렀다 떼면 닫힘
   await page.mouse.click(outX, hy);
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
+});
+
+test('글자가 나오는 도중 누르면 그 문장을 바로 다 보여 주고, 다음 입력에서야 다음 문장으로 넘어간다', async ({ page }) => {
+  // 가장 느린 글자 속도(초당 10자)로 열어 타자 효과가 충분히 길게 이어지게 한다
+  await boot(page, { textSpeed: 1, autoSpeed: 10, bgmVolume: 0, sfxVolume: 0 });
+  await page.locator('[data-action=new]').click();
+  const confirm = page.locator('[data-panel=confirm] [data-action=ok]');
+  if (await confirm.isVisible().catch(() => false)) await confirm.click();
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'play');
+  // 첫 대사가 그려지기 시작할 때까지(암전·카드가 끝나 글자가 나오는 중)
+  await expect.poll(async () => (await info(page)).typing, { timeout: 20_000 }).toBe(true);
+  const typingStep = (await info(page)).step;
+  expect(typingStep).not.toBeNull();
+  await expect(page.locator('.textbox')).not.toHaveClass(/\bdone\b/);
+
+  // 첫 누름: 같은 줄에 머물고 문장이 한 번에 다 보인다
+  await tapStage(page);
+  await expect.poll(async () => (await info(page)).typing).toBe(false);
+  expect((await info(page)).step).toBe(typingStep);
+  await expect(page.locator('.textbox')).toHaveClass(/\bdone\b/);
+
+  // 잠시 그대로 두어도 저절로 넘어가지 않는다(자동 진행 꺼짐)
+  await page.waitForTimeout(800);
+  expect((await info(page)).step).toBe(typingStep);
+
+  // 다음 누름에서야 다음 줄로 넘어간다
+  await tapStage(page);
+  await expect.poll(async () => (await info(page)).step).not.toBe(typingStep);
 });

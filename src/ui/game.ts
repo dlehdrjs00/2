@@ -680,6 +680,12 @@ export class Game {
         this.inputLockUntil = Math.max(this.inputLockUntil, performance.now() + SKIP_STOP_LOCK_MS);
       }
     }
+    // 건너뛰기가 실제로 줄을 넘겼으면(멈추지 않았으면) 장소 표시를 걷고, 새 배경을 기다리며 맡아 둔 것도 버린다
+    // (hidePlace 가 placeQueued 도 비운다. 건너뛰기는 장소 표시를 하지 않는다 — applyVisual). 버리지 않으면 건너뛰는 중에
+    // 배경이 붙는 순간 앞 장면 장소 문구가 떠서 같은 배경으로 이어지는 다음 장면(선택지 화면 포함) 위에 3.2초 남았다.
+    // 건너뛰기를 켠 순간(setSkip)에 버리지 않는 까닭: 켜자마자 다음 줄(처음 보는 줄)에서 멈추면 한 줄도 건너뛰지 않았는데,
+    // 맡아 둔 장소 표시(보통 진행으로 보여 준 장면 첫 줄의 것)가 버려져 느린 망에서는 그 장면 장소 표시가 한 번도 뜨지 않았다
+    if (this.skip) this.stage.hidePlace();
     // 이번 스텝의 무대(state.stage 는 이미 이 스텝의 연출이 반영된 상태)가 쓰는 그림을 다 받기 전에는 미리 불러오기를
     // 새로 시작하지 않는다. fetchPriority 'low' 는 이미 받는 중인 요청끼리의 대역폭 분배에는 듣지 않아서, 느린 망에서
     // 이어하기·장면 진입 때 몇 스텝 뒤의 CG·다음 장면 그림이 지금 무대 그림과 함께 받아져 둘 다 늦던 것.
@@ -970,6 +976,7 @@ export class Game {
       this.skip = true;
       this.clearAutoTimer();
       this.syncHud();
+      // 장소 표시(떠 있는 것·맡아 둔 것)는 여기서 걷지 않는다: 건너뛰기가 실제로 다음 줄로 넘어갈 때 present 가 걷는다
       // 무대 그림을 기다리는 중이면 기다림을 끝낸다(건너뛰기는 그림을 기다리지 않는다)
       if (this.stageWaitToken) this.stage.hurry();
       if (this.textbox.isTyping) this.textbox.complete();
@@ -1308,7 +1315,7 @@ export class Game {
     //  2) 첫 화면 글자의 글꼴 조각. 글꼴은 unicode-range 조각이라 '그려지는 글자'의 조각만 받으므로, 미리 받지 않으면 첫 대사를
     //     그리는 순간에야 요청되어 첫 문장이 잠깐 대체 글꼴로 보이고, 빠른 메뉴 탭 글자 조각(약 75KB)은 대사 화면에 들어간 뒤
     //     첫 장면 그림과 함께 받아져 대역폭을 나눴다.
-    //     대사(고운돋움): 첫 대사 문장 · 이름표·장소 표시(Pretendard): 그 문장의 이름표와 첫 장소 표시 · 빠른 메뉴 탭 글자(qbar)
+    //     대사(고운돋움): 첫 대사 문장 · 이름표(주아): 그 문장의 이름표 · 장소 표시(Pretendard 600): 첫 장소 표시 · 빠른 메뉴 탭 글자(qbar)
     //  3) 나머지 미리 불러오기(start → startPreload, 붙잡은 첫 화면 그림을 받은 뒤 이어서)
     this.whenTitleArt(() => {
       // 이미 대사 화면이면(키 비주얼 전에 시작) 탭 글자만. 그 줄 글자는 present 가 그림을 기다리는 동안 받는다
@@ -1355,7 +1362,7 @@ export class Game {
 
   /**
    * 타이틀 다음 첫 화면: 자동 저장이 있으면 [이어하기] 위치, 없으면 새 게임 첫 대사.
-   * urls: 그 화면의 무대 그림. text: 글꼴 조각을 미리 받을 글자(text 대사창 고운돋움 / ui 이름표·장소 표시 Pretendard).
+   * urls: 그 화면의 무대 그림. text: 글꼴 조각을 미리 받을 글자(text 대사창 고운돋움 / ui 장소 표시 Pretendard 600 / name 이름표 주아).
    */
   private firstFrame(): { urls: string[]; text: { text: string; ui: string; name: string } } {
     const st = this.firstFrameState();
