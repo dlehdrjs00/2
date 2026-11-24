@@ -1,9 +1,8 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 /**
  * E2E: 프로덕션 빌드(vite preview)를 대상으로 실행.
- * Chromium 만 설치된 환경이라 모바일은 Chromium 모바일 에뮬레이션(터치·뷰포트)으로 확인한다.
- * 실제 iOS Safari / Android Chrome 기기 검증은 아님.
+ * Chromium PC/Android 크기 + WebKit iPad 크기. 실제 iOS/Android 기기 성능 검증은 아님.
  */
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -32,6 +31,13 @@ export default defineConfig({
     {
       name: 'phone-se-landscape',
       use: { viewport: { width: 667, height: 375 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
+    },
+    // WebKit + iPad 기기 설정(옛 iPad UA 라 #vn[data-render='apple-touch']). 두 엔딩·저장·렌더링·자동 저장 실패 안내를 본다.
+    // 다른 스펙은 CDP(Chromium 전용) 입력이나 데스크톱·휴대폰 전용 검사가 많아 넣지 않았다(CDP 검사는 WebKit 에서 건너뜀)
+    {
+      name: 'ipad-webkit',
+      testMatch: /(?:routes|saveload|rendering|autosave)\.spec\.ts/,
+      use: { ...devices['iPad (gen 7) landscape'], browserName: 'webkit' },
     },
   ],
 });

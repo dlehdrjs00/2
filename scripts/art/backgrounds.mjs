@@ -2,7 +2,11 @@
 /**
  * PLACEHOLDER 배경 생성기 — 《내일도 같이 갈래?》
  *
- * 최종 배경 일러스트가 나오기 전까지 쓰는 교체 가능한 임시 배경 SVG 를 코드로 그린다.
+ * ※ 최종 배경(public/assets/bg/*.webp, 제작 기록 docs/BACKGROUND_PROMPTS.md)으로 교체돼 게임은 이 SVG 를 쓰지 않는다.
+ *   만든 SVG 는 저장소에 두지 않는다(빌드에 복사돼 배포되므로). 구도 참고나 임시 배경이 다시 필요할 때만 실행한다
+ *   (`npm run gen:art` 도 이 스크립트를 부른다 — 만든 뒤 public/assets/placeholder/bg/ 를 지울 것).
+ *
+ * 최종 배경 일러스트가 나오기 전까지 쓰던 교체 가능한 임시 배경 SVG 를 코드로 그린다.
  * 외부 이미지·폰트·라이브러리를 쓰지 않는다(Node 내장 모듈만 사용).
  *
  *   node scripts/art/backgrounds.mjs            # 전체 생성

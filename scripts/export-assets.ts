@@ -7,7 +7,8 @@
  *  - 이벤트 CG: src/story/cg.ts 의 CGS·KEY_VISUAL·ENDING_CG 와, 대본에서 CG 가 떠 있는 구간
  *  - 스프라이트 배치 규칙: src/ui/styles/play.css·screens.css·src/ui/stage.ts 의 실제 값을 생성할 때 읽고,
  *    대사창이 덮는 범위는 src/ui/layout.ts computeLayout 으로 계산한다(문서에 숫자를 손으로 적지 않는다)
- *  - 남은 임시 에셋(배경·음악·효과음)의 교체 사양, scripts/import-art.py 사용법(옵션은 스크립트에서 읽음)
+ *  - 배경 사양(최종 WebP·썸네일·레터박스), 남은 임시 에셋(음악·효과음)의 교체 사양, scripts/import-art.py 사용법(옵션은 스크립트에서 읽음)
+ *  - 문장 속 상태(최종/임시)는 매니페스트의 placeholder 로 정한다(배경을 다시 임시로 돌리면 문장도 따라 바뀐다)
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -322,6 +323,10 @@ const spriteFiles = Object.values(SPRITE_SETS).flatMap((set) => set.looks.flatMa
 const sum = (ps: string[]) => ps.map((p) => fileInfo(p)).reduce((a, f) => ({ n: a.n + (f.ok ? 1 : 0), bytes: a.bytes + f.bytes }), { n: 0, bytes: 0 });
 const status = (flags: boolean[]) => (flags.every((p) => !p) ? FINAL : flags.every((p) => p) ? TEMP : '🟠 일부 임시');
 const bgEntries = Object.entries(BACKGROUNDS).filter(([, a]) => a.src);
+const bgFinal = bgEntries.every(([, a]) => !a.placeholder);
+const bgThumbs = bgEntries.map(([, a]) => a.thumb).filter((p): p is string => !!p);
+/** 배경 파일이 든 폴더(매니페스트의 src·thumb 경로에서) */
+const bgDirs = [...new Set([...bgEntries.map(([, a]) => a.src!), ...bgThumbs].map((p) => p.slice(0, p.lastIndexOf('/') + 1)))];
 const cgList = CG_ORDER.map((id) => CGS[id]);
 
 const rows = [
@@ -351,11 +356,13 @@ const rows = [
   },
   {
     kind: '배경',
-    count: `${bgEntries.length}종 (대본 ${storyBgCount} + 타이틀 대체 1) + 단색 1`,
+    count: `${bgEntries.length}종 (대본 ${storyBgCount} + 타이틀 대체 1)${bgThumbs.length ? ` + 썸네일 ${bgThumbs.length}장` : ''} + 단색 1`,
     st: status(bgEntries.map(([, a]) => a.placeholder)),
-    what: '코드로 그린 임시 SVG(`scripts/art/backgrounds.mjs`)',
-    where: '`public/assets/placeholder/bg/`',
-    total: sum(bgEntries.map(([, a]) => a.src!)),
+    what: bgFinal
+      ? '사용자가 준 상세 배경 WebP(이미지 생성 도구로 제작, 기록 `docs/BACKGROUND_PROMPTS.md`)'
+      : '코드로 그린 임시 SVG(`scripts/art/backgrounds.mjs`)',
+    where: bgDirs.map((d) => `\`public/${d}\``).join(', '),
+    total: sum([...bgEntries.map(([, a]) => a.src!), ...bgThumbs]),
   },
   {
     kind: '음악(BGM)',
@@ -402,10 +409,20 @@ for (const r of rows) w(`| ${r.kind} | ${r.count} | ${r.st} | ${r.what} | ${r.wh
 w();
 const allImages = [...spriteFiles, ...cgList.flatMap((c) => [c.src]), KEY_VISUAL.src, ...bgEntries.map(([, a]) => a.src!)];
 w(`- 인물·CG·키 비주얼은 **사용자가 준 최종 일러스트**를 \`scripts/import-art.py\` 로 변환해 넣은 것이다(원본은 \`art-inbox/\`, 저장소에 넣지 않음).`);
-w('- 배경·음악·효과음은 아직 **개발용 임시 에셋**이다. 교체 사양은 아래 [배경](#배경--임시-svg) · [음악](#음악bgm--임시-합성음) · [효과음](#효과음sfx--임시-합성음) 절.');
+{
+  const temp = [
+    ...(bgFinal ? [] : [['배경', '#배경--임시-svg']]),
+    ['음악', '#음악bgm--임시-합성음'],
+    ['효과음', '#효과음sfx--임시-합성음'],
+  ];
+  if (bgFinal) w('- 배경은 **사용자가 준 상세 배경**(1920×1080 WebP)이다. 사양·썸네일·레터박스는 아래 [배경](#배경--최종) 절.');
+  w(`- ${temp.map(([k]) => k).join('·')}은 아직 **개발용 임시 에셋**이다. 교체 사양은 아래 ${temp.map(([k, a]) => `[${k}](${a})`).join(' · ')} 절.`);
+}
 const note = placeholderNote();
-w(`- 타이틀 화면 버전 표시 뒤에는 ${note ? `지금 「${note}」 가 붙는다` : '임시 안내가 붙지 않는다(모두 최종)'}. 해당 분류의 \`placeholder\` 가 모두 \`false\` 가 되면 자동으로 빠진다(\`src/main.ts\` placeholderNote).`);
-w(`- 그림은 게임 시작 뒤 백그라운드로 모두 미리 받는다(\`src/ui/screens/preload.ts\`, 동시에 3개). 현재 그림 전체 ${kbText(sum(allImages).bytes)}(CG 썸네일 제외) — 교체할 때 용량 예산을 지킬 것.`);
+w(`- 타이틀 화면 버전 표시 뒤에는 ${note ? `지금 「${note}」 안내가 붙는다` : '임시 안내가 붙지 않는다(모두 최종)'}. 해당 분류의 \`placeholder\` 가 모두 \`false\` 가 되면 자동으로 빠진다(\`src/main.ts\` placeholderNote).`);
+w(
+  `- 그림은 지금 위치에서 가까운 그림부터 미리 받는다(\`src/ui/screens/preload.ts\`, 동시에 3개, 데이터 절약 모드·느린 연결은 2개). 표준 렌더링은 그 뒤 게임 전체 그림도 백그라운드로 받고, **데이터 절약 모드와 Apple 터치 기기**(iPad·iPhone, \`src/ui/render-profile.ts\`)는 지금 장면과 다음 장면 그림만 받는다. 현재 그림 전체 ${kbText(sum(allImages).bytes)}(썸네일 제외) — 교체할 때 용량 예산을 지킬 것.`,
+);
 w();
 
 // ---- 교체 방법 ----
@@ -417,7 +434,8 @@ w('   - 배경·음악·효과음: `src/story/assets.ts` 의 `BACKGROUNDS` / `BG
 w('     예: `classroom_day: { src: \'assets/bg/classroom_day.webp\', placeholder: false, desc: \'2학년 3반 교실(낮, 창가)\' },`');
 w('   - 캐릭터: `SPRITE_SETS.<캐릭터>.dir` 과 `ext`(파일명 규칙 `${outfit}_${hair}_${expr}.${ext}` 유지). 그림 자체를 바꿀 때는 아래 [그림 교체 파이프라인](#그림-교체-파이프라인-scriptsimport-artpy)을 쓴다.');
 w('   - 이벤트 CG·키 비주얼: `src/story/cg.ts`(경로는 `assets/cg/{id}.webp`, 썸네일 `assets/cg/thumb/{id}.webp` 고정).');
-w('3. `npm run validate` — 매니페스트가 가리키는 파일이 없으면 오류로 알려 준다.');
+w('   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 매니페스트의 `thumb` 경로와 맞출 것.');
+w('3. `npm run validate` — 매니페스트가 가리키는 파일(배경 썸네일 포함)이 없으면 오류로 알려 준다.');
 w('4. `npm run docs` — 이 문서와 대본 문서를 다시 만든다.');
 w('5. `npm run dev` 로 띄워 데스크톱·휴대폰 가로 화면에서 확인한다(주소 끝에 `?debug` 를 붙이면 콘솔에서 `window.__vn.info()` 로 상태 조회).');
 w();
@@ -526,27 +544,38 @@ for (const [heroine, id] of Object.entries(ENDING_CG)) {
 w();
 
 // ---- 배경 ----
-w('## 배경 — 임시 SVG');
-w();
-w('현재는 `scripts/art/backgrounds.mjs` 가 코드로 그린 SVG(viewBox 1600×900)다. **최종 교체 사양:**');
+if (bgFinal) {
+  w('## 배경 — 최종');
+  w();
+  w('현재는 **사용자가 준 상세 배경**(이미지 생성 도구로 제작, 1920×1080 WebP)이다. 제작 프롬프트는 `docs/BACKGROUND_PROMPTS.md`, 같은 장소의 시간대·날씨 변형은 같은 구도를 따른다.');
+  w('예전 임시 SVG 생성기 `scripts/art/backgrounds.mjs`(`npm run gen:art`)는 남아 있지만 **최종 배경으로 교체돼 쓰지 않는다**(만든 SVG 는 저장소에 두지 않는다).');
+  w();
+  w('**다시 바꿀 때의 사양:**');
+} else {
+  w('## 배경 — 임시 SVG');
+  w();
+  w('현재는 `scripts/art/backgrounds.mjs` 가 코드로 그린 SVG(viewBox 1600×900)다. **최종 교체 사양:**');
+}
 w();
 w('| 항목 | 사양 |');
 w('|---|---|');
 w('| 형식 | **WebP**(권장, 품질 80~85) 또는 JPEG. 투명 불필요 |');
 w('| 해상도 | **1920×1080(16:9)** 권장. 무대가 늘 16:9 라 그대로면 잘리지 않는다. 비율이 다르면 가운데 기준으로 잘린다(`background-size: cover`) |');
-w('| 용량 | 파일당 800KB 이하(백그라운드로 전부 미리 받으므로 휴대폰 데이터 고려) |');
+w('| 용량 | 파일당 800KB 이하(표준 렌더링은 게임 전체 그림을 백그라운드로 미리 받으므로 휴대폰 데이터 고려) |');
+w('| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(`--check` 는 빠졌거나 오래된 것만 알림) |');
 w(`| 구도 | 인물이 무대 폭 ${posLeft.left}·${posLeft.center}·${posLeft.right} 자리에 서고, 아래쪽 약 ${fx(Math.floor(Math.min(...VIEWPORTS.map(([, vw, vh]) => cover(vw, vh, 1).band))))}~${fx(Math.ceil(worstDefault))}%는 대사창·탭이 반투명하게 덮는다. 사람·글자 없는 빈 장소 그림 |`);
 w('| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별 |');
-w('| 레터박스 | 무대 밖 여백은 같은 배경을 흐려 채운다(`.backdrop`). 따로 만들 그림 없음 |');
+w('| 레터박스 | 무대 밖 여백은 표준 렌더링에서는 같은 배경을 흐려 채운다(`.backdrop`). Apple 터치 기기는 흐림 대신 톤별(낮·노을·밤) 그라데이션, 암전은 그 색(`src/ui/styles/performance.css`). 따로 만들 그림 없음 |');
 w('| 화풍 | 캐릭터·CG 와 어울리는 밝은 애니메이션 배경 화풍(초여름, 맑은 하늘빛) |');
 w();
-w('| id | 설명 | 톤 | 대본 사용 | 현재 파일 | 상태 | 픽셀 | 크기 |');
-w('|---|---|---|---|---|---|---|---|');
+w('| id | 설명 | 톤 | 대본 사용 | 현재 파일 | 상태 | 픽셀 | 크기 | 썸네일 |');
+w('|---|---|---|---|---|---|---|---|---|');
 for (const [id, a] of Object.entries(BACKGROUNDS)) {
   const f = fileInfo(a.src);
+  const th = a.thumb ? fileInfo(a.thumb) : null;
   const tone = a.src ? TONE_KO[a.tone ?? 'day'] + (id.includes('_rain') ? '·비' : '') : '-';
-  const use = id === 'title' ? '타이틀 대체' : used.bg.has(id) ? '○' : '-';
-  w(`| \`${id}\` | ${a.desc} | ${tone} | ${use} | ${a.src ? `\`${a.src}\`` : `단색 ${a.color}`} | ${a.src ? (a.placeholder ? TEMP : FINAL) : '-'} | ${f.dim} | ${f.size} |`);
+  const use = id === 'title' ? `타이틀 대체${KEY_VISUAL.src ? '(키 비주얼이 없을 때만)' : ''}` : used.bg.has(id) ? '○' : '-';
+  w(`| \`${id}\` | ${a.desc} | ${tone} | ${use} | ${a.src ? `\`${a.src}\`` : `단색 ${a.color}`} | ${a.src ? (a.placeholder ? TEMP : FINAL) : '-'} | ${f.dim} | ${f.size} | ${th ? `${th.mark} ${th.dim} ${th.size}` : '-'} |`);
 }
 w();
 
@@ -656,14 +685,18 @@ w();
 w('| 분류 | 출처 | 라이선스·조건 | 비고 |');
 w('|---|---|---|---|');
 w('| 캐릭터 스프라이트·이벤트 CG·키 비주얼 | 사용자 제공 최종 일러스트 | 사용자 제공(이 게임에 사용) | 제작 프롬프트 `docs/ART_PROMPTS.md`, 변환 `scripts/import-art.py` |');
-w('| 배경(임시) | 이 저장소의 `scripts/art/backgrounds.mjs` 가 코드로 생성 | 외부 소재 없음 | 최종 교체 대상 |');
+if (bgFinal) {
+  w('| 배경 | 사용자가 준 묶음(이미지 생성 도구로 제작, 2026-11-24). 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건(상업 이용·웹 배포 허용)은 기록에 없어 **확인 필요** | 제작 프롬프트 `docs/BACKGROUND_PROMPTS.md`(앞 3장은 요약만 남음), 썸네일 `scripts/bg-thumbs.py` |');
+} else {
+  w('| 배경(임시) | 이 저장소의 `scripts/art/backgrounds.mjs` 가 코드로 생성 | 외부 소재 없음 | 최종 교체 대상 |');
+}
 w('| 음악·효과음(임시) | 이 저장소의 `scripts/gen-placeholder-audio.mjs` 가 합성 | 외부 음원·샘플 없음 | 최종 교체 대상 |');
 w('| 글꼴 | `@fontsource/gowun-batang`, `@fontsource/gowun-dodum`, `@fontsource/jua`, `pretendard` (npm) | SIL Open Font License 1.1 | `package.json` dependencies |');
 w(
   '| 글꼴 타이틀 조각 `src/ui/styles/fonts/jua-title.woff2`, `gowun-batang-700-title.woff2` | google/fonts 의 OFL TTF(`ofl/jua/Jua-Regular.ttf`, `ofl/gowunbatang/GowunBatang-Bold.ttf`)에서 로고·부제 글자만 뽑은 부분 글꼴(pyftsubset) | SIL Open Font License 1.1(원본과 같음). 이름 표(저작권·OFL 안내)는 원본 그대로 둔다 | 타이틀이 받는 글꼴을 줄이려는 파생 파일(UI_DESIGN 4장). `GAME_TITLE`·`GAME_SUBTITLE`(src/story/config.ts)을 바꾸면 `tokens.css` 주석의 명령으로 다시 만들고 `unicode-range` 를 맞춘다(`tests/unit/layout.test.ts` 가 검사) |',
 );
 w();
-w('최종 배경·음악·효과음을 넣으면 이 표에 한 줄씩 더한다(예: `| 배경 classroom_day | ○○ 작가 직접 제작 | 상업 이용·수정 허락(계약서 날짜) | 2026-xx-xx 확인 |`). 이 표는 `scripts/export-assets.ts` 안에 있다.');
+w(`최종 ${bgFinal ? '' : '배경·'}음악·효과음을 넣으면 이 표에 한 줄씩 더한다(예: \`| 음악 bgm_daily | ○○ 작곡가 직접 제작 | 상업 이용·수정 허락(계약서 날짜) | 2026-xx-xx 확인 |\`). 이 표는 \`scripts/export-assets.ts\` 안에 있다.`);
 w();
 
 // ---- 기타 ----
@@ -677,6 +710,15 @@ w('- 사복: 본편 일정을 방과 후 중심으로 짜서 필요 없음.');
   const referenced = Object.values(SPRITE_SETS).some((s) => s.dir.startsWith('assets/placeholder/char'));
   if (old.n && !referenced) {
     w(`- \`public/assets/placeholder/char/\`(예전 임시 SVG 스프라이트 ${old.n}개, ${kbText(old.bytes)})는 더 이상 연결되지 않지만 빌드에 그대로 복사된다. 필요 없으면 지워도 된다(\`npm run gen:art\` 로 다시 만들 수 있음).`);
+  }
+}
+{
+  const old = dirBytes(pub('assets/placeholder/bg'));
+  const referenced = bgEntries.some(([, a]) => a.src!.startsWith('assets/placeholder/bg'));
+  if (old.n && !referenced) {
+    w(`- \`public/assets/placeholder/bg/\`(예전 임시 SVG 배경 ${old.n}개, ${kbText(old.bytes)})는 더 이상 연결되지 않지만 빌드에 그대로 복사된다. 지워도 된다.`);
+  } else if (!referenced) {
+    w('- 예전 임시 SVG 배경(`public/assets/placeholder/bg/`)은 최종 배경으로 바꾸며 지웠다. `npm run gen:art` 는 `scripts/art/backgrounds.mjs` 로 그 폴더를 다시 만들므로, 실행했다면 만든 뒤 지운다(게임은 쓰지 않고 빌드에 복사돼 배포된다).');
   }
 }
 

@@ -11,7 +11,8 @@ export function manifestChecker(fileExists?: (publicPath: string) => boolean): A
     hasBg: (bg) => {
       const a = BACKGROUNDS[bg as BgId];
       if (!a) return false;
-      return a.src ? ok(a.src) : !!a.color;
+      // 썸네일(저장 칸 미니 무대용)이 매니페스트에 있으면 그 파일도 있어야 한다
+      return a.src ? ok(a.src) && (!a.thumb || ok(a.thumb)) : !!a.color;
     },
     hasSprite: (char, outfit, hair, expr) => ok(spritePath(char as CharId, outfit as Outfit, hair as Hair, expr as Expr)),
     hasBgm: (id) => ok(BGM[id as BgmId]?.src),

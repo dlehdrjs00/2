@@ -17,7 +17,8 @@
  *   끝내 둔다. 투명도 0 에서 바로 페이드하면 래스터가 느린 환경(GPU 없는 소프트웨어 래스터)에서 페이드가 빈 레이어로
  *   흘러가고 그림이 0.3~1.1초 뒤 툭 튀어나왔다(배경·인물·CG 가 함께 바뀌는 c6.a20 등).
  * - 화면 팀이 대사를 그리기 전에 무대 준비를 기다릴 수 있게 ready(ms) 를 둔다(최대 ms, 누르면 hurry 로 즉시 끝).
- *   ready() 는 마지막 ready() 뒤에 들어온 그림 요청만 기다리고, 시간 초과·누름으로 넘긴 그림은 다시 기다리지 않는다.
+ *   ready() 는 마지막 ready() 뒤에 들어온 그림 요청만 기다리고, 시간 초과·누름으로 넘긴 그림은 그 해독이 끝날 때까지
+ *   다시 기다리지 않는다(끝난 뒤 해독 캐시에서 퇴출돼 다시 해독하게 되면 평소처럼 기다린다).
  *   1.2초가 넘게 기다리면 무대 가운데에 '불러오는 중' 알약을 띄운다(켜면 최소 0.4초). 암전 막(veilOut)도 같은 방식으로 기다린다.
  * - 이벤트 CG 가 떠 있는 동안 무대에 data-cg 를 단다(styles/play.css 가 대사창·빠른 메뉴 유리를 옅게 해 그림이 비치게).
  *   #vn[data-cgfit=low](layout.ts: 탭 띠가 무대 높이의 66% 보다 위)이면 CG 마다 정한 확대·위치로 얼굴·동작을 탭 위로 올린다.
@@ -34,6 +35,7 @@ import { BACKGROUNDS, type BgTone } from '../story/assets';
 import { CGS } from '../story/cg';
 import { DATES } from '../story/config';
 import { el } from './dom';
+import { DecodedImageCache } from './image-cache';
 
 export type { BgTone };
 
@@ -86,49 +88,29 @@ const CAL_TILT = 0.027;
 const CARD_SPARE_FS = 1;
 
 // ---------------------------------------------------------------------------
-// 그림 해독(같은 주소는 한 번만, 해독한 Image 를 붙잡아 두어 다시 쓸 때 즉시 그려지게)
+// 그림 해독(최근 주소의 Image만 제한적으로 보관하고, 퇴출된 그림은 필요할 때 다시 해독).
+// 상한은 image-cache.ts 기본값: 8장 또는 해독 픽셀 12Mi(약 48MiB). 지금 그림(배경·CG 1920x1080, 인물 1200x1800)으로는
+// 픽셀 상한이 먼저 걸려 5~6장이다. 해독 중인 그림·화면에 붙은 CG·방금 해독한 한 장은 퇴출하지 않는다. 모든 기기에 적용
 // ---------------------------------------------------------------------------
 
-const decodeCache = new Map<string, { img: HTMLImageElement; done: Promise<boolean>; settled: boolean }>();
+const decodeCache = new DecodedImageCache();
 
 /**
  * 해독 결과: 성공 true, 실패(파일 없음·손상) false. 시간 상한 없이 해독(또는 실패)이 끝나야 풀린다.
  * decode() 가 거절돼도 그림 자체는 받아졌으면(load 이벤트) 성공으로 본다(일부 브라우저가 SVG·큰 그림의 decode 를 거절).
  */
 function decodeOnce(url: string): Promise<boolean> {
-  let hit = decodeCache.get(url);
-  if (!hit) {
-    const img = new Image();
-    img.decoding = 'async';
-    // load·error 를 놓치지 않게 src 보다 먼저 듣는다
-    const loaded = new Promise<boolean>((resolve) => {
-      img.addEventListener('load', () => resolve(true), { once: true });
-      img.addEventListener('error', () => resolve(false), { once: true });
-    });
-    img.src = url;
-    const done =
-      typeof img.decode === 'function'
-        ? img.decode().then(
-            () => true,
-            () => loaded,
-          )
-        : loaded;
-    const entry = { img, done, settled: false };
-    void done.then(() => (entry.settled = true));
-    hit = entry;
-    decodeCache.set(url, hit);
-  }
-  return hit.done;
+  return decodeCache.decode(url);
 }
 
 /** 해독(또는 실패)이 끝난 주소인지. 요청한 적 없는 주소는 false */
 function decodeSettled(url: string): boolean {
-  return decodeCache.get(url)?.settled ?? false;
+  return decodeCache.settled(url);
 }
 
 /** decodeOnce 가 해독에 쓴 Image(같은 주소를 그대로 화면에 붙이면 해독 결과를 다시 쓴다) */
 function decodedImage(url: string): HTMLImageElement | null {
-  return decodeCache.get(url)?.img ?? null;
+  return decodeCache.image(url);
 }
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -341,7 +323,11 @@ export class StageView {
    * urls 는 그 요청이 해독을 기다리는 그림(ready() 가 포기할 때 givenUp 에 넣는다). giveUp 은 포기할 때 부른다.
    */
   private fresh = new Map<string, { promise: Promise<unknown>; urls: string[]; giveUp?: () => void }>();
-  /** ready() 가 기다리다 포기한(시간 초과·누름) 그림 주소. 아직 해독 전이면 다음 요청에서 다시 기다리지 않는다 */
+  /**
+   * ready() 가 기다리다 포기한(시간 초과·누름) 그림 주소. 아직 해독 전이면 다음 요청에서 다시 기다리지 않는다.
+   * 해독이 끝나면 지운다: 해독 캐시(image-cache.ts)는 최근 몇 장만 보관하므로, 나중에 퇴출된 뒤 같은 그림이 다시 나오면
+   * 다시 해독하는 동안은 평소처럼 기다려야 한다(지우지 않으면 대사가 앞 그림 위에 먼저 나온다)
+   */
   private givenUp = new Set<string>();
   /**
    * 같은 묶음(applyVisual·renderSnapshot 한 번처럼 한 동기 흐름)에서 요청된 인물 그림 해독. 같은 묶음의 새 배경은
@@ -604,6 +590,11 @@ export class StageView {
     return this.bgId;
   }
 
+  /** 테스트·디버그용: 해독 캐시(모든 무대가 함께 쓰는 decodeCache) 보관 상태와 기다리다 포기한 그림 수 */
+  decodeStats() {
+    return { ...decodeCache.stats, givenUp: this.givenUp.size };
+  }
+
   /** 지금 톤(배경이 실제로 바뀐 뒤의 값) */
   currentTone(): BgTone {
     return this.tone;
@@ -701,7 +692,12 @@ export class StageView {
     // (세대가 바뀜)도 사용자가 그림을 포기한 것이 아니므로 표시하지 않는다
     if (!settled && gen === this.gen && (why === 'hurry' || ms >= READY_MAX_MS)) {
       for (const w of waits) {
-        for (const u of w.urls) if (!decodeSettled(u)) this.givenUp.add(u);
+        for (const u of w.urls) {
+          if (decodeSettled(u) || this.givenUp.has(u)) continue;
+          this.givenUp.add(u);
+          // 같은 해독(진행 중이면 그 약속)이 끝나면 포기 표시를 지운다
+          void decodeOnce(u).then(() => this.givenUp.delete(u));
+        }
         w.giveUp?.();
       }
     }

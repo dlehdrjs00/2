@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { LINE_MAX_CHARS, OPTION_MAX_CHARS } from '../../src/engine/validate';
-import { advanceToStop, boot, continueAt, info, newGame, openMenu, waitChoicesArmed, waitSettled } from './helpers';
+import { advanceToStop, boot, continueAt, info, newGame, openMenu, requireCdp, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '뷰포트를 직접 정하는 배치 검사(desktop 프로젝트에서만)');
@@ -400,6 +400,7 @@ test.describe('터치 화면', () => {
     const slider = (await page.locator('[data-panel=settings] input[type=range]').first().boundingBox())!;
     const x = slider.x + slider.width / 2;
     const y0 = slider.y + slider.height / 2;
+    requireCdp(page);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: y0 }] });
     for (let i = 1; i <= 15; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y0 - i * 5 }] });

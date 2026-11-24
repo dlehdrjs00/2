@@ -101,7 +101,6 @@
   transition:
     left 0.45s ease,
     opacity 0.35s ease,
-    filter 0.35s ease,
     translate 0.35s ease;
   will-change: opacity;
 }
@@ -129,7 +128,7 @@
 }
 /* 무대 톤별 인물 보정(stage.ts 가 .stage[data-tone] 을 넣음): 낮 색 그대로면 밤 배경 위에서 오려 붙인 듯 떠 보인다.
  * 밤은 조금 어둡고 덜 진하게 + 남색 그림자, 노을은 아주 옅게 따뜻하게. 말하지 않는 인물(dim)·선택지 중 바램은
- * 톤 규칙(0,3,0)이 .char.dim(0,2,0)을 덮지 않게 톤별로 다시 건다. filter 전환(0.35s)으로 배경 크로스페이드와 같이 바뀐다 */
+ * 톤 규칙(0,3,0)이 .char.dim(0,2,0)을 덮지 않게 톤별로 다시 건다. filter 보간은 큰 스프라이트의 반복 래스터를 피하기 위해 하지 않는다 */
 .stage[data-tone='night'] .char {
   filter: brightness(0.86) saturate(0.88) contrast(0.98) drop-shadow(0 6px 16px rgba(10, 20, 60, 0.35));
 }
@@ -139,6 +138,14 @@
 }
 .stage[data-tone='evening'] .char {
   filter: sepia(0.08) brightness(0.97) drop-shadow(0 6px 16px rgba(110, 50, 40, 0.26));
+}
+/* Lantern light keeps festival faces and fabric readable. */
+.stage[data-tone='night'] .char[data-look^='yukata_'] {
+  filter: brightness(1.04) saturate(0.98) drop-shadow(0 6px 12px rgba(10, 20, 60, 0.22));
+}
+.stage[data-tone='night'] .char[data-look^='yukata_'].dim,
+.vn[data-frame='choice'] .stage[data-tone='night'] .char[data-look^='yukata_'] {
+  filter: brightness(0.98) saturate(0.92) drop-shadow(0 6px 12px rgba(10, 20, 60, 0.18));
 }
 .stage[data-tone='evening'] .char.dim,
 .vn[data-frame='choice'] .stage[data-tone='evening'] .char {

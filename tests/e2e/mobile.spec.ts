@@ -1,6 +1,6 @@
 /** 휴대폰 가로 화면 배치와 세로↔가로 전환 */
 import { expect, test } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, inViewport, newGame, openMenu, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, info, inViewport, newGame, openMenu, requireCdp, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(!ti.project.name.startsWith('phone'), '휴대폰 프로젝트 전용');
@@ -102,6 +102,7 @@ test('두 손가락으로 확대해도 배치가 다시 계산되지 않아 대�
       return ['--sx', '--sy', '--sw', '--sh', '--th', '--fs'].map((k) => s.getPropertyValue(k).trim()).join(' ');
     });
   const before = await vars();
+  requireCdp(page);
   const cdp = await page.context().newCDPSession(page);
   // 두 손가락 확대와 같은 상태(비주얼 뷰포트만 2배 확대). 이 환경의 Chromium 은 합성 핀치 제스처를 처리하지 않아 배율을 직접 바꾼다
   await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });

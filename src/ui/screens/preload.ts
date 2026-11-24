@@ -89,8 +89,8 @@ export const HOLD_MAX_MS = 20000;
  * 느린 망(2G 수준)에서 큰 CG 한 장이 정상적으로 이만큼 걸릴 수 있어 넉넉히 잡는다(그래도 그 요청은 끊지 않는다).
  */
 const FETCH_SLOT_MS = 30000;
-/** 미리 해독한 Image 를 붙잡아 두는 수(최근 것부터) */
-const HOT_MAX = 8;
+/** 미리 해독한 Image 를 붙잡아 두는 수(최근 것부터, 기본값. game.ts 가 Apple 터치 기기에서는 줄여 준다) */
+export const HOT_MAX = 8;
 
 export class ImagePreloader {
   /** 가까운 묶음(이 순서대로) */
@@ -127,9 +127,12 @@ export class ImagePreloader {
   /** 해독한 Image(넣은 순서 = 오래된 것부터) */
   private hot = new Map<string, HTMLImageElement>();
   private readonly canDecode: boolean;
+  private readonly hotMax: number;
 
-  constructor(max = preloadConcurrency()) {
+  /** max: 동시에 받을 수, hotMax: 미리 해독한 Image 를 붙잡아 둘 수 */
+  constructor(max = preloadConcurrency(), hotMax = HOT_MAX) {
     this.max = Math.max(1, Math.floor(max));
+    this.hotMax = Math.max(1, Math.floor(hotMax));
     this.canDecode = typeof HTMLImageElement !== 'undefined' && typeof HTMLImageElement.prototype.decode === 'function';
   }
 
@@ -383,7 +386,7 @@ export class ImagePreloader {
       () => {
         this.hot.delete(url);
         this.hot.set(url, img);
-        if (this.hot.size > HOT_MAX) this.hot.delete(this.hot.keys().next().value!);
+        if (this.hot.size > this.hotMax) this.hot.delete(this.hot.keys().next().value!);
         finish();
       },
       finish,

@@ -18,6 +18,8 @@ export type BgTone = 'day' | 'evening' | 'night';
 export interface ImageAsset {
   /** public/ 기준 경로. 단색 배경이면 생략하고 color 사용 */
   src?: string;
+  /** 작은 그림(480x270, 저장 칸·엔딩 폴라로이드의 미니 무대용). `python3 scripts/bg-thumbs.py` 가 src 에서 만든다 */
+  thumb?: string;
   color?: string;
   placeholder: boolean;
   /** 사람이 읽는 설명(에셋 목록 문서에 출력) */
@@ -34,28 +36,29 @@ export interface AudioAsset {
   gain?: number;
 }
 
-const PH_BG = 'assets/placeholder/bg';
+/** 최종 배경(1920x1080 WebP, 제작 기록 docs/BACKGROUND_PROMPTS.md)과 그 썸네일(thumb/) */
+const BG = 'assets/bg';
 
 export const BACKGROUNDS: Record<BgId, ImageAsset> = {
-  title: { src: `${PH_BG}/title.svg`, placeholder: true, desc: '타이틀 화면 배경(초여름 하늘과 학교 언덕)' },
-  road_morning: { src: `${PH_BG}/road_morning.svg`, placeholder: true, desc: '등굣길 주택가(아침)' },
-  road_evening: { src: `${PH_BG}/road_evening.svg`, placeholder: true, desc: '하굣길 주택가(노을)', tone: 'evening' },
-  road_rain: { src: `${PH_BG}/road_rain.svg`, placeholder: true, desc: '하굣길 주택가(소나기)' },
-  road_night: { src: `${PH_BG}/road_night.svg`, placeholder: true, desc: '밤 귀갓길(가로등, 여름밤)', tone: 'night' },
-  classroom_day: { src: `${PH_BG}/classroom_day.svg`, placeholder: true, desc: '2학년 3반 교실(낮, 창가)' },
-  classroom_evening: { src: `${PH_BG}/classroom_evening.svg`, placeholder: true, desc: '교실(방과 후 노을)', tone: 'evening' },
-  hallway: { src: `${PH_BG}/hallway.svg`, placeholder: true, desc: '복도와 자판기(낮)' },
-  shoe_lockers: { src: `${PH_BG}/shoe_lockers.svg`, placeholder: true, desc: '현관 신발장(방과 후)' },
-  shoe_lockers_rain: { src: `${PH_BG}/shoe_lockers_rain.svg`, placeholder: true, desc: '현관 신발장(밖은 소나기)' },
-  courtyard: { src: `${PH_BG}/courtyard.svg`, placeholder: true, desc: '중정 벤치(점심시간)' },
-  shotengai: { src: `${PH_BG}/shotengai.svg`, placeholder: true, desc: '동네 상점가와 오래된 막과자 가게(늦은 오후)' },
-  riverbank_evening: { src: `${PH_BG}/riverbank_evening.svg`, placeholder: true, desc: '강변 둑길(노을)', tone: 'evening' },
-  station_morning: { src: `${PH_BG}/station_morning.svg`, placeholder: true, desc: '역 앞 맨션가(아침)' },
-  apartment_door: { src: `${PH_BG}/apartment_door.svg`, placeholder: true, desc: '맨션 복도의 현관문 앞(저녁)', tone: 'evening' },
-  shrine_steps: { src: `${PH_BG}/shrine_steps.svg`, placeholder: true, desc: '언덕 위 작은 신사 돌계단(노을, 고양이 자리)', tone: 'evening' },
-  festival_street: { src: `${PH_BG}/festival_street.svg`, placeholder: true, desc: '여름 축제 노점 거리(밤, 제등)', tone: 'night' },
-  riverbank_night: { src: `${PH_BG}/riverbank_night.svg`, placeholder: true, desc: '불꽃놀이를 보는 강변 둑(밤)', tone: 'night' },
-  shrine_night: { src: `${PH_BG}/shrine_night.svg`, placeholder: true, desc: '불꽃놀이가 보이는 신사 언덕(밤)', tone: 'night' },
+  title: { src: `${BG}/title.webp`, thumb: `${BG}/thumb/title.webp`, placeholder: false, desc: '타이틀 화면 배경(초여름 하늘과 학교 언덕)' },
+  road_morning: { src: `${BG}/road_morning.webp`, thumb: `${BG}/thumb/road_morning.webp`, placeholder: false, desc: '등굣길 주택가(아침)' },
+  road_evening: { src: `${BG}/road_evening.webp`, thumb: `${BG}/thumb/road_evening.webp`, placeholder: false, desc: '하굣길 주택가(노을)', tone: 'evening' },
+  road_rain: { src: `${BG}/road_rain.webp`, thumb: `${BG}/thumb/road_rain.webp`, placeholder: false, desc: '하굣길 주택가(소나기)' },
+  road_night: { src: `${BG}/road_night.webp`, thumb: `${BG}/thumb/road_night.webp`, placeholder: false, desc: '밤 귀갓길(가로등, 여름밤)', tone: 'night' },
+  classroom_day: { src: `${BG}/classroom_day.webp`, thumb: `${BG}/thumb/classroom_day.webp`, placeholder: false, desc: '2학년 3반 교실(낮, 창가)' },
+  classroom_evening: { src: `${BG}/classroom_evening.webp`, thumb: `${BG}/thumb/classroom_evening.webp`, placeholder: false, desc: '교실(방과 후 노을)', tone: 'evening' },
+  hallway: { src: `${BG}/hallway.webp`, thumb: `${BG}/thumb/hallway.webp`, placeholder: false, desc: '복도와 자판기(낮)' },
+  shoe_lockers: { src: `${BG}/shoe_lockers.webp`, thumb: `${BG}/thumb/shoe_lockers.webp`, placeholder: false, desc: '현관 신발장(방과 후)' },
+  shoe_lockers_rain: { src: `${BG}/shoe_lockers_rain.webp`, thumb: `${BG}/thumb/shoe_lockers_rain.webp`, placeholder: false, desc: '현관 신발장(밖은 소나기)' },
+  courtyard: { src: `${BG}/courtyard.webp`, thumb: `${BG}/thumb/courtyard.webp`, placeholder: false, desc: '중정 벤치(점심시간)' },
+  shotengai: { src: `${BG}/shotengai.webp`, thumb: `${BG}/thumb/shotengai.webp`, placeholder: false, desc: '동네 상점가와 오래된 막과자 가게(늦은 오후)' },
+  riverbank_evening: { src: `${BG}/riverbank_evening.webp`, thumb: `${BG}/thumb/riverbank_evening.webp`, placeholder: false, desc: '강변 둑길(노을)', tone: 'evening' },
+  station_morning: { src: `${BG}/station_morning.webp`, thumb: `${BG}/thumb/station_morning.webp`, placeholder: false, desc: '역 앞 맨션가(아침)' },
+  apartment_door: { src: `${BG}/apartment_door.webp`, thumb: `${BG}/thumb/apartment_door.webp`, placeholder: false, desc: '맨션 복도의 현관문 앞(저녁)', tone: 'evening' },
+  shrine_steps: { src: `${BG}/shrine_steps.webp`, thumb: `${BG}/thumb/shrine_steps.webp`, placeholder: false, desc: '언덕 위 작은 신사 돌계단(노을, 고양이 자리)', tone: 'evening' },
+  festival_street: { src: `${BG}/festival_street.webp`, thumb: `${BG}/thumb/festival_street.webp`, placeholder: false, desc: '여름 축제 노점 거리(밤, 제등)', tone: 'night' },
+  riverbank_night: { src: `${BG}/riverbank_night.webp`, thumb: `${BG}/thumb/riverbank_night.webp`, placeholder: false, desc: '불꽃놀이를 보는 강변 둑(밤)', tone: 'night' },
+  shrine_night: { src: `${BG}/shrine_night.webp`, thumb: `${BG}/thumb/shrine_night.webp`, placeholder: false, desc: '불꽃놀이가 보이는 신사 언덕(밤)', tone: 'night' },
   black: { color: '#08070c', placeholder: false, desc: '검은 화면(파일 없음)' },
 };
 

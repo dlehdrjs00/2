@@ -58,7 +58,8 @@ import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
 import { buildConfirm, buildMenu, type AskMessage, type AskOptions, type MenuItem } from './screens/menu';
 import { buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
-import { HOLD_MAX_MS, ImagePreloader, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
+import { HOLD_MAX_MS, ImagePreloader, preloadConcurrency, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
+import { renderProfile } from './render-profile';
 import { buildSaveLoad, type SaveLoadView, type SlotPage } from './screens/saveload';
 import { buildSettings, type CfgCat } from './screens/settings';
 import { buildSheet, type Sheet, type SheetPanel, type SheetTab, type SheetView } from './screens/sheet';
@@ -84,6 +85,8 @@ export interface GameContent {
   titleSprites: Array<{ char: CharId; outfit: string; hair: string; expr: string }>;
   /** 아직 임시 에셋인 분류를 알리는 짧은 문구(예: '임시 배경·음악'). 모두 최종이면 null */
   placeholderNote: string | null;
+  /** 배경의 작은 그림(저장 칸·엔딩 폴라로이드의 미니 무대용 480x270). 없으면 원본(bgUrl)을 쓴다 */
+  bgThumbUrl?(id: string): string | null;
   /** 이벤트 CG 원본·작은 그림(저장 썸네일) 주소 */
   cgUrl?(id: string): string | null;
   cgThumbUrl?(id: string): string | null;
@@ -162,6 +165,11 @@ const PRELOAD_LEAD: Record<PreloadKind, number> = { cg: 12, bg: 6, sprite: 0 };
  * (무대가 그 줄에서 해독을 기다리지 않게). 해독본은 한 장에 약 8MB 라 브라우저 해독 캐시를 넘치지 않게 몇 줄 안만.
  */
 const PRELOAD_DECODE_STEPS = 3;
+/**
+ * Apple 터치 기기에서 미리 해독한 Image 를 붙잡아 두는 수(기본 HOT_MAX 8 → 4). 무대 해독 캐시(image-cache.ts)와 따로 붙잡으므로
+ * 합쳐서 해독본이 너무 많이 남지 않게 줄인다. PRELOAD_DECODE_STEPS(3줄) 안의 그림은 보통 4장 이하라 미리 해독 효과는 그대로다
+ */
+const APPLE_PRELOAD_HOT_MAX = 4;
 
 export class Game {
   readonly root: HTMLElement;
@@ -190,7 +198,9 @@ export class Game {
    */
   private autoTrack = new AutoSaveTracker();
   private mini: MiniResolver;
-  private preloader = new ImagePreloader();
+  /** 렌더링 방식(render-profile.ts). apple-touch: 흐림·큰 그림자·전체 미리 받기 생략, 미리 해독 보관 수 축소 */
+  private readonly renderMode = renderProfile();
+  private preloader = new ImagePreloader(preloadConcurrency(), this.renderMode === 'apple-touch' ? APPLE_PRELOAD_HOT_MAX : undefined);
 
   private state: GameState | null = null;
   private current: StepResult | null = null;
@@ -256,8 +266,9 @@ export class Game {
     this.settings = loadSettings(store);
     this.audio = new AudioManager(content.bgmSrc, content.sfxSrc, '');
     this.audio.setVolumes(this.settings.bgmVolume, this.settings.sfxVolume);
+    // 미니 무대(저장 칸 6개·폴라로이드)는 배경 원본(1920x1080) 대신 작은 그림을 받는다(칸마다 원본을 해독하지 않게)
     this.mini = {
-      bgUrl: (id) => content.bgUrl(id),
+      bgUrl: (id) => content.bgThumbUrl?.(id) ?? content.bgUrl(id),
       bgColor: (id) => content.bgColor(id),
       spriteUrl: (char, s) => content.spriteUrl(char, s.outfit, s.hair, s.expr),
       cgThumbUrl: (id) => content.cgThumbUrl?.(id) ?? null,
@@ -265,6 +276,8 @@ export class Game {
 
     this.root = el('div', 'vn');
     this.root.id = 'vn';
+    this.root.dataset.render = this.renderMode;
+    if (typeof document !== 'undefined') this.root.dataset.pageHidden = document.hidden ? '1' : '0';
     this.root.dataset.tone = 'day';
     this.root.dataset.autosave = this.autoSave;
     this.root.dataset.aschip = 'above';
@@ -354,7 +367,8 @@ export class Game {
     if (this.preloadStarted) return;
     this.preloadStarted = true;
     if (this.mode !== 'play') this.preloadFromTitle();
-    if (!prefersDataSaving()) this.preloader.add(this.c.allImageUrls());
+    // 게임 전체 그림은 데이터 절약 모드·Apple 터치 기기에서는 미리 받지 않는다(지금·다음 장면 그림만 preloadFrom 이 받는다)
+    if (!prefersDataSaving() && this.renderMode !== 'apple-touch') this.preloader.add(this.c.allImageUrls());
   }
 
   /**
@@ -471,6 +485,7 @@ export class Game {
     const persist = () => this.persistNow();
     window.addEventListener('pagehide', persist);
     document.addEventListener('visibilitychange', () => {
+      this.root.dataset.pageHidden = document.hidden ? '1' : '0';
       if (document.hidden) {
         persist();
         this.clearAutoTimer();
@@ -1446,7 +1461,7 @@ export class Game {
     this.root.dataset.step = '';
     this.textbox.setVisible(false);
     this.stage.clearAll();
-    // 키 비주얼이 있으면 무대 배경은 쓰이지 않으므로(타이틀 화면이 덮음) 검은 화면 그대로 둔다(title.svg 를 받지 않게)
+    // 키 비주얼이 있으면 무대 배경은 쓰이지 않으므로(타이틀 화면이 덮음) 검은 화면 그대로 둔다(title 배경 그림을 받지 않게)
     if (!this.c.titleVisual) this.stage.setBgInstant('title');
     // 앞 화면의 곡은 멈추고, 타이틀 곡은 소리가 풀린 뒤 잠깐 기다렸다 튼다(바로 떠나면 받지 않음)
     this.playBgm(null);
@@ -2300,10 +2315,14 @@ export class Game {
   /** 레터박스(무대 바깥 흐린 배경)와 배경 톤(#vn[data-tone]) */
   private paintBackdrop(url: string | null, color: string | null, tone?: string) {
     const b = this.backdrop;
-    const bgValue = url ? cssUrl(url) : 'none';
+    // Apple 터치 기기: 흐린 레터박스를 위해 원본 배경을 한 번 더 그리지 않는다(톤별 그라데이션, performance.css).
+    // 그림 없는 단색 배경(암전)은 data-solid 로 알려 그 색을 그대로 쓰게 한다
+    const bgValue = url && this.renderMode !== 'apple-touch' ? cssUrl(url) : 'none';
     b.style.setProperty('--bg', bgValue);
     b.style.backgroundImage = bgValue;
     b.style.backgroundColor = color ?? '';
+    if (!url && color) b.dataset.solid = '1';
+    else delete b.dataset.solid;
     // 검은 화면(그림 없음)은 앞 장면 톤을 유지한다(암전 동안 창 색이 깜빡이지 않게)
     if (tone) this.root.dataset.tone = tone;
     else if (url) this.root.dataset.tone = 'day';
@@ -2476,6 +2495,8 @@ export class Game {
       readCount: this.saves.readCount(),
       /** 미리 불러오기 대기열(가까운 묶음·나머지·받는 중·무대 그림 기다림·미리 해독해 둔 그림 수) */
       preload: this.preloader.pending,
+      /** 무대 해독 캐시(image-cache.ts) 보관 수·픽셀과 그중 해독 중·화면에 붙은 것, 기다리다 포기한 그림 수 */
+      decode: this.stage.decodeStats(),
       hidewin: this.hideWin,
       sheet: this.sheet?.current() ?? null,
       /** 자동 저장 상태: none(없음·아직 안 씀) / ok(브라우저에 저장됨) / tab-only(이 탭 메모리에만) / low-space(저장됐지만 공간 부족) */

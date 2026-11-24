@@ -13,7 +13,16 @@
  *    건너뛰기가 한 줄도 넘기지 않고 곧바로 멈추면 버리지 않는다(배경이 붙을 때 뜬다)
  */
 import { expect, test, type Page } from '@playwright/test';
+import { BACKGROUNDS } from '../../src/story/assets';
 import { boot, info, newGame, tapStage, tapStageAt, toTitle, waitSettled, continueAt } from './helpers';
+
+/**
+ * 배경 그림 요청 주소 패턴. 매니페스트(BACKGROUNDS[id].src)에서 만든다: 배경 파일을 바꿔도(예: 임시 SVG → 최종 WebP)
+ * 붙잡기가 옛 주소를 기다리며 아무것도 붙잡지 않은 채 헛돌지 않게. 붙잡는 테스트는 실제로 붙잡았는지(seen)도 단언한다
+ */
+const bgUrl = (id: keyof typeof BACKGROUNDS) => `**/${BACKGROUNDS[id].src!}`;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const bgRe = (id: keyof typeof BACKGROUNDS) => new RegExp(`/${escapeRe(BACKGROUNDS[id].src!)}$`);
 
 interface PreloadInfo {
   near: number;
@@ -26,7 +35,7 @@ interface PreloadInfo {
 const preload = (page: Page) =>
   page.evaluate(() => (window as unknown as { __vn: { info: () => { preload: PreloadInfo } } }).__vn.info().preload);
 
-/** url 패턴의 요청을 release() 할 때까지 붙잡는다(응답 없이 멈춘 연결) */
+/** url 패턴의 요청을 release() 할 때까지 붙잡는다(응답 없이 멈춘 연결). seen: 붙잡은 요청 주소 */
 async function holdRequests(page: Page, pattern: string) {
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
@@ -77,7 +86,7 @@ async function continueNoWait(page: Page, at: { sceneId: string; stepId: string;
 
 test('느린 망: 멈춘 무대 그림이 있어도 한 줄씩 넘기는 동안 붙잡기는 처음 붙잡은 때부터 20초에 풀린다', async ({ page }) => {
   // 이어하기 위치(c2.010)의 배경 요청이 끝내 응답하지 않는다. 그 배경으로 여러 줄을 2초마다 넘긴다
-  const hold = await holdRequests(page, '**/assets/placeholder/bg/classroom_day.svg');
+  const hold = await holdRequests(page, bgUrl('classroom_day'));
   try {
     await boot(page);
     const t0 = await continueNoWait(page, {
@@ -92,6 +101,7 @@ test('느린 망: 멈춘 무대 그림이 있어도 한 줄씩 넘기는 동안 
       const i = await info(page);
       samples.push({ t: Date.now() - t0, held: (await preload(page)).held, step: i.step });
     }
+    expect(hold.seen.length, '붙잡은 배경 요청').toBeGreaterThan(0);
     const steps = new Set(samples.map((s) => s.step));
     expect(steps.size, '넘긴 줄').toBeGreaterThanOrEqual(4);
     // 붙잡기는 실제로 걸려 있었다(한 줄씩 넘기는 동안)
@@ -112,6 +122,7 @@ test('느린 망: 받기가 멈춘 CG 가 무대에서 걷히면 미리 불러�
     await continueAt(page, { sceneId: 'c6_rain', stepId: 'c6.b20', stage: { bg: 'shoe_lockers_rain', bgm: null, chars: {}, order: [], cg: null } });
     await tapUntilStep(page, 'c6.b30');
     await expect.poll(async () => (await preload(page)).held).toBeGreaterThanOrEqual(1);
+    expect(hold.seen.length, '붙잡은 CG 요청').toBeGreaterThan(0);
     // 기다림을 끝내고(CG 는 아직) 계속 읽는다: CG 가 무대에 있는 동안은 붙잡는다
     await tapUntilStep(page, 'c6.b40');
     await waitSettled(page);
@@ -149,6 +160,7 @@ test('느린 망: 선택지 스텝에서 그림을 기다리는 동안 Enter 는
     expect((await info(page)).transitioning).toBe(true);
     await page.waitForTimeout(600); // 이어하기 직후 입력 잠금(0.4초)이 지나게
     expect((await info(page)).transitioning).toBe(true);
+    expect(hold.seen.length, '붙잡은 표정 그림 요청').toBeGreaterThan(0);
     await expect(page.locator('.choices .choice')).toHaveCount(0);
     await page.keyboard.press('Enter');
     // 기다림의 상한(8초)보다 훨씬 빨리 선택지가 뜬다
@@ -181,6 +193,7 @@ test('느린 망: 그림 대기 중에 일어난 탭이 대기가 끝난 뒤에 
     }, before);
     await tapUntilStep(page, 'c6.b30');
     expect((await info(page)).transitioning).toBe(true);
+    expect(hold.seen.length, '붙잡은 CG 요청').toBeGreaterThan(0);
     await page.waitForTimeout(500);
     // 그림이 와서 기다림이 저절로 끝난다
     hold.release();
@@ -235,6 +248,7 @@ test('느린 망: 이미 보이는 인물의 표정만 바뀌는 줄은 그림�
     expect(await page.evaluate(() => (window as unknown as { __pill: boolean }).__pill)).toBe(false);
     // 그동안 이전 표정 그림 그대로(덜 받은 그림을 붙이지 않음)
     await expect(page.locator('.stage img.char[data-expr=pout]')).toHaveCount(1);
+    expect(hold.seen.length, '붙잡은 표정 그림 요청').toBeGreaterThan(0);
     hold.release();
     // 받으면 표정이 바뀐다
     await expect(page.locator('.stage img.char[data-expr=shy]')).toHaveCount(1);
@@ -247,7 +261,7 @@ test('느린 망: 이미 보이는 인물의 표정만 바뀌는 줄은 그림�
 test('느린 망: 키 비주얼 전에 새 게임을 시작해도 첫 그림을 기다리는 동안 첫 대사 글꼴 조각을 받는다', async ({ page }) => {
   // 키 비주얼 원본과 새 게임 첫 배경을 붙잡는다(키 비주얼이 뜨기 전에 [새 게임] → 첫 대사는 배경을 기다린다)
   const kv = await holdRequests(page, '**/assets/cg/kv.webp');
-  const bg = await holdRequests(page, '**/assets/placeholder/bg/road_morning.svg');
+  const bg = await holdRequests(page, bgUrl('road_morning'));
   try {
     // 붙잡은 키 비주얼이 문서의 load 이벤트를 막으므로 boot 대신 DOMContentLoaded 까지만 기다린다
     await page.addInitScript(() => {
@@ -273,6 +287,8 @@ test('느린 망: 키 비주얼 전에 새 게임을 시작해도 첫 그림을 
     await page.waitForTimeout(3000);
     expect((await info(page)).transitioning).toBe(true);
     expect(await textNow(page)).toBe('');
+    expect(kv.seen.length, '붙잡은 키 비주얼 요청').toBeGreaterThan(0);
+    expect(bg.seen.length, '붙잡은 첫 배경 요청').toBeGreaterThan(0);
     bg.release();
     await waitSettled(page);
     expect((await info(page)).step).toBe('c1.010');
@@ -305,7 +321,7 @@ test('느린 망: 응답 없이 멈춘 미리 불러오기 한 장이 나머지 
   let seenAt = 0;
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
-  await page.route('**/assets/placeholder/bg/classroom_day.svg', async (route) => {
+  await page.route(bgUrl('classroom_day'), async (route) => {
     if (!seenAt) seenAt = Date.now();
     await gate;
     await route.continue().catch(() => undefined);
@@ -376,9 +392,11 @@ test('타이틀: 자동 저장이 있으면 미리 불러오기를 [이어하기
     // 이어하기 위치의 다음 줄 그림(c6.040 shy·c6.050 fluster)을 새 게임 첫 장면(c1) 배경보다 먼저 받는다
     const shy = idx(/osana\/uniform_default_shy\.webp/);
     const fluster = idx(/tenko\/uniform_ponytail_fluster\.webp/);
-    const road = idx(/bg\/road_morning\.svg/);
     expect(shy).toBeGreaterThanOrEqual(0);
-    expect(road === -1 || (shy < road && fluster < road), JSON.stringify({ shy, fluster, road })).toBe(true);
+    // 새 게임 첫 배경도 결국 받는다(표준 렌더링은 게임 전체 그림을 미리 받음). 받은 뒤에 순서를 비교한다(-1 로 헛돌지 않게)
+    await expect.poll(() => idx(bgRe('road_morning')), { timeout: 20_000 }).toBeGreaterThanOrEqual(0);
+    const road = idx(bgRe('road_morning'));
+    expect(shy < road && fluster < road, JSON.stringify({ shy, fluster, road })).toBe(true);
   } finally {
     await ctx.close();
   }
@@ -411,7 +429,7 @@ test('느린 망: 새 배경을 기다리며 맡아 둔 장소 표시는 그사�
   await page.addInitScript((ids) => {
     localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: ids, endings: [], cgs: [] }));
   }, ids);
-  const hold = await holdRequests(page, '**/assets/placeholder/bg/classroom_day.svg');
+  const hold = await holdRequests(page, bgUrl('classroom_day'));
   try {
     await boot(page);
     await continueAt(page, {
@@ -429,6 +447,7 @@ test('느린 망: 새 배경을 기다리며 맡아 둔 장소 표시는 그사�
     await expect(page.locator('.stage .bg-layer[data-bg=classroom_day]')).toHaveCount(0);
     await page.waitForTimeout(500);
     // 이제부터 장소 표시가 켜지면 기록한다
+    expect(hold.seen.length, '붙잡은 교실 배경 요청').toBeGreaterThan(0);
     await recordPlaceOn(page);
     await page.keyboard.press('s');
     await expect.poll(async () => (await info(page)).skip, { timeout: 2000 }).toBe(true);
@@ -453,7 +472,7 @@ test('느린 망: 새 배경을 기다리는 줄에서 건너뛰기를 켰는데
   await page.addInitScript((ids) => {
     localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: ids, endings: [], cgs: [] }));
   }, ids);
-  const hold = await holdRequests(page, '**/assets/placeholder/bg/classroom_day.svg');
+  const hold = await holdRequests(page, bgUrl('classroom_day'));
   try {
     await boot(page);
     await continueAt(page, {
@@ -467,6 +486,7 @@ test('느린 망: 새 배경을 기다리는 줄에서 건너뛰기를 켰는데
     await tapStage(page); // 기다림을 끝낸다(대사 먼저, 배경은 받는 대로 붙는다)
     await expect.poll(async () => (await info(page)).transitioning).toBe(false);
     await expect(page.locator('.stage .bg-layer[data-bg=classroom_day]')).toHaveCount(0);
+    expect(hold.seen.length, '붙잡은 교실 배경 요청').toBeGreaterThan(0);
     await page.waitForTimeout(500);
     await recordPlaceOn(page);
     await page.keyboard.press('s');
@@ -482,6 +502,8 @@ test('느린 망: 새 배경을 기다리는 줄에서 건너뛰기를 켰는데
     expect(log.every((t) => t.includes('조례'))).toBe(true);
     expect((await info(page)).step).toBe('c2.020');
     await expect(page.locator('.place-chip.on')).toHaveCount(1);
+    // 기다리다 넘긴(누름) 교실 배경은 해독이 끝나면 '포기함' 표시를 지운다(해독 캐시에서 퇴출된 뒤 다시 나오면 평소처럼 기다리게)
+    await expect.poll(async () => (await info(page)).decode.givenUp).toBe(0);
   } finally {
     hold.release();
   }

@@ -10,7 +10,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { CG_ORDER, CGS } from '../../src/story/cg';
 import { STORY } from '../../src/story';
-import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readGlobal, toTitle, waitSettled } from './helpers';
+import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readGlobal, requireCdp, toTitle, waitSettled } from './helpers';
 
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 const overlap = (a: Box, b: Box) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
@@ -294,7 +294,11 @@ test('감상: 키보드로 열어 →/← 로 본 그림 사이를 돌고, Esc �
   const img = viewer.locator('.vw-frame.on .vw-img.in');
   expect(await img.evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(1000);
   expect(await img.evaluate((e) => getComputedStyle(e).objectFit)).toBe('contain');
-  expect(await viewer.locator('.vw-frame.on .vw-bg').evaluate((e) => getComputedStyle(e).filter)).toContain('blur');
+  // 레터박스: 표준 렌더링은 같은 그림을 흐려 깔고, Apple 터치 기기(performance.css)는 흐림·그림 없이 밝은 바탕만
+  const appleTouch = (await page.locator('#vn').getAttribute('data-render')) === 'apple-touch';
+  const vwBg = await viewer.locator('.vw-frame.on .vw-bg').evaluate((e) => ({ filter: getComputedStyle(e).filter, image: getComputedStyle(e).backgroundImage }));
+  if (appleTouch) expect(vwBg).toEqual({ filter: 'none', image: 'none' });
+  else expect(vwBg.filter).toContain('blur');
   let i = await info(page);
   expect(i.overlays).toBe(2); // 앨범 시트 + 감상
   expect(i.sheet).toBe('album');
@@ -375,6 +379,7 @@ test('감상: 마우스·터치로 열고 넘기며, 닫기·그림 밖 빈 곳�
     const y = vp.height / 2;
     const x0 = vp.width / 2 - dx / 2;
     if (touch) {
+      requireCdp(page);
       const cdp = await page.context().newCDPSession(page);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y }] });
       for (let s = 1; s <= 6; s++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (dx * s) / 6, y }] });

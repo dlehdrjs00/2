@@ -28,6 +28,24 @@ export interface Info {
    * low-space(쓰기 실패 뒤 다시 브라우저에 저장됐지만 여유 공간이 거의 없음)
    */
   autoSave: 'none' | 'ok' | 'tab-only' | 'low-space';
+  /**
+   * 무대 해독 캐시(src/ui/image-cache.ts): count 보관 수(해독 중 포함), pixels 해독이 끝난 것의 픽셀 합,
+   * pending 해독 중, attached·attachedPixels 화면에 붙어 퇴출하지 않는 것(CG), maxImages·maxPixels 상한,
+   * givenUp 기다리다 넘긴(아직 해독 전) 그림 수
+   */
+  decode: { count: number; pixels: number; pending: number; attached: number; attachedPixels: number; maxImages: number; maxPixels: number; givenUp: number };
+  /** 미리 불러오기 대기열(decoded: 미리 해독해 붙잡아 둔 그림 수) */
+  preload: { near: number; bulk: number; active: number; held: number; decoded: number };
+}
+
+/** 지금 브라우저 엔진이 Chromium 인지(CDP 입력은 Chromium 에서만 쓸 수 있다) */
+export function isChromium(page: Page): boolean {
+  return page.context().browser()?.browserType().name() === 'chromium';
+}
+
+/** CDP(Chromium 전용)로 입력을 보내야 하는 검사는 다른 엔진(WebKit)에서 건너뛴다(실패 대신 이유를 남김) */
+export function requireCdp(page: Page) {
+  test.skip(!isChromium(page), '입력 시각을 정해 보내는 CDP(Chromium 전용)가 필요한 검사');
 }
 
 /** 설정(글자 즉시 표시 등)을 넣고 게임을 연다. 저장 데이터는 건드리지 않는다. */
@@ -166,6 +184,7 @@ export async function inViewport(page: Page, selector: string) {
  */
 export async function doubleTap(page: Page, x: number, y: number, gapMs = 120) {
   if (test.info().project.use.hasTouch) {
+    requireCdp(page);
     const cdp = await page.context().newCDPSession(page);
     const g = gapMs / 1000;
     const base = Date.now() / 1000 - (g + 0.06); // 두 번째 탭이 '방금' 끝난 시각이 되게
@@ -193,6 +212,7 @@ export async function tapStageAt(page: Page, atEpochMs: number) {
   const x = Math.round(box.x + box.width * 0.5);
   const y = Math.round(box.y + box.height * 0.35);
   const t = atEpochMs / 1000;
+  requireCdp(page);
   const cdp = await page.context().newCDPSession(page);
   if (test.info().project.use.hasTouch) {
     const pt = [{ x, y }];

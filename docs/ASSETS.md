@@ -10,14 +10,15 @@
 | 캐릭터 스프라이트 | 30장 (아카네 12 · 히나 18) | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/char/osana/` `public/assets/char/tenko/` | 30개 | 3.80MB |
 | 이벤트 CG | 11장 + 썸네일 11장 | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/cg/`, `public/assets/cg/thumb/` | 22개 | 2.66MB |
 | 타이틀 키 비주얼 | 1장 + 썸네일 1장 | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/cg/kv.webp` | 2개 | 328KB |
-| 배경 | 19종 (대본 18 + 타이틀 대체 1) + 단색 1 | 🟡 임시 | 코드로 그린 임시 SVG(`scripts/art/backgrounds.mjs`) | `public/assets/placeholder/bg/` | 19개 | 1.12MB |
+| 배경 | 19종 (대본 18 + 타이틀 대체 1) + 썸네일 19장 + 단색 1 | 🟢 최종 | 사용자가 준 상세 배경 WebP(이미지 생성 도구로 제작, 기록 `docs/BACKGROUND_PROMPTS.md`) | `public/assets/bg/`, `public/assets/bg/thumb/` | 38개 | 6.43MB |
 | 음악(BGM) | 6곡 | 🟡 임시 | 코드로 합성한 임시 음원(`scripts/gen-placeholder-audio.mjs`) | `public/assets/placeholder/audio/bgm_*.mp3` | 6개 | 2.41MB |
 | 효과음(SFX) | 10종 | 🟡 임시 | 코드로 합성한 임시 음원(`scripts/gen-placeholder-audio.mjs`) | `public/assets/placeholder/audio/sfx_*.mp3` | 10개 | 280KB |
 
 - 인물·CG·키 비주얼은 **사용자가 준 최종 일러스트**를 `scripts/import-art.py` 로 변환해 넣은 것이다(원본은 `art-inbox/`, 저장소에 넣지 않음).
-- 배경·음악·효과음은 아직 **개발용 임시 에셋**이다. 교체 사양은 아래 [배경](#배경--임시-svg) · [음악](#음악bgm--임시-합성음) · [효과음](#효과음sfx--임시-합성음) 절.
-- 타이틀 화면 버전 표시 뒤에는 지금 「임시 배경·음악」 가 붙는다. 해당 분류의 `placeholder` 가 모두 `false` 가 되면 자동으로 빠진다(`src/main.ts` placeholderNote).
-- 그림은 게임 시작 뒤 백그라운드로 모두 미리 받는다(`src/ui/screens/preload.ts`, 동시에 3개). 현재 그림 전체 7.60MB(CG 썸네일 제외) — 교체할 때 용량 예산을 지킬 것.
+- 배경은 **사용자가 준 상세 배경**(1920×1080 WebP)이다. 사양·썸네일·레터박스는 아래 [배경](#배경--최종) 절.
+- 음악·효과음은 아직 **개발용 임시 에셋**이다. 교체 사양은 아래 [음악](#음악bgm--임시-합성음) · [효과음](#효과음sfx--임시-합성음) 절.
+- 타이틀 화면 버전 표시 뒤에는 지금 「임시 음악」 안내가 붙는다. 해당 분류의 `placeholder` 가 모두 `false` 가 되면 자동으로 빠진다(`src/main.ts` placeholderNote).
+- 그림은 지금 위치에서 가까운 그림부터 미리 받는다(`src/ui/screens/preload.ts`, 동시에 3개, 데이터 절약 모드·느린 연결은 2개). 표준 렌더링은 그 뒤 게임 전체 그림도 백그라운드로 받고, **데이터 절약 모드와 Apple 터치 기기**(iPad·iPhone, `src/ui/render-profile.ts`)는 지금 장면과 다음 장면 그림만 받는다. 현재 그림 전체 12.31MB(썸네일 제외) — 교체할 때 용량 예산을 지킬 것.
 
 ## 교체 방법(공통)
 
@@ -27,7 +28,8 @@
      예: `classroom_day: { src: 'assets/bg/classroom_day.webp', placeholder: false, desc: '2학년 3반 교실(낮, 창가)' },`
    - 캐릭터: `SPRITE_SETS.<캐릭터>.dir` 과 `ext`(파일명 규칙 `${outfit}_${hair}_${expr}.${ext}` 유지). 그림 자체를 바꿀 때는 아래 [그림 교체 파이프라인](#그림-교체-파이프라인-scriptsimport-artpy)을 쓴다.
    - 이벤트 CG·키 비주얼: `src/story/cg.ts`(경로는 `assets/cg/{id}.webp`, 썸네일 `assets/cg/thumb/{id}.webp` 고정).
-3. `npm run validate` — 매니페스트가 가리키는 파일이 없으면 오류로 알려 준다.
+   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 매니페스트의 `thumb` 경로와 맞출 것.
+3. `npm run validate` — 매니페스트가 가리키는 파일(배경 썸네일 포함)이 없으면 오류로 알려 준다.
 4. `npm run docs` — 이 문서와 대본 문서를 다시 만든다.
 5. `npm run dev` 로 띄워 데스크톱·휴대폰 가로 화면에서 확인한다(주소 끝에 `?debug` 를 붙이면 콘솔에서 `window.__vn.info()` 로 상태 조회).
 
@@ -141,42 +143,46 @@
 - 아카네 엔딩 → `homeward_osana` 「처음 바래다주는 길」 (소꿉친구 루트 o7 — 손잡고 걷는 귀갓길)
 - 히나 엔딩 → `polaroid_tenko` 「첫 장에 넣을 사진」 (전학생 루트 t7 — 현상된 즉석사진)
 
-## 배경 — 임시 SVG
+## 배경 — 최종
 
-현재는 `scripts/art/backgrounds.mjs` 가 코드로 그린 SVG(viewBox 1600×900)다. **최종 교체 사양:**
+현재는 **사용자가 준 상세 배경**(이미지 생성 도구로 제작, 1920×1080 WebP)이다. 제작 프롬프트는 `docs/BACKGROUND_PROMPTS.md`, 같은 장소의 시간대·날씨 변형은 같은 구도를 따른다.
+예전 임시 SVG 생성기 `scripts/art/backgrounds.mjs`(`npm run gen:art`)는 남아 있지만 **최종 배경으로 교체돼 쓰지 않는다**(만든 SVG 는 저장소에 두지 않는다).
+
+**다시 바꿀 때의 사양:**
 
 | 항목 | 사양 |
 |---|---|
 | 형식 | **WebP**(권장, 품질 80~85) 또는 JPEG. 투명 불필요 |
 | 해상도 | **1920×1080(16:9)** 권장. 무대가 늘 16:9 라 그대로면 잘리지 않는다. 비율이 다르면 가운데 기준으로 잘린다(`background-size: cover`) |
-| 용량 | 파일당 800KB 이하(백그라운드로 전부 미리 받으므로 휴대폰 데이터 고려) |
+| 용량 | 파일당 800KB 이하(표준 렌더링은 게임 전체 그림을 백그라운드로 미리 받으므로 휴대폰 데이터 고려) |
+| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(`--check` 는 빠졌거나 오래된 것만 알림) |
 | 구도 | 인물이 무대 폭 27%·50%·73% 자리에 서고, 아래쪽 약 28~42%는 대사창·탭이 반투명하게 덮는다. 사람·글자 없는 빈 장소 그림 |
 | 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별 |
-| 레터박스 | 무대 밖 여백은 같은 배경을 흐려 채운다(`.backdrop`). 따로 만들 그림 없음 |
+| 레터박스 | 무대 밖 여백은 표준 렌더링에서는 같은 배경을 흐려 채운다(`.backdrop`). Apple 터치 기기는 흐림 대신 톤별(낮·노을·밤) 그라데이션, 암전은 그 색(`src/ui/styles/performance.css`). 따로 만들 그림 없음 |
 | 화풍 | 캐릭터·CG 와 어울리는 밝은 애니메이션 배경 화풍(초여름, 맑은 하늘빛) |
 
-| id | 설명 | 톤 | 대본 사용 | 현재 파일 | 상태 | 픽셀 | 크기 |
-|---|---|---|---|---|---|---|---|
-| `title` | 타이틀 화면 배경(초여름 하늘과 학교 언덕) | 낮 | 타이틀 대체 | `assets/placeholder/bg/title.svg` | 🟡 임시 | 1600×900 (viewBox) | 39KB |
-| `road_morning` | 등굣길 주택가(아침) | 낮 | ○ | `assets/placeholder/bg/road_morning.svg` | 🟡 임시 | 1600×900 (viewBox) | 85KB |
-| `road_evening` | 하굣길 주택가(노을) | 노을 | ○ | `assets/placeholder/bg/road_evening.svg` | 🟡 임시 | 1600×900 (viewBox) | 87KB |
-| `road_rain` | 하굣길 주택가(소나기) | 낮·비 | ○ | `assets/placeholder/bg/road_rain.svg` | 🟡 임시 | 1600×900 (viewBox) | 71KB |
-| `road_night` | 밤 귀갓길(가로등, 여름밤) | 밤 | ○ | `assets/placeholder/bg/road_night.svg` | 🟡 임시 | 1600×900 (viewBox) | 83KB |
-| `classroom_day` | 2학년 3반 교실(낮, 창가) | 낮 | ○ | `assets/placeholder/bg/classroom_day.svg` | 🟡 임시 | 1600×900 (viewBox) | 77KB |
-| `classroom_evening` | 교실(방과 후 노을) | 노을 | ○ | `assets/placeholder/bg/classroom_evening.svg` | 🟡 임시 | 1600×900 (viewBox) | 77KB |
-| `hallway` | 복도와 자판기(낮) | 낮 | ○ | `assets/placeholder/bg/hallway.svg` | 🟡 임시 | 1600×900 (viewBox) | 36KB |
-| `shoe_lockers` | 현관 신발장(방과 후) | 낮 | ○ | `assets/placeholder/bg/shoe_lockers.svg` | 🟡 임시 | 1600×900 (viewBox) | 51KB |
-| `shoe_lockers_rain` | 현관 신발장(밖은 소나기) | 낮·비 | ○ | `assets/placeholder/bg/shoe_lockers_rain.svg` | 🟡 임시 | 1600×900 (viewBox) | 54KB |
-| `courtyard` | 중정 벤치(점심시간) | 낮 | ○ | `assets/placeholder/bg/courtyard.svg` | 🟡 임시 | 1600×900 (viewBox) | 47KB |
-| `shotengai` | 동네 상점가와 오래된 막과자 가게(늦은 오후) | 낮 | ○ | `assets/placeholder/bg/shotengai.svg` | 🟡 임시 | 1600×900 (viewBox) | 79KB |
-| `riverbank_evening` | 강변 둑길(노을) | 노을 | ○ | `assets/placeholder/bg/riverbank_evening.svg` | 🟡 임시 | 1600×900 (viewBox) | 53KB |
-| `station_morning` | 역 앞 맨션가(아침) | 낮 | ○ | `assets/placeholder/bg/station_morning.svg` | 🟡 임시 | 1600×900 (viewBox) | 42KB |
-| `apartment_door` | 맨션 복도의 현관문 앞(저녁) | 노을 | ○ | `assets/placeholder/bg/apartment_door.svg` | 🟡 임시 | 1600×900 (viewBox) | 26KB |
-| `shrine_steps` | 언덕 위 작은 신사 돌계단(노을, 고양이 자리) | 노을 | ○ | `assets/placeholder/bg/shrine_steps.svg` | 🟡 임시 | 1600×900 (viewBox) | 74KB |
-| `festival_street` | 여름 축제 노점 거리(밤, 제등) | 밤 | ○ | `assets/placeholder/bg/festival_street.svg` | 🟡 임시 | 1600×900 (viewBox) | 67KB |
-| `riverbank_night` | 불꽃놀이를 보는 강변 둑(밤) | 밤 | ○ | `assets/placeholder/bg/riverbank_night.svg` | 🟡 임시 | 1600×900 (viewBox) | 67KB |
-| `shrine_night` | 불꽃놀이가 보이는 신사 언덕(밤) | 밤 | ○ | `assets/placeholder/bg/shrine_night.svg` | 🟡 임시 | 1600×900 (viewBox) | 38KB |
-| `black` | 검은 화면(파일 없음) | - | ○ | 단색 #08070c | - |  |  |
+| id | 설명 | 톤 | 대본 사용 | 현재 파일 | 상태 | 픽셀 | 크기 | 썸네일 |
+|---|---|---|---|---|---|---|---|---|
+| `title` | 타이틀 화면 배경(초여름 하늘과 학교 언덕) | 낮 | 타이틀 대체(키 비주얼이 없을 때만) | `assets/bg/title.webp` | 🟢 최종 | 1920×1080 | 392KB | ✅ 480×270 41KB |
+| `road_morning` | 등굣길 주택가(아침) | 낮 | ○ | `assets/bg/road_morning.webp` | 🟢 최종 | 1920×1080 | 391KB | ✅ 480×270 39KB |
+| `road_evening` | 하굣길 주택가(노을) | 노을 | ○ | `assets/bg/road_evening.webp` | 🟢 최종 | 1920×1080 | 410KB | ✅ 480×270 39KB |
+| `road_rain` | 하굣길 주택가(소나기) | 낮·비 | ○ | `assets/bg/road_rain.webp` | 🟢 최종 | 1920×1080 | 365KB | ✅ 480×270 34KB |
+| `road_night` | 밤 귀갓길(가로등, 여름밤) | 밤 | ○ | `assets/bg/road_night.webp` | 🟢 최종 | 1920×1080 | 351KB | ✅ 480×270 35KB |
+| `classroom_day` | 2학년 3반 교실(낮, 창가) | 낮 | ○ | `assets/bg/classroom_day.webp` | 🟢 최종 | 1920×1080 | 222KB | ✅ 480×270 26KB |
+| `classroom_evening` | 교실(방과 후 노을) | 노을 | ○ | `assets/bg/classroom_evening.webp` | 🟢 최종 | 1920×1080 | 233KB | ✅ 480×270 28KB |
+| `hallway` | 복도와 자판기(낮) | 낮 | ○ | `assets/bg/hallway.webp` | 🟢 최종 | 1920×1080 | 195KB | ✅ 480×270 24KB |
+| `shoe_lockers` | 현관 신발장(방과 후) | 낮 | ○ | `assets/bg/shoe_lockers.webp` | 🟢 최종 | 1920×1080 | 247KB | ✅ 480×270 27KB |
+| `shoe_lockers_rain` | 현관 신발장(밖은 소나기) | 낮·비 | ○ | `assets/bg/shoe_lockers_rain.webp` | 🟢 최종 | 1920×1080 | 209KB | ✅ 480×270 21KB |
+| `courtyard` | 중정 벤치(점심시간) | 낮 | ○ | `assets/bg/courtyard.webp` | 🟢 최종 | 1920×1080 | 356KB | ✅ 480×270 40KB |
+| `shotengai` | 동네 상점가와 오래된 막과자 가게(늦은 오후) | 낮 | ○ | `assets/bg/shotengai.webp` | 🟢 최종 | 1920×1080 | 369KB | ✅ 480×270 38KB |
+| `riverbank_evening` | 강변 둑길(노을) | 노을 | ○ | `assets/bg/riverbank_evening.webp` | 🟢 최종 | 1920×1080 | 326KB | ✅ 480×270 32KB |
+| `station_morning` | 역 앞 맨션가(아침) | 낮 | ○ | `assets/bg/station_morning.webp` | 🟢 최종 | 1920×1080 | 361KB | ✅ 480×270 37KB |
+| `apartment_door` | 맨션 복도의 현관문 앞(저녁) | 노을 | ○ | `assets/bg/apartment_door.webp` | 🟢 최종 | 1920×1080 | 191KB | ✅ 480×270 20KB |
+| `shrine_steps` | 언덕 위 작은 신사 돌계단(노을, 고양이 자리) | 노을 | ○ | `assets/bg/shrine_steps.webp` | 🟢 최종 | 1920×1080 | 356KB | ✅ 480×270 37KB |
+| `festival_street` | 여름 축제 노점 거리(밤, 제등) | 밤 | ○ | `assets/bg/festival_street.webp` | 🟢 최종 | 1920×1080 | 355KB | ✅ 480×270 35KB |
+| `riverbank_night` | 불꽃놀이를 보는 강변 둑(밤) | 밤 | ○ | `assets/bg/riverbank_night.webp` | 🟢 최종 | 1920×1080 | 272KB | ✅ 480×270 25KB |
+| `shrine_night` | 불꽃놀이가 보이는 신사 언덕(밤) | 밤 | ○ | `assets/bg/shrine_night.webp` | 🟢 최종 | 1920×1080 | 374KB | ✅ 480×270 37KB |
+| `black` | 검은 화면(파일 없음) | - | ○ | 단색 #08070c | - |  |  | - |
 
 ## 음악(BGM) — 임시 합성음
 
@@ -289,15 +295,16 @@ npm run validate && npm run docs                   # 연결 확인, 문서 갱�
 | 분류 | 출처 | 라이선스·조건 | 비고 |
 |---|---|---|---|
 | 캐릭터 스프라이트·이벤트 CG·키 비주얼 | 사용자 제공 최종 일러스트 | 사용자 제공(이 게임에 사용) | 제작 프롬프트 `docs/ART_PROMPTS.md`, 변환 `scripts/import-art.py` |
-| 배경(임시) | 이 저장소의 `scripts/art/backgrounds.mjs` 가 코드로 생성 | 외부 소재 없음 | 최종 교체 대상 |
+| 배경 | 사용자가 준 묶음(이미지 생성 도구로 제작, 2026-11-24). 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건(상업 이용·웹 배포 허용)은 기록에 없어 **확인 필요** | 제작 프롬프트 `docs/BACKGROUND_PROMPTS.md`(앞 3장은 요약만 남음), 썸네일 `scripts/bg-thumbs.py` |
 | 음악·효과음(임시) | 이 저장소의 `scripts/gen-placeholder-audio.mjs` 가 합성 | 외부 음원·샘플 없음 | 최종 교체 대상 |
 | 글꼴 | `@fontsource/gowun-batang`, `@fontsource/gowun-dodum`, `@fontsource/jua`, `pretendard` (npm) | SIL Open Font License 1.1 | `package.json` dependencies |
 | 글꼴 타이틀 조각 `src/ui/styles/fonts/jua-title.woff2`, `gowun-batang-700-title.woff2` | google/fonts 의 OFL TTF(`ofl/jua/Jua-Regular.ttf`, `ofl/gowunbatang/GowunBatang-Bold.ttf`)에서 로고·부제 글자만 뽑은 부분 글꼴(pyftsubset) | SIL Open Font License 1.1(원본과 같음). 이름 표(저작권·OFL 안내)는 원본 그대로 둔다 | 타이틀이 받는 글꼴을 줄이려는 파생 파일(UI_DESIGN 4장). `GAME_TITLE`·`GAME_SUBTITLE`(src/story/config.ts)을 바꾸면 `tokens.css` 주석의 명령으로 다시 만들고 `unicode-range` 를 맞춘다(`tests/unit/layout.test.ts` 가 검사) |
 
-최종 배경·음악·효과음을 넣으면 이 표에 한 줄씩 더한다(예: `| 배경 classroom_day | ○○ 작가 직접 제작 | 상업 이용·수정 허락(계약서 날짜) | 2026-xx-xx 확인 |`). 이 표는 `scripts/export-assets.ts` 안에 있다.
+최종 음악·효과음을 넣으면 이 표에 한 줄씩 더한다(예: `| 음악 bgm_daily | ○○ 작곡가 직접 제작 | 상업 이용·수정 허락(계약서 날짜) | 2026-xx-xx 확인 |`). 이 표는 `scripts/export-assets.ts` 안에 있다.
 
 ## 아직 없는(선택) 에셋과 정리 대상
 
 - 아카네 잠옷·마스크 차림 스프라이트: 없음. 감기 문병 장면(o2)은 이벤트 CG `door_osana` 와 서술로 처리한다.
 - 주인공 그림: 기획상 없음(CG 에서도 얼굴을 보이지 않게 그림).
 - 사복: 본편 일정을 방과 후 중심으로 짜서 필요 없음.
+- 예전 임시 SVG 배경(`public/assets/placeholder/bg/`)은 최종 배경으로 바꾸며 지웠다. `npm run gen:art` 는 `scripts/art/backgrounds.mjs` 로 그 폴더를 다시 만들므로, 실행했다면 만든 뒤 지운다(게임은 쓰지 않고 빌드에 복사돼 배포된다).

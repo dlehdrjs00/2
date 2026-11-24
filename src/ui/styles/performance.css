@@ -1,0 +1,133 @@
+/* =========================================================================
+ * Apple 터치 기기(iPad·iPhone) 가벼운 렌더링 — #vn[data-render='apple-touch'] (src/ui/render-profile.ts)
+ *
+ * 그림·페이드는 그대로 두고, 화면 밖 버퍼를 따로 그려야 하는 효과(backdrop-filter 흐림, 큰 drop-shadow,
+ * 흐린 레터박스·감상 배경)만 뺀다. 모든 규칙이 #vn[data-render='apple-touch'] 아래라 표준 렌더링은 바뀌지 않는다.
+ *
+ * - 흐림이 빠진 유리는 흐림 미지원 기기용 대체 규칙(play.css·screens.css 의 @supports not)과 같은 보강을 건다.
+ *   ':where(.vn[data-render='apple-touch']) X' 는 특이성이 X 와 같다. 그래서 원래 X 를 이기던 규칙
+ *   (.title-menu .btn.primary·:disabled, .overlay.viewer·.sys, 밤 장소 표시 등)은 여기서도 그대로 이긴다.
+ * - 인물 filter: play.css 의 톤·바램 규칙(.char ~ 밤 유카타)을 같은 순서로 옮겨 drop-shadow 만 뺐다.
+ *   색 보정 값(brightness·saturate·contrast·sepia)은 표준과 같다. 앞에 .vn[data-render] 를 붙여 각 규칙이
+ *   같은 상태의 표준 규칙보다 특이성이 높고, 서로의 우열(밤 유카타 > 밤 바램 > 밤 …)은 표준과 같다.
+ *   tests/unit/rendering.test.ts 가 play.css 와 짝·값이 맞는지 검사한다.
+ * ========================================================================= */
+.vn[data-render='apple-touch'] *,
+.vn[data-render='apple-touch'] *::before,
+.vn[data-render='apple-touch'] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* 레터박스: 배경 그림을 한 번 더 그려 흐리는 대신 톤별 그라데이션(play.css 의 밝은·남색 베일은 그대로 위에 얹힌다).
+ * 그림 없는 단색 배경(암전, game.ts paintBackdrop 이 data-solid)은 표준처럼 그 색 */
+.vn[data-render='apple-touch'] .backdrop {
+  inset: 0;
+  transform: none;
+  filter: none;
+  transition: none;
+}
+.vn[data-render='apple-touch'] .backdrop:not([data-solid]) {
+  background: linear-gradient(160deg, #c7dfed, #eee5ee) !important;
+}
+.vn[data-render='apple-touch'][data-tone='evening'] .backdrop:not([data-solid]) {
+  background: linear-gradient(160deg, #e2a47e, #9f7a8c) !important;
+}
+.vn[data-render='apple-touch'][data-tone='night'] .backdrop:not([data-solid]) {
+  background: linear-gradient(160deg, #18283e, #332d4b) !important;
+}
+.vn[data-render='apple-touch'] :is(.end-bg, .card-bg) {
+  filter: none;
+}
+/* 추억 감상 레터박스: 확대한 썸네일 사본 대신 같은 밝은 하늘색 바탕(.vw-bg 기본색 + 베일) */
+.vn[data-render='apple-touch'] .vw-bg {
+  filter: none;
+  transform: none;
+  background-image: none !important;
+}
+.vn[data-render='apple-touch'] .sunwash {
+  mix-blend-mode: normal;
+}
+
+/* 인물: 표준 톤·바램 그대로, 그림자만 없음 (play.css '무대 톤별 인물 보정'과 같은 순서) */
+.vn[data-render='apple-touch'] .char {
+  filter: none;
+}
+.vn[data-render='apple-touch'] .char.dim,
+.vn[data-render='apple-touch'][data-frame='choice'] .char {
+  filter: brightness(0.9) saturate(0.78) contrast(0.95);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='night'] .char {
+  filter: brightness(0.86) saturate(0.88) contrast(0.98);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='night'] .char.dim,
+.vn[data-render='apple-touch'][data-frame='choice'] .stage[data-tone='night'] .char {
+  filter: brightness(0.78) saturate(0.7) contrast(0.95);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='evening'] .char {
+  filter: sepia(0.08) brightness(0.97);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='night'] .char[data-look^='yukata_'] {
+  filter: brightness(1.04) saturate(0.98);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='night'] .char[data-look^='yukata_'].dim,
+.vn[data-render='apple-touch'][data-frame='choice'] .stage[data-tone='night'] .char[data-look^='yukata_'] {
+  filter: brightness(0.98) saturate(0.92);
+}
+.vn[data-render='apple-touch'] .stage[data-tone='evening'] .char.dim,
+.vn[data-render='apple-touch'][data-frame='choice'] .stage[data-tone='evening'] .char {
+  filter: sepia(0.08) brightness(0.88) saturate(0.78) contrast(0.95);
+}
+
+.vn[data-render='apple-touch'] .motes i {
+  filter: none;
+}
+.vn[data-render='apple-touch'] .motes i:nth-child(n + 7) {
+  display: none;
+}
+
+/* 대사창·빠른 메뉴: 흐림 없이 읽히게 불투명도 보강(설정의 대사창 불투명도는 그대로 따른다) */
+.vn[data-render='apple-touch'] > .textbox {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, min(1, calc(var(--win-alpha) * 0.96 + 0.12))),
+    rgba(244, 250, 255, min(1, calc(var(--win-alpha) * 0.9 + 0.12)))
+  );
+}
+.vn[data-render='apple-touch'] .qbar {
+  background: rgba(250, 253, 255, min(1, calc(var(--win-alpha) * 0.97 + 0.12)));
+}
+.vn[data-render='apple-touch'][data-tone='night'] > .textbox,
+.vn[data-render='apple-touch'][data-tone='night'] .qbar {
+  background: rgba(24, 35, 63, min(1, calc(var(--win-alpha) * 0.94 + 0.12)));
+}
+/* CG 중 옅은 대사창(play.css --cg-a): 대체 규칙과 같이 0.1 올린다 */
+.vn[data-render='apple-touch'] > .stage[data-cg] ~ .textbox,
+.vn[data-render='apple-touch'] > .stage[data-cg] ~ .qbar {
+  --cg-a: clamp(0.4, calc(var(--win-alpha) * var(--win-alpha) * 0.78 + 0.1), 0.9);
+}
+:where(.vn[data-render='apple-touch']) .place-chip {
+  background: rgba(255, 255, 255, 0.92);
+}
+.vn[data-render='apple-touch'][data-page-hidden='1'] * {
+  animation-play-state: paused !important;
+}
+
+/* 오버레이: 흐림 대신 어둡게. 메뉴·확인창 카드는 불투명하게(아래 메뉴·빠른 메뉴 글자가 비치지 않게) */
+:where(.vn[data-render='apple-touch']) .overlay {
+  background: rgba(30, 64, 110, 0.42);
+}
+.vn[data-render='apple-touch'] .overlay.sys::before {
+  background: linear-gradient(165deg, rgba(240, 248, 255, 0.98), rgba(255, 245, 249, 0.97));
+}
+.vn[data-render='apple-touch'] .panel.small {
+  background: linear-gradient(180deg, #fff, #f4faff);
+}
+/* 타이틀 메뉴·버전 알약·감상 버튼: 흐림 대신 불투명하게. 주 버튼([새 게임] 그라데이션)·비활성 버튼은 원래 규칙이 이긴다 */
+:where(.vn[data-render='apple-touch']) .title-menu .btn,
+:where(.vn[data-render='apple-touch']) .title-screen .ver,
+:where(.vn[data-render='apple-touch']) .vw-nav,
+:where(.vn[data-render='apple-touch']) .vw-cap,
+:where(.vn[data-render='apple-touch']) .viewer .vw-close {
+  background: rgba(255, 255, 255, 0.94);
+}

@@ -27,6 +27,10 @@ const content: GameContent = {
     return a?.src ? url(a.src) : null;
   },
   bgColor: (id) => BACKGROUNDS[id as BgId]?.color ?? null,
+  bgThumbUrl: (id) => {
+    const a = BACKGROUNDS[id as BgId];
+    return a?.thumb ? url(a.thumb) : null;
+  },
   spriteUrl: (char, outfit, hair, expr) => {
     const p = spritePath(char, outfit as Outfit, hair as Hair, expr as Expr);
     return p ? url(p) : null;

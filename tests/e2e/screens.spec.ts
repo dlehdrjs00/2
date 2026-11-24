@@ -3,6 +3,7 @@
  * 대화 기록 항목과 선택지의 분리, 설정(글자 크기·빛망울), 전체화면 메뉴, 타이틀 곡 지연.
  */
 import { expect, test } from '@playwright/test';
+import { BACKGROUNDS } from '../../src/story/assets';
 import { advanceOne, advanceToStop, boot, expectCssImages, info, newGame, openMenu, pick, readSlot, tapStage, toTitle, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
@@ -298,7 +299,7 @@ test('타이틀을 바로 떠나면 타이틀 곡 파일을 받지 않는다', a
   await expect.poll(async () => (await info(page)).bgm, { timeout: 5000 }).toBe('title');
 });
 
-test('타이틀: 키 비주얼 원본을 그리기 전에는 그림 미리 불러오기를 시작하지 않고, 쓰지 않는 무대 배경(title.svg)은 받지 않는다', async ({ page }) => {
+test('타이틀: 키 비주얼 원본을 그리기 전에는 그림 미리 불러오기를 시작하지 않고, 쓰지 않는 무대 배경(title)은 받지 않는다', async ({ page }) => {
   const reqs: string[] = [];
   page.on('request', (r) => reqs.push(r.url()));
   // 느린 망 흉내: 키 비주얼 원본만 늦게 온다(작은 그림은 바로)
@@ -306,18 +307,27 @@ test('타이틀: 키 비주얼 원본을 그리기 전에는 그림 미리 불�
     await new Promise((r) => setTimeout(r, 2500));
     await route.continue();
   });
-  await boot(page);
+  // 늦게 오는 키 비주얼이 문서의 load 를 막으므로 boot(load 까지 기다림) 대신 DOMContentLoaded 까지만 기다린다
+  // (boot 를 쓰면 원본이 이미 와 있어 아래 '원본 전' 검사가 한 번도 돌지 않았다)
+  await page.addInitScript(() => {
+    localStorage.setItem('ashita.settings', JSON.stringify({ textSpeed: 10, autoSpeed: 10, bgmVolume: 0, sfxVolume: 0 }));
+  });
+  await page.goto('./?debug', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
   await expect(page.locator('.title-screen.kv .art-lo')).toBeVisible();
   await page.waitForTimeout(1000);
   const early = await page.locator('.title-screen.kv-ready').count();
+  test.info().annotations.push({ type: 'early-branch', description: early === 0 ? '원본 전 검사 실행' : '이미 원본이 와 있어 건너뜀' });
   if (early === 0) {
     // 원본이 오기 전: 흐린 작은 그림만 깔려 있고, 스프라이트·배경 미리 불러오기는 아직 없다
-    expect(reqs.filter((u) => /assets\/(char|placeholder\/bg)\//.test(u))).toEqual([]);
+    expect(reqs.filter((u) => /assets\/(char|bg)\//.test(u))).toEqual([]);
     expect(await page.locator('.title-art .art-hi').evaluate((e) => getComputedStyle(e).opacity)).toBe('0');
   }
   await expect(page.locator('.title-screen.kv-ready')).toHaveCount(1, { timeout: 15_000 });
   await expect.poll(() => reqs.filter((u) => /assets\/char\//.test(u)).length, { timeout: 10_000 }).toBeGreaterThan(0);
-  expect(reqs.filter((u) => u.includes('placeholder/bg/title.svg'))).toEqual([]);
+  // 무대 배경 title 은 키 비주얼이 있으면 쓰지 않는다(매니페스트 경로로 확인 — 배경 파일을 바꿔도 헛돌지 않게)
+  expect(BACKGROUNDS.title.src).toBeTruthy();
+  expect(reqs.filter((u) => u.endsWith('/' + BACKGROUNDS.title.src))).toEqual([]);
   // 다시 그린 타이틀(엔딩 배지 등)은 원본을 바로(페이드 없이) 보인다
   await newGame(page);
   await toTitle(page);
@@ -331,15 +341,24 @@ test('빌드 결과에서도 화면 그림이 실제로 받아지고 시트·메
   await expectCssImages(page, '.title-screen .title-art > div', 2);
   await newGame(page);
   await advanceOne(page);
-  // 메뉴(작은 유리 카드) 뒤 흐림: 빌드 압축기가 표준 backdrop-filter 를 지우지 않았는지
+  // 메뉴(작은 유리 카드) 뒤 흐림: 빌드 압축기가 표준 backdrop-filter 를 지우지 않았는지.
+  // Apple 터치 기기(performance.css)는 흐림을 일부러 끈다(none 이어야 함)
+  const appleTouch = (await page.locator('#vn').getAttribute('data-render')) === 'apple-touch';
   await openMenu(page);
-  expect(await page.locator('.overlay').first().evaluate((e) => getComputedStyle(e).backdropFilter)).not.toBe('none');
+  const menuBlur = await page.locator('.overlay').first().evaluate((e) => getComputedStyle(e).backdropFilter);
+  if (appleTouch) expect(menuBlur).toBe('none');
+  else expect(menuBlur).not.toBe('none');
   // 저장 → 썸네일(미니 무대 배경)
   await page.locator('[data-panel=menu] [data-action=save]').click();
-  expect(await page.locator('.overlay.sys').evaluate((e) => getComputedStyle(e).backdropFilter)).toContain('blur');
+  const sysBlur = await page.locator('.overlay.sys').evaluate((e) => getComputedStyle(e).backdropFilter);
+  if (appleTouch) expect(sysBlur).toBe('none');
+  else expect(sysBlur).toContain('blur');
   await page.locator('[data-panel=save] .slot[data-slot="1"]').click();
   await expect(page.locator('.toast')).toContainText('저장했어요');
   await expectCssImages(page, '[data-panel=save] .slot[data-slot="1"] .slot-thumb');
+  // 미니 무대 배경은 원본(1920x1080)이 아니라 작은 그림(480x270)이다(저장 칸마다 원본을 해독하지 않게)
+  const thumbBg = await page.locator('[data-panel=save] .slot[data-slot="1"] .slot-thumb').evaluate((e) => getComputedStyle(e).backgroundImage);
+  expect(thumbBg).toMatch(/assets\/bg\/thumb\/[a-z_]+\.webp/);
   // 설정 미리보기(교실 배경)
   await page.locator('.sys-tabs [data-tab=settings]').click();
   await expectCssImages(page, '[data-panel=settings] .preview-stage');
