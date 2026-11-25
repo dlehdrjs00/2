@@ -93,6 +93,11 @@
   --hina-2: #ee8ab3;
   --hina-soft: #ffeaf3;
   --hina-pin: #7cc8f0;
+  /* 코하루: 민트 바탕(흰 글자 5.6:1, -1→-2 그라데이션 80% 지점 4.6:1), -apricot(살구, 유카타 바탕색)은 장식에만 */
+  --koharu-1: #1d7466;
+  --koharu-2: #5cbca3;
+  --koharu-soft: #e6f5f0;
+  --koharu-apricot: #f4ad8b;
   --me-1: #2c69ab;
   --me-2: #5c9bd9;
   --me-soft: #e6f1fc;

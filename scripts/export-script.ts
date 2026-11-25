@@ -6,9 +6,10 @@
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Cond, Scene, Step } from '../src/engine/types';
+import type { ChoiceOption, Cond, HeroineId, Scene, Step } from '../src/engine/types';
+import { HEROINES } from '../src/engine/types';
 import { resolveText } from '../src/engine/text';
-import { validateStory } from '../src/engine/validate';
+import { EXPECTED_BRANCHING, validateStory } from '../src/engine/validate';
 import { STORY, SCENE_ORDER } from '../src/story';
 import { BACKGROUNDS, BGM, SFX } from '../src/story/assets';
 import { CGS } from '../src/story/cg';
@@ -17,17 +18,22 @@ import { NAMES, SETTING, SPEAKER_NAMES, TEXT_VARS, DATES, ENDING_TITLES, GAME_TI
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const t = (s: string) => resolveText(s, TEXT_VARS);
-const H = { osana: NAMES.osana.given, tenko: NAMES.tenko.given } as const;
+const H: Record<HeroineId, string> = { osana: NAMES.osana.given, tenko: NAMES.tenko.given, koharu: NAMES.koharu.given };
 const EXPR_KO: Record<string, string> = { neutral: '기본', smile: '웃음', fluster: '당황', shy: '부끄러움', pout: '삐짐', sad: '쓸쓸' };
 const POS_KO: Record<string, string> = { left: '왼쪽', center: '가운데', right: '오른쪽' };
-const OUTFIT_KO: Record<string, string> = { uniform: '교복', yukata: '유카타' };
+const OUTFIT_KO: Record<string, string> = { uniform: '교복', casual: '사복', yukata: '유카타' };
 const HAIR_KO: Record<string, string> = { default: '기본 머리', ponytail: '포니테일' };
-const ROUTE_KO: Record<string, string> = { common: '공통', osana: `${H.osana}(소꿉친구) 루트`, tenko: `${H.tenko}(전학생) 루트` };
+const ROUTE_KO: Record<string, string> = {
+  common: '공통',
+  osana: `${H.osana}(소꿉친구) 루트`,
+  tenko: `${H.tenko}(전학생) 루트`,
+  koharu: `${H.koharu}(숨은 후배) 루트`,
+};
 
 const out: string[] = [];
 const w = (s = '') => out.push(s);
 
-const report = validateStory(STORY, manifestChecker((p) => existsSync(resolve(root, 'public', p))), TEXT_VARS);
+const report = validateStory(STORY, manifestChecker((p) => existsSync(resolve(root, 'public', p))), TEXT_VARS, { expect: EXPECTED_BRANCHING });
 
 w(`# 《${GAME_TITLE}》 대본 — 검토용`);
 w();
@@ -40,7 +46,8 @@ w();
 w(`- 주인공: ${NAMES.me.family} ${NAMES.me.given} — 2학년, 1인칭 화자(그림 없음)`);
 w(`- 소꿉친구: ${NAMES.osana.family} ${NAMES.osana.given} — 츤데레, 유치원 때부터의 이웃`);
 w(`- 전학생: ${NAMES.tenko.family} ${NAMES.tenko.given} — 세 번째 전학, 솔직하게 다가가는 성격`);
-w(`- 무대: ${SETTING.school} ${SETTING.classroom}, ${SETTING.town} 동네 / 본편 ${DATES.d1} ~ ${DATES.r5}, 후일담 ${DATES.fest} ${SETTING.festival}`);
+w(`- 숨은 후배: ${NAMES.koharu.family} ${NAMES.koharu.given} — 1학년, 상점가 문구점 집 딸. 금요일 하교 때 두 히로인 점수 차가 1 이하인 플레이에서만 등장`);
+w(`- 무대: ${SETTING.school} ${SETTING.classroom}, ${SETTING.town} 동네 / 공통 ${DATES.d1} ~ ${DATES.r1} 점심, 루트 본편 ${DATES.r1} ~ ${DATES.r5}, 후일담 ${DATES.fest} ${SETTING.festival}(${H.koharu} 루트는 ${DATES.aug4} ~ ${DATES.aug9})`);
 w();
 
 // ---- 분기 구조 ----
@@ -49,6 +56,36 @@ w();
 const commonChoices = SCENE_ORDER.map((id) => STORY.scenes[id])
   .filter((s) => s.route === 'common')
   .flatMap((s) => s.steps.filter((x): x is Extract<Step, { t: 'choice' }> => x.t === 'choice').map((c) => ({ scene: s, c })));
+/** 루트 결정에 쓰는 선택지 순서(decideRoute.order). 없으면 공통 선택지 순서 */
+const ROUTE_ORDER: string[] =
+  SCENE_ORDER.flatMap((id) => STORY.scenes[id].steps).find((x): x is Extract<Step, { t: 'decideRoute' }> => x.t === 'decideRoute')?.order ??
+  commonChoices.map(({ c }) => c.id);
+/** 옵션의 점수 효과(개인 선택 + effects 의 가산) */
+function fmtScore(o: ChoiceOption): string {
+  const parts: string[] = [];
+  if (o.heroine) parts.push(`${H[o.heroine]} +${o.points ?? 1}`);
+  for (const e of o.effects ?? []) parts.push('add' in e ? `${H[e.add]} +${e.n}` : `${e.flag}=${String(e.value)}`);
+  const together = !o.heroine && o.effects?.some((e) => 'add' in e);
+  return (parts.join(', ') || '-') + (together ? ' (함께 · 동점 처리에서 건너뜀)' : '');
+}
+/** 선택 기록(선택지 id, 옵션 id)만으로 점수를 합산(문서 표시용) */
+function scoreOf(picks: ReadonlyArray<readonly [string, string]>): Record<HeroineId, number> {
+  const pts = { osana: 0, tenko: 0, koharu: 0 } as Record<HeroineId, number>;
+  for (const [cid, oid] of picks) {
+    const o = commonChoices.find(({ c }) => c.id === cid)?.c.options.find((x) => x.id === oid);
+    if (!o) continue;
+    if (o.heroine) pts[o.heroine] += o.points ?? 1;
+    for (const e of o.effects ?? []) if ('add' in e) pts[e.add] += e.n;
+  }
+  return pts;
+}
+/** 옵션이 보이는 조건(표시용) */
+function visLabel(c: Cond | undefined): string {
+  if (!c) return '항상';
+  if ('flag' in c && c.flag === 'kh.met' && c.eq === true) return `${H.koharu} 등장 시`;
+  if ('not' in c && 'flag' in c.not && c.not.flag === 'kh.met' && c.not.eq === true) return `${H.koharu} 미등장 시`;
+  return fmtCond(c);
+}
 w('```mermaid');
 w('flowchart TD');
 const sceneNodes = SCENE_ORDER.map((id) => STORY.scenes[id]);
@@ -57,8 +94,7 @@ for (const s of sceneNodes) {
   for (const st of s.steps) {
     if (st.t === 'jump') w(`  ${s.id} --> ${st.scene}`);
     if (st.t === 'routeBranch') {
-      w(`  ${s.id} -->|"${H.osana} 루트"| ${st.scenes.osana}`);
-      w(`  ${s.id} -->|"${H.tenko} 루트"| ${st.scenes.tenko}`);
+      for (const h of HEROINES) if (st.scenes[h]) w(`  ${s.id} -->|"${H[h]} 루트"| ${st.scenes[h]}`);
     }
     if (st.t === 'ending') w(`  ${s.id} --> END_${st.ending}(("${H[STORY.endings[st.ending].heroine]} 엔딩<br/>${t(STORY.endings[st.ending].title)}"))`);
   }
@@ -67,35 +103,58 @@ w('```');
 w();
 w('### 공통 선택지와 루트 결정');
 w();
-w('| 선택지 | 상황(대사창) | 옵션 | 점수 |');
-w('|---|---|---|---|');
+w('| 선택지 | 상황(대사창) | 옵션 | 보이는 조건 | 점수 |');
+w('|---|---|---|---|---|');
 for (const { c } of commonChoices) {
   c.options.forEach((o, i) => {
-    w(`| ${i === 0 ? `\`${c.id}\`` : ''} | ${i === 0 ? t(c.prompt ?? '') : ''} | ${o.id}: ${t(o.text)} | ${o.heroine ? `${H[o.heroine]} +${o.points ?? 1}` : '-'} |`);
+    w(
+      `| ${i === 0 ? `\`${c.id}\`` : ''} | ${i === 0 ? t(c.prompt ?? '') : ''} | ${o.id}: ${t(o.text)} | ${visLabel(o.visibleIf)} | ${fmtScore(o)} |`,
+    );
   });
 }
 w();
-w('루트 결정 규칙(`src/engine/runner.ts` decideRoute):');
-w(`1. 공통 선택지의 누적 점수가 높은 히로인 루트`);
-w(`2. 동점이면 **가장 최근에 고른 히로인 관련 선택**의 히로인 (현재 구성에서는 사실상 마지막 선택지)`);
-w(`3. 루트 확정 후에는 점수가 바뀌지 않고 다른 루트 장면으로 넘어가지 않는다(검증기·테스트로 확인)`);
+w('숨은 등장 판정(`src/engine/runner.ts` applyUnlock, `c7.join` 종소리 직후 1회):');
+w(`- ${H.osana}·${H.tenko} 점수 차가 1 이하면 플래그 \`kh.met\` = true, ${H.koharu} 시작 점수 = 두 점수의 평균(0.5 단위 그대로). 아니면 false.`);
+w('- 플래그에 이미 값이 있으면(불러오기·다시 실행) 다시 판정하지 않는다. \'함께\' 횟수는 조건에 넣지 않는다.');
+w(`- 해금되면 복도 첫 만남 → 노을길 → 토요일 오전 \`c8_raffle\`(통성명·추첨). 후반 선택지에 ${H.koharu} 옵션(k)이 보이고 '함께'(c)는 숨는다. 미해금이면 그 반대.`);
+w();
+w('루트 결정 규칙(`src/engine/runner.ts` pickRoute, `c10_window` 마지막):');
+w(`1. 후보 = ${H.osana}, ${H.tenko} (+ \`kh.met\` = true 면 ${H.koharu}). 누적 점수가 가장 높은 후보의 루트`);
+w(`2. 공동 최고점이면 선택 순서 ${ROUTE_ORDER.map((id) => `\`${id}\``).join(' → ')} 를 뒤에서부터 훑어, '함께'와 공동 최고점이 아닌 인물을 건너뛰고 처음 만나는 공동 최고점 인물`);
+w('3. 루트 확정 후에는 점수가 바뀌지 않고 다른 루트 장면으로 넘어가지 않는다(검증기·테스트로 확인)');
 w();
 if (report.paths.length) {
-  const byRoute = { osana: 0, tenko: 0 } as Record<string, number>;
-  for (const p of report.paths) byRoute[p.route ?? '-'] = (byRoute[p.route ?? '-'] ?? 0) + 1;
-  w(`선택 조합 ${report.paths.length}개 → ${H.osana} 루트 ${byRoute.osana}개, ${H.tenko} 루트 ${byRoute.tenko}개.`);
+  const b = report.branching;
+  const endingsLine = HEROINES.map((h) => `${H[h]} ${b.endings[h] ?? 0}`).join(' / ');
+  w(
+    `선택 조합 ${b.paths.toLocaleString('en-US')}개(보이는 옵션만) → 엔딩 ${endingsLine}. 초반 조합 ${b.earlyCombos}개 중 해금 ${b.unlockedEarlyCombos}개` +
+      ` (해금 경로 ${b.unlockedPaths} / 미해금 경로 ${b.lockedPaths}). 동점 처리 ${b.ties}회(해금 ${b.tiesUnlocked} / 미해금 ${b.tiesLocked}).`,
+  );
   w();
-  w('| 선택 조합 (' + commonChoices.map(({ c }) => c.id).join(' / ') + ') | 결과 |');
-  w('|---|---|');
-  const seen = new Set<string>();
+  // 초반 조합별: 해금 여부·시작 점수와 그 뒤 후반 27조합의 엔딩 분포
+  const groups = new Map<string, (typeof report.paths)[number][]>();
   for (const p of report.paths) {
+    const n = p.gateAt ?? p.choices.length;
     const key = p.choices
-      .filter((c) => commonChoices.some(({ c: cc }) => cc.id === c.choice))
-      .map((c) => `${c.option}(${c.heroine ? H[c.heroine] : '-'})`)
-      .join(' / ');
-    if (seen.has(key)) continue;
-    seen.add(key);
-    w(`| ${key} | ${p.route ? H[p.route] : '-'} 루트 |`);
+      .slice(0, n)
+      .map((c) => c.option)
+      .join(',');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
+  }
+  const early = ROUTE_ORDER.slice(0, 4);
+  w(`초반 조합별 결과 (${early.join(' / ')} → 판정 직전 점수 → 후반 조합의 엔딩 수):`);
+  w();
+  w(`| 초반 선택 | ${H.osana} : ${H.tenko} | 숨은 등장 | ${H.koharu} 시작 | 후반 조합 | ${H.osana} | ${H.tenko} | ${H.koharu} |`);
+  w('|---|---|---|---|---|---|---|---|');
+  for (const [key, ps] of groups) {
+    const picks = key.split(',');
+    const pts = scoreOf(early.map((id, i) => [id, picks[i]] as const));
+    const met = ps[0].met;
+    const cnt = (h: HeroineId) => ps.filter((p) => p.route === h).length;
+    w(
+      `| ${picks.join(' ')} | ${pts.osana} : ${pts.tenko} | ${met ? '등장' : '-'} | ${met ? (pts.osana + pts.tenko) / 2 : '-'} | ${ps.length} | ${cnt('osana')} | ${cnt('tenko')} | ${met ? cnt('koharu') : '-'} |`,
+    );
   }
   w();
   const stats = (route: string) => {
@@ -105,9 +164,8 @@ if (report.paths.length) {
     const epi = avg((p) => p.epilogueChars);
     return `본편 약 ${avg((p) => p.mainLines)}문장·${main}자(≈${(main / 550).toFixed(1)}~${(main / 380).toFixed(1)}분), 후일담 약 ${avg((p) => p.epilogueLines)}문장·${epi}자(≈${(epi / 550).toFixed(1)}~${(epi / 380).toFixed(1)}분)`;
   };
-  w(`- ${H.osana} 루트: ${stats('osana')}`);
-  w(`- ${H.tenko} 루트: ${stats('tenko')}`);
-  w('- 추정 시간은 1분당 380~550자 읽기 기준(클릭·글자 표시 포함 대략치).');
+  for (const h of HEROINES) w(`- ${H[h]} 루트: ${stats(h)}`);
+  w('- 추정 시간은 1분당 380~550자 읽기 기준(클릭·글자 표시 포함 대략치). 본편은 공통 구간 포함.');
   w();
 }
 
@@ -130,7 +188,7 @@ w();
 let lastHead = '';
 for (const id of SCENE_ORDER) {
   const s = STORY.scenes[id];
-  const head = `${ROUTE_KO[s.route]}${s.part === 'epilogue' ? ' — 여름 축제 후일담' : s.route === 'common' ? '' : ' — 본편'}`;
+  const head = `${ROUTE_KO[s.route]}${s.part === 'epilogue' ? (s.route === 'koharu' ? ' — 8월 후일담(문구점·여름 축제·첫 데이트)' : ' — 여름 축제 후일담') : s.route === 'common' ? '' : ' — 본편'}`;
   if (head !== lastHead) {
     w('---');
     w();
@@ -182,8 +240,9 @@ function fmt(st: Step): string | null {
     case 'choice': {
       const lines = [`- ❓ **선택지** \`${st.id}\`${st.prompt ? ` — ${t(st.prompt)}` : ''}`];
       for (const o of st.options) {
+        const score = fmtScore(o);
         lines.push(
-          `  - **${o.id}**: ${t(o.text)}${o.heroine ? ` 〔${H[o.heroine]} +${o.points ?? 1}〕` : ''}${o.goto ? ` → \`${o.goto}\`` : ''}`,
+          `  - **${o.id}**: ${t(o.text)}${score !== '-' ? ` 〔${score}〕` : ''}${o.visibleIf ? ` 《${visLabel(o.visibleIf)}만 보임》` : ''}${o.goto ? ` → \`${o.goto}\`` : ''}`,
         );
       }
       return lines.join('\n');
@@ -217,10 +276,18 @@ function fmt(st: Step): string | null {
       return `- ↪ \`${st.to}\` 로 이동`;
     case 'jump':
       return `- ⏭ 다음 장면: \`${st.scene}\``;
-    case 'decideRoute':
-      return `- ⚖ **루트 결정** (누적 선택 기준)`;
+    case 'unlock':
+      return `- 🔑 **숨은 등장 판정** ${H[st.among[0]]}·${H[st.among[1]]} 점수 차 ≤ ${st.maxDiff} 이면 \`${st.flag}\` = true, ${H[st.heroine]} 시작 점수 = 두 점수의 평균 (이미 판정했으면 그대로)`;
+    case 'decideRoute': {
+      const hidden = Object.entries(st.hidden ?? {})
+        .map(([h, f]) => `${H[h as HeroineId]}는 \`${f}\` = true 일 때만 후보`)
+        .join(', ');
+      return `- ⚖ **루트 결정** (누적 점수, 동점이면 ${st.order.length ? st.order.map((id) => `\`${id}\``).join('·') + ' 를 뒤에서부터' : '가장 최근 개인 선택'}${hidden ? `; ${hidden}` : ''})`;
+    }
     case 'routeBranch':
-      return `- ⏭ ${H.osana} 루트 → \`${st.scenes.osana}\` / ${H.tenko} 루트 → \`${st.scenes.tenko}\``;
+      return `- ⏭ ${HEROINES.filter((h) => st.scenes[h])
+        .map((h) => `${H[h]} 루트 → \`${st.scenes[h]}\``)
+        .join(' / ')}`;
     case 'ending':
       return `- 🏁 **엔딩: ${H[STORY.endings[st.ending].heroine]} — 「${t(STORY.endings[st.ending].title)}」** \`${st.id}\``;
     default:
@@ -230,7 +297,7 @@ function fmt(st: Step): string | null {
 
 w('---');
 w();
-w(`엔딩 제목(임시): ${H.osana} 「${ENDING_TITLES.osana}」 / ${H.tenko} 「${ENDING_TITLES.tenko}」`);
+w(`엔딩 제목(임시): ${HEROINES.map((h) => `${H[h]} 「${ENDING_TITLES[h]}」`).join(' / ')}`);
 if (report.errors.length) {
   w();
   w('> ⚠ 이 대본은 검증 오류가 있는 상태에서 생성되었습니다:');

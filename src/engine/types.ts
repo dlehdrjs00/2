@@ -5,20 +5,45 @@
  * 엔진 코드(src/engine, src/ui)는 스토리 내용을 모른다.
  */
 
-/** 히로인(=루트) 식별자. 이름이 바뀌어도 바뀌지 않는 역할 기반 ID. */
-export type HeroineId = 'osana' | 'tenko';
-export const HEROINES: readonly HeroineId[] = ['osana', 'tenko'] as const;
+/**
+ * 히로인(=루트) 식별자. 이름이 바뀌어도 바뀌지 않는 역할 기반 ID.
+ * osana = 소꿉친구, tenko = 전학생, koharu = 히든 후배(해금 조건을 만족한 플레이에서만 등장).
+ */
+export type HeroineId = 'osana' | 'tenko' | 'koharu';
+/** 모든 히로인. 점수·무대·저장 검증은 이 목록을 기준으로 한다 */
+export const HEROINES: readonly HeroineId[] = ['osana', 'tenko', 'koharu'] as const;
+/** 매 플레이 처음부터 등장하고 항상 루트 후보인 히로인 */
+export const BASE_HEROINES: readonly HeroineId[] = ['osana', 'tenko'] as const;
+/** 해금(UnlockStep)된 플레이에서만 등장하고 루트 후보가 되는 히로인 */
+export const HIDDEN_HEROINES: readonly HeroineId[] = ['koharu'] as const;
 
-/** 화면에 그림이 있는 캐릭터. 현재는 히로인 2명뿐. */
+export function isHeroineId(v: unknown): v is HeroineId {
+  return typeof v === 'string' && (HEROINES as readonly string[]).includes(v);
+}
+
+/** 화면에 그림이 있는 캐릭터 = 히로인 3명 */
 export type CharId = HeroineId;
 
-/** 대사의 화자. null 은 주인공의 독백/서술(이름표 없음). */
-export type SpeakerId = 'me' | 'osana' | 'tenko' | 'teacher' | 'grandma' | 'classmates' | 'shopkeeper';
+/**
+ * 대사의 화자. null 은 주인공의 독백/서술(이름표 없음).
+ * kh_friend = 코하루의 친구(복도 첫 만남), raffle = 상점회 추첨 담당.
+ */
+export type SpeakerId =
+  | 'me'
+  | 'osana'
+  | 'tenko'
+  | 'koharu'
+  | 'teacher'
+  | 'grandma'
+  | 'classmates'
+  | 'shopkeeper'
+  | 'kh_friend'
+  | 'raffle';
 
 export type Expr = 'neutral' | 'smile' | 'fluster' | 'shy' | 'pout' | 'sad';
 export const EXPRS: readonly Expr[] = ['neutral', 'smile', 'fluster', 'shy', 'pout', 'sad'] as const;
 
-export type Outfit = 'uniform' | 'yukata';
+export type Outfit = 'uniform' | 'casual' | 'yukata';
 export type Hair = 'default' | 'ponytail';
 export type Pos = 'left' | 'center' | 'right';
 
@@ -42,6 +67,8 @@ export type BgId =
   | 'festival_street'
   | 'riverbank_night'
   | 'shrine_night'
+  | 'kh_stationery'
+  | 'kh_lantern_lane'
   | 'black';
 
 export type BgmId = 'title' | 'daily' | 'heart' | 'evening' | 'festival' | 'confession';
@@ -57,7 +84,7 @@ export type SfxId =
   | 'footsteps'
   | 'cat';
 
-export type EndingId = 'osana' | 'tenko';
+export type EndingId = 'osana' | 'tenko' | 'koharu';
 
 /** 이벤트 CG(한 장 그림). 무대 위(캐릭터보다 앞, 대사창 뒤)에 화면 가득 표시된다. */
 export type CgId =
@@ -71,7 +98,13 @@ export type CgId =
   | 'bench_tenko'
   | 'selfie_tenko'
   | 'shutter_tenko'
-  | 'polaroid_tenko';
+  | 'polaroid_tenko'
+  | 'kh_meet'
+  | 'kh_draw'
+  | 'kh_relay'
+  | 'kh_confession'
+  | 'kh_home'
+  | 'kh_date';
 
 /** 배경 전환 방식. */
 export type BgFx = 'fade' | 'black' | 'white' | 'cut';
@@ -97,7 +130,7 @@ export type Cond =
 
 export type Effect =
   | { flag: string; value: boolean | number | string }
-  /** 호감 점수 직접 가산(일반적으로 choice option 의 heroine 필드를 쓴다) */
+  /** 호감 점수 직접 가산(개인 선택은 보통 choice option 의 heroine 필드를 쓴다. 소수도 된다) */
   | { add: HeroineId; n: number };
 
 // ---------------------------------------------------------------------------
@@ -133,13 +166,22 @@ export interface ChoiceOption {
   /** 선택지 안에서 고유한 옵션 id (저장 데이터에 기록됨) */
   id: string;
   text: string;
-  /** 이 선택이 어느 히로인과 관련된 선택인지. 점수 + '가장 최근 히로인 선택' 갱신 */
+  /**
+   * 이 선택이 어느 히로인 개인 선택인지. 점수 가산 + '가장 최근 히로인 선택' 갱신.
+   * 루트 결정의 동점 처리는 이 값으로 개인 선택을 판단한다('함께'처럼 heroine 이 없는 옵션은 건너뜀)
+   */
   heroine?: HeroineId;
   /** heroine 점수 가산량 (기본 1) */
   points?: number;
+  /** 선택 효과. '함께'는 heroine 없이 effects 의 add 로 여러 히로인에게 점수를 준다 */
   effects?: Effect[];
   /** 같은 장면 안의 step id 로 이동(선택 직후 반응 분기). 없으면 다음 스텝 */
   goto?: string;
+  /**
+   * 보이는 조건. 거짓이면 화면·키보드 번호·choose() 모두에서 없는 옵션이다(runner.visibleOptions).
+   * 없으면 항상 보인다
+   */
+  visibleIf?: Cond;
 }
 
 /** 선택지. 블로킹. */
@@ -231,9 +273,33 @@ export interface JumpStep extends StepBase {
   scene: string;
 }
 
-/** 누적 선택으로 루트를 확정한다. 이미 확정돼 있으면 아무것도 바꾸지 않는다. */
+/**
+ * 히든 히로인 해금 판정(1회). 비블로킹.
+ * flags[flag] 에 이미 boolean 이 있으면 아무것도 하지 않는다(불러오기·다시 실행에도 한 번만).
+ * 없으면 |points[among[0]] − points[among[1]]| ≤ maxDiff 일 때 flags[flag] = true 이고
+ * points[heroine] = 두 점수의 평균(0.5 단위 그대로)을 준다. 아니면 flags[flag] = false.
+ * 루트가 이미 정해졌으면 해금하지 않는다(false).
+ */
+export interface UnlockStep extends StepBase {
+  t: 'unlock';
+  heroine: HeroineId;
+  among: [HeroineId, HeroineId];
+  maxDiff: number;
+  flag: string;
+}
+
+/**
+ * 누적 점수로 루트를 확정한다. 이미 확정돼 있으면 아무것도 바꾸지 않는다.
+ * 후보: BASE_HEROINES + hidden 에 적힌 플래그가 true 인 히로인.
+ * 최고점이 하나면 그 히로인, 동점이면 order(선택 step id 시간순)를 뒤에서부터 훑어
+ * 공동 최고점인 히로인의 개인 선택(option.heroine)을 처음 만나는 히로인(runner.pickRoute).
+ */
 export interface DecideRouteStep extends StepBase {
   t: 'decideRoute';
+  /** 루트에 영향을 주는 선택지 step id, 시간순. 비어 있으면 동점 처리에 '가장 최근 히로인 선택(lastHeroine)'을 쓴다 */
+  order: string[];
+  /** 히든 히로인 → 후보가 되기 위한 플래그 이름(flags[이름] === true 여야 후보) */
+  hidden?: Partial<Record<HeroineId, string>>;
 }
 
 /** 확정 루트에 따라 장면 이동. decideRoute 이후에만 사용. */
@@ -265,6 +331,7 @@ export type Step =
   | LabelStep
   | GotoStep
   | JumpStep
+  | UnlockStep
   | DecideRouteStep
   | RouteBranchStep
   | EndingStep;
@@ -345,8 +412,12 @@ export interface SceneEntry {
 export interface GameState {
   sceneId: string;
   stepId: string;
+  /** 누적 호감 점수(화면에 표시하지 않음). 해금 시 평균을 주므로 0.5 단위 소수가 될 수 있다 */
   points: Record<HeroineId, number>;
-  /** 가장 최근에 고른 '히로인 관련' 선택의 히로인 (동점 처리용) */
+  /**
+   * 가장 최근에 고른 '히로인 개인' 선택의 히로인. 루트 결정의 동점 처리는 decideRoute.order 와
+   * 선택 기록(choices)으로 다시 계산하고, 이 값은 order 가 없는 스토리의 동점 처리와 표시용이다
+   */
   lastHeroine: HeroineId | null;
   route: HeroineId | null;
   /** choice step id -> option id */

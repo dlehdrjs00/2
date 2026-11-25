@@ -26,7 +26,11 @@ function cgStory(): Story {
     version: 't',
     start: 'o1',
     scenes: { o1: s },
-    endings: { osana: { id: 'osana', heroine: 'osana', title: 'A' }, tenko: { id: 'tenko', heroine: 'tenko', title: 'B' } },
+    endings: {
+      osana: { id: 'osana', heroine: 'osana', title: 'A' },
+      tenko: { id: 'tenko', heroine: 'tenko', title: 'B' },
+      koharu: { id: 'koharu', heroine: 'koharu', title: 'C' },
+    },
   };
 }
 

@@ -19,6 +19,8 @@ export const NAMES = {
   osana: { given: '아카네', family: '미즈하라' },
   /** 전학생 히로인 */
   tenko: { given: '히나', family: '사쿠라이' },
+  /** 숨은 히로인(한 학년 아래 후배). ※ 이름은 가칭 — 확정되면 여기만 바꾼다 */
+  koharu: { given: '코하루', family: '나루세' },
 } as const;
 
 /** 임시 배경 설정 */
@@ -37,7 +39,8 @@ export const SETTING = {
 
 /**
  * 임시 날짜. 요일은 2026년 달력 기준으로 맞춰 두었지만 작중에 연도는 표시하지 않는다.
- * 공통: 1주 차 월~금 / 루트: 2주 차 월~금 / 후일담: 8월 축제 당일
+ * 공통: 1주 차 월~금(d1~d5) → 주말(d6 토·d7 일) → 2주 차 월요일 점심(r1)
+ * 루트: 2주 차 월~금(r1~r5) / 후일담: 8월(코하루 루트는 aug4 문구점 → fest 축제 → aug9 첫 데이트)
  */
 export const DATES = {
   d1: '7월 6일 월요일',
@@ -45,12 +48,16 @@ export const DATES = {
   d3: '7월 8일 수요일',
   d4: '7월 9일 목요일',
   d5: '7월 10일 금요일',
+  d6: '7월 11일 토요일',
+  d7: '7월 12일 일요일',
   r1: '7월 13일 월요일',
   r2: '7월 14일 화요일',
   r3: '7월 15일 수요일',
   r4: '7월 16일 목요일',
   r5: '7월 17일 금요일',
+  aug4: '8월 4일 화요일',
   fest: '8월 8일 토요일',
+  aug9: '8월 9일 일요일',
 } as const;
 
 /** 대사 치환 변수. 스토리에서 {키} / {키:조사} 로 사용 */
@@ -61,6 +68,8 @@ export const TEXT_VARS: Readonly<Record<string, string>> = {
   osanaFamily: NAMES.osana.family,
   tenko: NAMES.tenko.given,
   tenkoFamily: NAMES.tenko.family,
+  koharu: NAMES.koharu.given,
+  koharuFamily: NAMES.koharu.family,
   school: SETTING.school,
   schoolShort: SETTING.schoolShort,
   classroom: SETTING.classroom,
@@ -77,14 +86,20 @@ export const SPEAKER_NAMES: Record<SpeakerId, string> = {
   me: NAMES.me.given,
   osana: NAMES.osana.given,
   tenko: NAMES.tenko.given,
+  koharu: NAMES.koharu.given,
   teacher: `${SETTING.teacher} 선생님`,
   grandma: '후루카와 할머니',
   classmates: '반 아이들',
   shopkeeper: '가게 아저씨',
+  /** 금요일 복도 첫 만남에서 코하루 옆에 있던 친구(이름 없음) */
+  kh_friend: '여학생의 친구',
+  /** 토요일 상점가 추첨대 담당 */
+  raffle: '상점회 추첨 담당',
 };
 
 /** 엔딩 제목 */
 export const ENDING_TITLES = {
   osana: '내일도, 그다음 날도',
   tenko: '처음으로 함께 찍힌 사진',
+  koharu: '일요일은 둘이서',
 } as const;

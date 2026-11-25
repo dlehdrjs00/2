@@ -1,6 +1,9 @@
 /**
  * 추억 앨범(이벤트 CG 갤러리, docs/UI_DESIGN.md 6.17) — 타이틀 시스템 시트의 탭 하나 + 전체 화면 감상(뷰어)
  *
+ * 히든 히로인(reveal.ts): hidden CG 는 관람한 것만 칸·총 장수·썸네일·제목·묶음에 들어간다(관람 전에는 빈칸도 없음).
+ * 히든 히로인 묶음은 보일 칸이 있을 때만 생기고, 이름은 heroineName 으로 쓴다.
+ *
  * 앨범 본문
  *   .panel-body.album[data-seen][data-total]
  *     .album-sum                      모은 추억 n / 11 + 진행 막대 + 한 줄 안내
@@ -25,6 +28,7 @@ import type { HeroineId } from '../../engine/types';
 import { HEROINES } from '../../engine/types';
 import { cssUrl, el } from '../dom';
 import { ico } from '../icons';
+import { isHiddenHeroine, revealedHeroines, visibleCatalog } from '../reveal';
 import { HEROINE_COLORS, prefersReducedMotion } from './common';
 import type { SheetView } from './sheet';
 
@@ -33,6 +37,8 @@ export interface AlbumEntry {
   title: string;
   /** 어느 히로인 루트의 장면인지(공통이면 null) */
   route: HeroineId | null;
+  /** 관람 전에는 앨범 어디에도(빈칸·총 장수 포함) 보이지 않는 CG */
+  hidden?: boolean;
 }
 
 export interface AlbumItem extends AlbumEntry {
@@ -56,19 +62,30 @@ export interface AlbumModel {
 /**
  * 앨범 목록 모델. catalog 순서(CG_ORDER)를 지키며 히로인 순서대로 묶고, 공통(또는 알 수 없는 루트) 묶음은 맨 뒤.
  * seen 에 있는 알 수 없는 id(예전 기록·이름이 바뀐 CG)는 세지 않는다.
+ * hidden CG 는 본 것만 넣는다. 아직 공개되지 않은 히든 히로인(revealedHeroines)의 루트 CG 도 보지 않았으면 넣지 않는다.
+ * 칸이 하나도 없는 묶음은 만들지 않는다. reached: 엔딩에 도달한 히로인(히든 히로인 공개 판정용)
  */
-export function albumModel(catalog: readonly AlbumEntry[], seen: Iterable<string>, routes: readonly HeroineId[] = HEROINES): AlbumModel {
+export function albumModel(
+  catalog: readonly AlbumEntry[],
+  seen: Iterable<string>,
+  reached: Iterable<HeroineId> = [],
+  routes: readonly HeroineId[] = HEROINES,
+): AlbumModel {
   const have = new Set(seen);
+  const shown = new Set(revealedHeroines(catalog, have, reached));
+  const visible = visibleCatalog(catalog, have).filter(
+    (c) => c.route === null || !isHiddenHeroine(c.route) || shown.has(c.route) || have.has(c.id),
+  );
   const keyOf = (r: HeroineId | null) => (r !== null && routes.includes(r) ? r : null);
   const keys: Array<HeroineId | null> = [...routes, null];
   const groups = keys
     .map((route) => {
-      const items = catalog.filter((c) => keyOf(c.route) === route).map((c) => ({ ...c, seen: have.has(c.id) }));
+      const items = visible.filter((c) => keyOf(c.route) === route).map((c) => ({ ...c, seen: have.has(c.id) }));
       return { route, items, seen: items.filter((i) => i.seen).length };
     })
     .filter((g) => g.items.length > 0);
   const order = groups.flatMap((g) => g.items.filter((i) => i.seen).map((i) => i.id));
-  return { groups, seen: order.length, total: catalog.length, order };
+  return { groups, seen: order.length, total: visible.length, order };
 }
 
 /** n 개 사이에서 i 에서 d 만큼 옮긴 자리(끝에서 처음으로 돈다) */
@@ -84,6 +101,8 @@ export function wrapIndex(n: number, i: number, d: number): number {
 export interface AlbumOptions {
   catalog: readonly AlbumEntry[];
   seen: readonly string[];
+  /** 엔딩에 도달한 히로인(히든 히로인 공개 판정) */
+  reached?: readonly HeroineId[];
   heroineName(h: HeroineId): string;
   thumbUrl(id: string): string | null;
   /** 본 그림을 눌렀을 때: order(본 그림, 화면 순서)의 start 번째부터 감상 */
@@ -106,7 +125,7 @@ export function groupLabel(route: HeroineId | null, name: (h: HeroineId) => stri
 }
 
 export function buildAlbum(o: AlbumOptions): AlbumView {
-  const model = albumModel(o.catalog, o.seen);
+  const model = albumModel(o.catalog, o.seen, o.reached ?? []);
   const body = el('div', 'panel-body album');
   body.dataset.seen = String(model.seen);
   body.dataset.total = String(model.total);

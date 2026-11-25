@@ -5,7 +5,7 @@
 앞의 교실·등굣길·축제 장면 설명은 제작 의도를 정리한 요약이며, 나머지는 보관된 생성·편집 프롬프트입니다.
 
 - 기록에 없는 것(확인 필요): 이미지 생성 도구의 이름·버전과 그 서비스의 이용 조건(상업 이용·웹 배포 허용 여부). 앞 3장(classroom_day·road_morning·festival_street)은 프롬프트 원문이 보관되지 않았습니다.
-- 게임 파일: `public/assets/bg/{id}.webp`(1920×1080). 저장 칸·엔딩 폴라로이드용 480×270 썸네일 `public/assets/bg/thumb/{id}.webp` 는 이 원본에서 `python3 scripts/bg-thumbs.py` 로 만든 것입니다(원본 픽셀은 그대로).
+- 게임 파일: `public/assets/bg/{id}.webp`(1920×1080). 저장 칸·엔딩 폴라로이드용 480×270 썸네일 `public/assets/bg/thumb/{id}.webp` 는 이 원본에서 `python3 scripts/bg-thumbs.py` 로 만든 것입니다(원본 픽셀은 그대로). 맨 아래 `kh_*` 2장은 예외로, 썸네일도 받은 것을 그대로 씁니다.
 
 ## classroom_day
 
@@ -82,3 +82,7 @@ Use case: lighting-weather. Edit the provided anime visual-novel background. Pre
 ## shrine_night
 
 Use case: lighting-weather. Edit the provided anime visual-novel background. Preserve EXACT camera composition, architecture, all object positions, detailed hand-painted style, and landscape aspect ratio. Change only time to a quiet clear summer festival night just BEFORE fireworks begin. Deep indigo star-speckled sky, distant town windows and river reflections, stone lanterns cast gentle warm light on the shrine steps and foreground landing, moonlit leaves and torii. No fireworks yet because story triggers them later. Preserve visible foreground textures, avoid crushed black shadows. No people, characters, text, logos or border. Single full-bleed scene.
+
+## kh_stationery · kh_lantern_lane (코하루 루트 인계 패키지)
+
+2026-11-25 사용자가 준 코하루 루트 인계 패키지(`public/assets/bg/`)에서 받은 그대로 넣었습니다. 문구점 앞 `kh_stationery`(낮)는 기존 `shotengai`, 축제 끝 마지막 등롱길 `kh_lantern_lane`(밤)은 기존 `festival_street` 를 색감·시간대 기준으로 삼아 생성한 뒤 1920×1080 으로 리샘플한 WebP 라고 패키지 문서(`README.md`, `docs/ART_PROMPTS_KOHARU.md`)에 적혀 있습니다. 480×270 썸네일도 패키지가 준 파일을 그대로 쓰며, 원본·썸네일 모두 다시 인코딩하지 않았습니다(sha256 이 패키지 `SHA256SUMS.txt` 와 같음). `scripts/bg-thumbs.py` 는 원본이 이 납품본인 동안 두 썸네일을 덮어쓰지 않습니다. 생성 프롬프트 원문, 이미지 생성 도구의 이름·버전과 이용 조건은 패키지에 없어 확인이 필요합니다. 편집용 PNG 원본(1920×1080)은 별도 편집용 묶음에 있다고 패키지 README 에 적혀 있으며, 이 저장소에는 넣지 않았습니다.

@@ -10,13 +10,37 @@
  * 스키마 이력
  *   1: 최초 형식
  *   2: state.sceneEntry(장면 진입 스냅샷) 추가. 1 은 그대로 읽고, 복구가 필요하면 최소 규칙으로 되돌린다.
+ *   3: 히든 히로인(koharu)·'함께' 선택·해금 플래그(kh.met)·소수 점수. 1·2 는 불러올 때 이전한다(upgradeLegacy):
+ *      - 점수와 최근 히로인은 현재 대본의 옵션 정의(개인 가중치·'함께')로 선택 기록에서 다시 계산한다(sceneEntry 도).
+ *      - 이미 루트가 있거나 금요일 노을길(c7.j20~j40, 즉 해금 판정 뒤)에 있는 저장은 해금 플래그를 false 로 둬
+ *        첫 만남을 소급하지 않는다. 그보다 앞의 공통 저장은 플래그 없이 두어 새 규칙대로 판정한다.
+ *      - 위치·루트는 그대로 둔다.
  */
 import type { CharId, EndingId, GameState, HeroineId, LogEntry, Scene, SceneEntry, StageState, Story } from './types';
-import { HEROINES } from './types';
-import { advance, choose, findStep, initialStage, isBlocking, LOG_LIMIT, settle, snapshotSceneEntry, stepIndex, type StepResult } from './runner';
+import { BASE_HEROINES, HEROINES } from './types';
+import {
+  advance,
+  choose,
+  findChoiceStep,
+  findStep,
+  initialStage,
+  isBlocking,
+  LOG_LIMIT,
+  settle,
+  snapshotSceneEntry,
+  stepIndex,
+  zeroPoints,
+  type StepResult,
+} from './runner';
 import type { KeyValueStore } from './storage';
 
-export const SAVE_SCHEMA = 2;
+export const SAVE_SCHEMA = 3;
+/**
+ * 구판(스키마 1·2) 이전 전용: 해금 판정 뒤에 오는 금요일 노을길 문장. 구판에서 이 위치나 루트 확정 뒤에 저장했으면
+ * 첫 만남을 소급하지 않는다(해금 플래그 = false)
+ */
+export const LEGACY_POST_GATE_SCENE = 'c7_friday';
+export const LEGACY_POST_GATE_STEPS: readonly string[] = ['c7.j20', 'c7.j30', 'c7.j40'];
 /** 전역 기록(읽은 대사·엔딩) 형식 버전. 슬롯 저장 스키마와 따로 간다 */
 export const GLOBAL_SCHEMA = 1;
 export const GAME_KEY = 'ashita-mo-issho';
@@ -106,10 +130,16 @@ interface SanitizedState {
   entryStage: StageCheck | null;
 }
 
+/** 점수표 검증. 기본 히로인 점수가 없거나 유한하지 않으면 null. 히든 히로인 점수가 없으면 0. 소수 허용 */
 function sanitizePoints(v: unknown): Record<HeroineId, number> | null {
   if (!isObj(v)) return null;
-  const points = { osana: Number(v.osana), tenko: Number(v.tenko) };
-  if (!Number.isFinite(points.osana) || !Number.isFinite(points.tenko)) return null;
+  const points = zeroPoints();
+  for (const h of HEROINES) {
+    if (v[h] === undefined && !BASE_HEROINES.includes(h)) continue;
+    const n = Number(v[h]);
+    if (!Number.isFinite(n)) return null;
+    points[h] = n;
+  }
   return points;
 }
 
@@ -376,6 +406,7 @@ export class SaveManager {
     const checked = this.sanitizeState(migrated.state);
     if (!checked) return { status: 'error', reason: 'corrupt', message: '저장 데이터의 진행 정보가 손상되었어요.' };
     const { state } = checked;
+    if (migrated.legacy) this.upgradeLegacy(state);
 
     const summary: SaveSummary = isObj(migrated.summary)
       ? {
@@ -414,6 +445,38 @@ export class SaveManager {
     }
     const notes = this.repairStage(checked, scene);
     return { status: 'ok', data, notes: uniq(notes) };
+  }
+
+  // ---- 구판 이전 -------------------------------------------------------------
+
+  /**
+   * 스키마 1·2 저장을 현재 분기 규칙에 맞춘다(파일 머리 주석 참고). 위치·루트·플래그(해금 플래그 제외)는 그대로 둔다.
+   */
+  private upgradeLegacy(state: GameState): void {
+    const scored = rescoreChoices(this.story, state.choices);
+    state.points = scored.points;
+    state.lastHeroine = scored.lastHeroine;
+    const entry = state.sceneEntry;
+    if (entry) {
+      const e = rescoreChoices(this.story, entry.choices);
+      entry.points = e.points;
+      entry.lastHeroine = e.lastHeroine;
+    }
+    if (this.legacyPastGate(state)) {
+      for (const f of unlockFlags(this.story)) {
+        state.flags[f] = false;
+        if (entry) entry.flags[f] = false;
+      }
+    }
+  }
+
+  /** 구판 저장이 해금 판정 뒤(루트 확정 뒤, 또는 같은 장면에서 해금 지시보다 뒤의 문장)에 있는가 */
+  private legacyPastGate(state: GameState): boolean {
+    if (state.route !== null) return true;
+    if (state.sceneId === LEGACY_POST_GATE_SCENE && LEGACY_POST_GATE_STEPS.includes(state.stepId)) return true;
+    const loc = findStep(this.story, state.sceneId, state.stepId);
+    if (!loc) return false;
+    return loc.scene.steps.some((st, i) => st.t === 'unlock' && i < loc.index);
   }
 
   // ---- 복구 ----------------------------------------------------------------
@@ -470,6 +533,15 @@ export class SaveManager {
         for (const ef of opt.effects ?? []) if ('add' in ef) points[ef.add] -= ef.n;
       }
       if (decidesHere) route = null;
+      // 이 장면의 해금 판정도 되돌린다(장면을 다시 진행하면 다시 판정한다). 해금으로 받은 시작 점수도 뺀다
+      const flags = { ...state.flags };
+      if (scoredHere) {
+        for (const st of scene.steps) {
+          if (st.t !== 'unlock' || typeof flags[st.flag] !== 'boolean') continue;
+          if (flags[st.flag] === true) points[st.heroine] = 0;
+          delete flags[st.flag];
+        }
+      }
       const cur = checked.stage;
       rewound = {
         ...state,
@@ -477,7 +549,7 @@ export class SaveManager {
         points,
         route,
         choices,
-        flags: { ...state.flags },
+        flags,
         stage: { bg: cur.stage.bg, bgm: cur.stage.bgm, chars: {}, order: [], cg: null },
         log: state.log.slice(0, this.sceneLogStart(state.log, scene)),
         endedWith: null,
@@ -731,15 +803,68 @@ export class SaveManager {
   }
 }
 
-/** 스키마 이전. 이전 버전을 현재 형식으로 바꾼다. 받아들일 수 없는 버전이면 null */
-function migrate(v: Record<string, unknown>): (Record<string, unknown> & { state: unknown; summary?: unknown }) | null {
-  if (v.schema === SAVE_SCHEMA) return v as Record<string, unknown> & { state: unknown };
-  if (v.schema === 1) {
+type Migrated = Record<string, unknown> & { state: unknown; summary?: unknown; legacy?: number };
+
+/**
+ * 스키마 이전(형식만). 이전 버전을 현재 형식으로 바꾼다. 받아들일 수 없는 버전이면 null.
+ * 대본 정의가 필요한 이전(점수 재계산·해금 플래그)은 legacy 표시를 보고 SaveManager.upgradeLegacy 가 한다.
+ */
+function migrate(v: Record<string, unknown>): Migrated | null {
+  if (v.schema === SAVE_SCHEMA) return v as Migrated;
+  if (v.schema === 1 || v.schema === 2) {
+    const state = isObj(v.state) ? { ...v.state } : v.state;
     // 1 → 2: 장면 진입 스냅샷이 없다. 다음 장면으로 넘어가면 실행기가 새로 채우고,
     // 그 전에 복구가 필요하면 rewindToSceneStart 의 스키마 1 규칙을 쓴다.
-    const state = isObj(v.state) ? { ...v.state } : v.state;
-    if (isObj(state)) delete state.sceneEntry;
-    return { ...v, schema: SAVE_SCHEMA, state };
+    if (v.schema === 1 && isObj(state)) delete state.sceneEntry;
+    return { ...v, schema: SAVE_SCHEMA, state, legacy: v.schema };
   }
   return null;
+}
+
+/** 대본의 모든 해금 플래그 이름 */
+function unlockFlags(story: Story): string[] {
+  const out = new Set<string>();
+  for (const scene of Object.values(story.scenes)) {
+    for (const st of scene.steps) if (st.t === 'unlock') out.add(st.flag);
+  }
+  return [...out];
+}
+
+/** 선택지 id 의 시간순 위치(대본의 decideRoute.order 기준). 없으면 undefined */
+function choiceOrder(story: Story): Map<string, number> {
+  const order = new Map<string, number>();
+  for (const scene of Object.values(story.scenes)) {
+    for (const st of scene.steps) {
+      if (st.t !== 'decideRoute') continue;
+      for (const id of st.order ?? []) if (!order.has(id)) order.set(id, order.size);
+    }
+  }
+  return order;
+}
+
+/**
+ * 선택 기록만으로 점수·최근 히로인을 다시 계산한다(현재 대본의 옵션 정의 기준, 루트 확정 전인 공통 장면 선택만).
+ * 시간순은 대본의 decideRoute.order, 그 목록에 없는 선택이 섞여 있으면 저장된 기록 순서를 쓴다.
+ * 해금 시작 점수는 넣지 않는다(구판 저장에는 해금이 없었다).
+ */
+export function rescoreChoices(story: Story, choices: Record<string, string>): { points: Record<HeroineId, number>; lastHeroine: HeroineId | null } {
+  const idx = stepIndex(story);
+  const scoring = Object.keys(choices).filter((id) => {
+    const hit = idx.get(id);
+    return !!hit && hit.scene.route === 'common' && hit.scene.steps[hit.index].t === 'choice';
+  });
+  const order = choiceOrder(story);
+  if (scoring.every((id) => order.has(id))) scoring.sort((a, b) => order.get(a)! - order.get(b)!);
+  const points = zeroPoints();
+  let lastHeroine: HeroineId | null = null;
+  for (const id of scoring) {
+    const option = findChoiceStep(story, id)?.options.find((o) => o.id === choices[id]);
+    if (!option) continue;
+    if (option.heroine) {
+      points[option.heroine] += option.points ?? 1;
+      lastHeroine = option.heroine;
+    }
+    for (const ef of option.effects ?? []) if ('add' in ef) points[ef.add] += ef.n;
+  }
+  return { points, lastHeroine };
 }

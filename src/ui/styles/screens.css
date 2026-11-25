@@ -1577,6 +1577,9 @@
 .log-item.k-tenko {
   --name-1: var(--hina-1);
 }
+.log-item.k-koharu {
+  --name-1: var(--koharu-1);
+}
 .log-item.k-me {
   --name-1: var(--me-1);
 }

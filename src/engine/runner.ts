@@ -8,8 +8,10 @@ import type {
   BlockingStep,
   CgId,
   CharState,
+  ChoiceOption,
   ChoiceStep,
   Cond,
+  DecideRouteStep,
   Effect,
   GameState,
   HeroineId,
@@ -19,8 +21,9 @@ import type {
   StageState,
   Step,
   Story,
+  UnlockStep,
 } from './types';
-import { HEROINES } from './types';
+import { BASE_HEROINES, HEROINES, isHeroineId } from './types';
 
 export const LOG_LIMIT = 120;
 
@@ -44,6 +47,17 @@ export interface StepResult {
 
 export class StoryError extends Error {}
 
+/**
+ * settle/advance/choose 가 실행하는 비블로킹 스텝(연출·흐름 제어·판정)을 하나씩 알려 주는 관찰자.
+ * 검증기가 '실제로 실행된 지시'를 모으는 데 쓴다(게임 화면은 쓰지 않는다)
+ */
+export type StepObserver = (step: Step, scene: Scene) => void;
+
+/** 점수 0 으로 시작하는 히로인별 점수표 */
+export function zeroPoints(): Record<HeroineId, number> {
+  return Object.fromEntries(HEROINES.map((h) => [h, 0])) as Record<HeroineId, number>;
+}
+
 export function initialStage(): StageState {
   return { bg: 'black', chars: {}, order: [], bgm: null, cg: null };
 }
@@ -54,7 +68,7 @@ export function newGameState(story: Story): GameState {
   const state: GameState = {
     sceneId: first.id,
     stepId: first.steps[0].id,
-    points: { osana: 0, tenko: 0 },
+    points: zeroPoints(),
     lastHeroine: null,
     route: null,
     choices: {},
@@ -125,15 +139,90 @@ export function isBlocking(step: Step): step is BlockingStep {
 // ---------------------------------------------------------------------------
 
 /**
- * 루트 결정 규칙
- *  1) 누적 점수가 높은 히로인
- *  2) 동점이면 가장 최근에 고른 히로인 관련 선택의 히로인
- *  3) 그것도 없으면 소꿉친구(osana) — 현재 스토리에서는 발생하지 않음
+ * 루트 결정 규칙(순수 함수)
+ *  1) 후보(candidates) 중 누적 점수가 가장 높은 히로인
+ *  2) 공동 최고점이면 history(선택 시간순, 개인 선택의 히로인 · '함께'나 미선택은 null)를 뒤에서부터 훑어
+ *     공동 최고점인 히로인을 처음 만나면 그 히로인. 공동 최고점이 아닌 히로인·null 은 건너뛴다
+ *  3) 그래도 정해지지 않으면 공동 최고점 중 후보 목록의 앞쪽(osana → tenko → koharu) — 실제 대본에서는 발생하지 않음
+ * 점수는 0.5 단위 소수도 그대로 비교한다.
  */
-export function decideRoute(points: Record<HeroineId, number>, lastHeroine: HeroineId | null): HeroineId {
-  if (points.osana > points.tenko) return 'osana';
-  if (points.tenko > points.osana) return 'tenko';
-  return lastHeroine ?? 'osana';
+export function pickRoute(
+  points: Readonly<Partial<Record<HeroineId, number>>>,
+  candidates: readonly HeroineId[],
+  history: ReadonlyArray<HeroineId | null>,
+): HeroineId {
+  const pool = candidates.length ? candidates : BASE_HEROINES;
+  const score = (h: HeroineId) => points[h] ?? 0;
+  const top = Math.max(...pool.map(score));
+  const tied = pool.filter((h) => score(h) === top);
+  if (tied.length === 1) return tied[0];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const h = history[i];
+    if (h !== null && tied.includes(h)) return h;
+  }
+  return tied[0];
+}
+
+/**
+ * 예전 2인 규칙(호환용): 소꿉친구·전학생 중 점수가 높은 쪽, 동점이면 가장 최근 히로인 선택, 그것도 없으면 소꿉친구.
+ * 새 코드는 pickRoute 를 쓴다.
+ */
+export function decideRoute(points: Readonly<Partial<Record<HeroineId, number>>>, lastHeroine: HeroineId | null): HeroineId {
+  return pickRoute(points, BASE_HEROINES, [lastHeroine]);
+}
+
+/** 이야기에서 choice step 을 id 로 찾는다(루트 결정·저장 재계산에서 옵션 정의를 볼 때) */
+export function findChoiceStep(story: Story, choiceId: string): ChoiceStep | null {
+  const hit = stepIndex(story).get(choiceId);
+  if (!hit) return null;
+  const step = hit.scene.steps[hit.index];
+  return step.t === 'choice' ? step : null;
+}
+
+/** 이 decideRoute 에서 루트 후보가 되는 히로인: 기본 히로인 + hidden 플래그가 true 인 히로인 */
+export function routeCandidates(state: GameState, step: DecideRouteStep): HeroineId[] {
+  return HEROINES.filter((h) => {
+    const flagName = step.hidden?.[h];
+    if (flagName) return state.flags[flagName] === true;
+    return BASE_HEROINES.includes(h);
+  });
+}
+
+/** decideRoute.order 순서의 선택 기록을 개인 선택 히로인 목록으로 바꾼다('함께'·미선택은 null) */
+export function choiceHistory(story: Story, state: GameState, step: DecideRouteStep): Array<HeroineId | null> {
+  if (!step.order?.length) return [state.lastHeroine];
+  return step.order.map((id) => {
+    const picked = state.choices[id];
+    if (picked === undefined) return null;
+    const option = findChoiceStep(story, id)?.options.find((o) => o.id === picked);
+    return option?.heroine ?? null;
+  });
+}
+
+/** 지금 상태로 이 decideRoute 를 실행하면 정해질 루트 */
+export function routeFor(story: Story, state: GameState, step: DecideRouteStep): HeroineId {
+  return pickRoute(state.points, routeCandidates(state, step), choiceHistory(story, state, step));
+}
+
+/**
+ * 해금 판정(UnlockStep). 플래그에 이미 boolean 이 있으면 아무것도 하지 않는다.
+ * 해금되면 그 히로인의 시작 점수 = 두 히로인 점수의 평균(0.5 단위 보존).
+ */
+export function applyUnlock(state: GameState, step: UnlockStep): void {
+  if (typeof state.flags[step.flag] === 'boolean') return;
+  if (state.route !== null) {
+    state.flags[step.flag] = false; // 루트 확정 뒤에는 새로 등장하지 않는다
+    return;
+  }
+  const [a, b] = step.among;
+  const pa = state.points[a] ?? 0;
+  const pb = state.points[b] ?? 0;
+  if (Math.abs(pa - pb) <= step.maxDiff) {
+    state.flags[step.flag] = true;
+    state.points[step.heroine] = (pa + pb) / 2;
+  } else {
+    state.flags[step.flag] = false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -156,9 +245,17 @@ function applyEffects(state: GameState, effects: Effect[] | undefined): void {
     if ('flag' in e) state.flags[e.flag] = e.value;
     else if ('add' in e) {
       // 루트 확정 후에는 점수를 바꾸지 않는다(루트 혼입 방지)
-      if (state.route === null) state.points[e.add] += e.n;
+      if (state.route === null) state.points[e.add] = (state.points[e.add] ?? 0) + e.n;
     }
   }
+}
+
+/**
+ * 지금 상태에서 화면에 보이는 옵션(visibleIf 가 없거나 참인 옵션). 원래 순서를 유지한다.
+ * 선택지 표시·키보드 번호·choose()·검증기가 모두 이 결과만 쓴다.
+ */
+export function visibleOptions(state: GameState, step: ChoiceStep): ChoiceOption[] {
+  return step.options.filter((o) => !o.visibleIf || evalCond(state, o.visibleIf));
 }
 
 // ---------------------------------------------------------------------------
@@ -191,9 +288,11 @@ function moveNext(state: GameState, scene: Scene, index: number): void {
 
 /**
  * 현재 위치에서 연출 명령을 실행하며 다음 블로킹 스텝까지 진행한다.
- * 현재 위치가 이미 블로킹 스텝이면 아무것도 실행하지 않고 그 스텝을 돌려준다.
+ * 현재 위치가 이미 블로킹 스텝이면 아무것도 실행하지 않고 그 스텝을 돌려준다
+ * (그래서 저장 위치에서 불러와도 앞 지시의 점수·해금·CG 가 다시 적용되지 않는다).
+ * observe 를 주면 실행한 비블로킹 스텝을 하나씩 알려 준다.
  */
-export function settle(story: Story, state: GameState): StepResult {
+export function settle(story: Story, state: GameState, observe?: StepObserver): StepResult {
   const events: StageEvent[] = [];
   for (let guard = 0; guard < MAX_INSTANT_STEPS; guard++) {
     const loc = findStep(story, state.sceneId, state.stepId);
@@ -202,7 +301,7 @@ export function settle(story: Story, state: GameState): StepResult {
     const step = scene.steps[index];
     if (isBlocking(step)) {
       // 대사에 붙은 표정 변경은 무대 상태에 반영해 둔다(저장 스냅샷이 화면과 일치하도록)
-      if (step.t === 'say' && step.expr && (step.who === 'osana' || step.who === 'tenko')) {
+      if (step.t === 'say' && step.expr && isHeroineId(step.who)) {
         const cs = state.stage.chars[step.who];
         if (cs && cs.expr !== step.expr) {
           cs.expr = step.expr;
@@ -212,6 +311,7 @@ export function settle(story: Story, state: GameState): StepResult {
       return { step, scene, events };
     }
 
+    observe?.(step, scene);
     switch (step.t) {
       case 'bg':
         // 장소가 바뀌면 이벤트 CG 는 걷힌다(배경 전환 연출과 함께 사라지도록 bg 이벤트보다 먼저 알린다)
@@ -284,9 +384,12 @@ export function settle(story: Story, state: GameState): StepResult {
       case 'jump':
         enterScene(story, state, step.scene);
         continue;
+      case 'unlock':
+        applyUnlock(state, step);
+        break;
       case 'decideRoute':
         if (state.route === null) {
-          state.route = decideRoute(state.points, state.lastHeroine);
+          state.route = routeFor(story, state, step);
           events.push({ kind: 'route', route: state.route });
         }
         break;
@@ -306,25 +409,29 @@ export function settle(story: Story, state: GameState): StepResult {
 }
 
 /** 대사/카드에서 다음으로 진행. 선택지·엔딩에서는 아무것도 하지 않고 null */
-export function advance(story: Story, state: GameState): StepResult | null {
-  const cur = settle(story, state);
+export function advance(story: Story, state: GameState, observe?: StepObserver): StepResult | null {
+  const cur = settle(story, state, observe);
   if (cur.step.t !== 'say' && cur.step.t !== 'card') return null;
   const loc = findStep(story, state.sceneId, state.stepId)!;
   moveNext(state, loc.scene, loc.index);
-  return settle(story, state);
+  return settle(story, state, observe);
 }
 
-/** 선택지 결정. 현재 스텝이 선택지가 아니거나 옵션이 없으면 null (중복 입력 방어) */
-export function choose(story: Story, state: GameState, optionId: string): StepResult | null {
-  const cur = settle(story, state);
+/**
+ * 선택지 결정. 현재 스텝이 선택지가 아니거나, 그런 옵션이 없거나, 지금 보이지 않는 옵션(visibleIf 거짓)이면 null
+ * (중복 입력·숨은 옵션 방어). 점수: option.heroine 이면 그 히로인에게 points(기본 1), effects 의 add 도 더한다.
+ * 루트 확정 후에는 점수를 바꾸지 않는다.
+ */
+export function choose(story: Story, state: GameState, optionId: string, observe?: StepObserver): StepResult | null {
+  const cur = settle(story, state, observe);
   if (cur.step.t !== 'choice') return null;
   const step: ChoiceStep = cur.step;
-  const option = step.options.find((o) => o.id === optionId);
+  const option = visibleOptions(state, step).find((o) => o.id === optionId);
   if (!option) return null;
 
   state.choices[step.id] = option.id;
   if (option.heroine && state.route === null) {
-    state.points[option.heroine] += option.points ?? 1;
+    state.points[option.heroine] = (state.points[option.heroine] ?? 0) + (option.points ?? 1);
     state.lastHeroine = option.heroine;
   }
   applyEffects(state, option.effects);
@@ -335,7 +442,7 @@ export function choose(story: Story, state: GameState, optionId: string): StepRe
     const loc = findStep(story, state.sceneId, state.stepId)!;
     moveNext(state, loc.scene, loc.index);
   }
-  return settle(story, state);
+  return settle(story, state, observe);
 }
 
 export function pushLog(state: GameState, entry: LogEntry): void {
@@ -354,4 +461,4 @@ export function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
 }
 
-export { HEROINES };
+export { BASE_HEROINES, HEROINES };

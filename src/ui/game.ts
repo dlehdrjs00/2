@@ -26,9 +26,9 @@
  *  - 추억 앨범(타이틀 시트의 탭)의 감상 화면은 시트 위에 겹친 오버레이다. 키 입력은 맨 위 오버레이의 onKey 가 먼저 받고
  *    (←/→ 넘기기 등), 클릭은 오버레이 안에서 전파를 멈춘다. 닫으면 포커스는 연 칸 → 시트를 닫으면 [추억 앨범]으로 돌아간다.
  */
-import type { CgId, CharId, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
-import { HEROINES } from '../engine/types';
-import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, type StageEvent, type StepResult } from '../engine/runner';
+import type { CgId, CharId, ChoiceOption, ChoiceStep, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
+import { HIDDEN_HEROINES, isHeroineId } from '../engine/types';
+import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, visibleOptions, type StageEvent, type StepResult } from '../engine/runner';
 import { KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotDurability, type SlotId } from '../engine/save';
 import { autoDelayMs, charsPerSecond, DEFAULT_SETTINGS, loadSettings, saveSettings, textScaleFactor, type Settings } from '../engine/settings';
 import type { KeyValueStore } from '../engine/storage';
@@ -57,8 +57,21 @@ import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
 import { buildConfirm, buildMenu, type AskMessage, type AskOptions, type MenuItem } from './screens/menu';
-import { buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
-import { HOLD_MAX_MS, ImagePreloader, preloadConcurrency, prefersDataSaving, sceneImages, type PreloadItem, type PreloadKind, type PreloadResolver } from './screens/preload';
+import { albumModel, buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
+import {
+  HOLD_MAX_MS,
+  heroineUnlocked,
+  ImagePreloader,
+  nearbyImages,
+  preloadConcurrency,
+  prefersDataSaving,
+  unlockFlags,
+  type KnownState,
+  type PreloadItem,
+  type PreloadKind,
+  type PreloadResolver,
+} from './screens/preload';
+import { medalHeroines, reachedHeroines, titleEndings } from './reveal';
 import { renderProfile } from './render-profile';
 import { buildSaveLoad, type SaveLoadView, type SlotPage } from './screens/saveload';
 import { buildSettings, type CfgCat } from './screens/settings';
@@ -81,7 +94,13 @@ export interface GameContent {
   hasBg(id: string): boolean;
   hasSprite(char: string, outfit: string, hair: string, expr: string): boolean;
   hasBgm(id: string): boolean;
+  /** 게임 전체 그림(타이틀에서 나머지 대기열로 미리 받는다). 히든 히로인 전용 그림(hiddenImageUrls)은 넣지 않는다 */
   allImageUrls(): string[];
+  /**
+   * 히든 히로인 전용 그림(그 인물 스프라이트·전용 배경). 해금되지 않은 플레이·타이틀에서는 미리 받지 않고,
+   * 이번 플레이에서 해금되면(해금 플래그 true·그 루트 확정) 나머지 대기열에 더한다
+   */
+  hiddenImageUrls?(heroine: HeroineId): string[];
   titleSprites: Array<{ char: CharId; outfit: string; hair: string; expr: string }>;
   /** 아직 임시 에셋인 분류를 알리는 짧은 문구(예: '임시 배경·음악'). 모두 최종이면 null */
   placeholderNote: string | null;
@@ -96,7 +115,10 @@ export interface GameContent {
   titleVisual?: string | null;
   /** 키 비주얼의 작은 그림. 원본을 받는 동안 흐리게 깔아 둔다 */
   titleVisualThumb?: string | null;
-  /** 추억 앨범에 놓을 이벤트 CG(표시 순서대로 id·제목·루트). 없거나 비면 타이틀에 [추억 앨범]을 두지 않는다 */
+  /**
+   * 추억 앨범에 놓을 이벤트 CG(표시 순서대로 id·제목·루트·hidden). 없거나 비면 타이틀에 [추억 앨범]을 두지 않는다.
+   * hidden CG 는 본 뒤에만 앨범 칸·총 장수에 들어간다(reveal.ts)
+   */
   cgCatalog?: AlbumEntry[];
 }
 
@@ -248,6 +270,10 @@ export class Game {
   private titleArtReady = false;
   private afterTitleArt: Array<() => void> = [];
   private preloadStarted = false;
+  /** 이야기의 해금 플래그(히든 히로인 → 플래그 이름). 처음 쓸 때 한 번 훑는다 */
+  private unlockFlagMap: Map<HeroineId, string> | null = null;
+  /** 히든 히로인 전용 그림을 나머지 대기열에 넣은 히로인(한 번만) */
+  private hiddenQueued = new Set<HeroineId>();
 
   constructor(mount: HTMLElement, content: GameContent, store: KeyValueStore) {
     this.c = content;
@@ -377,7 +403,7 @@ export class Game {
    */
   private preloadFromTitle() {
     const st = this.firstFrameState();
-    if (st) this.preloadFrom(st.sceneId, st.stepId, st.stage, st.route);
+    if (st) this.preloadFrom(st.sceneId, st.stepId, st.stage, st);
     else this.preloadFrom(this.story.start, null, null, null);
   }
 
@@ -552,8 +578,10 @@ export class Game {
     if (cur?.step.t === 'choice') {
       // 선택지가 아직 그려지기 전(무대 그림을 기다리는 중·암전 연출 중): 진행 키와 숫자 키는 클릭처럼 기다림만 끝낸다
       // (requestAdvance → stage.hurry. 선택지에서는 대사를 넘기지 않는다. 숫자 키로 고르는 것은 선택지가 나타난 뒤)
+      // 번호는 '보이는 옵션'(visibleIf 가 참인 것)만 센다: 화면 버튼과 같은 순서·같은 수
+      const shown = this.shownOptions(cur.step);
       const n0 = Number(e.key);
-      const pickKey = Number.isInteger(n0) && n0 >= 1 && n0 <= cur.step.options.length;
+      const pickKey = Number.isInteger(n0) && n0 >= 1 && n0 <= shown.length;
       if (this.transitioning && (pickKey || e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight' || e.key === 'PageDown')) {
         e.preventDefault();
         this.audio.unlock();
@@ -562,10 +590,12 @@ export class Game {
       }
       // 선택지: 숫자 키로 고른다. 진행 키는 아무것도 하지 않고, 기록(L)·자동(A)·스킵(S 안내)은 그대로 쓴다
       const n = Number(e.key);
-      if (Number.isInteger(n) && n >= 1 && n <= cur.step.options.length) {
+      if (Number.isInteger(n) && n >= 1 && n <= shown.length) {
         e.preventDefault();
         const btn = this.choicesEl.querySelectorAll<HTMLButtonElement>('.choice')[n - 1];
-        if (btn) this.pickChoice(cur.step.options[n - 1].id, btn, eventTime(e));
+        // 화면 버튼이 가리키는 옵션을 고른다(버튼 목록과 보이는 옵션은 같은 것이지만, 다르면 버튼 쪽이 플레이어가 본 것)
+        const id = btn?.dataset.option ?? shown[n - 1].id;
+        if (btn) this.pickChoice(id, btn, eventTime(e));
         return;
       }
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowRight' || e.key === 'PageDown') {
@@ -678,7 +708,8 @@ export class Game {
     const cur = this.current;
     const state = this.state;
     if (!cur || !state || cur.step.t !== 'choice') return;
-    const option = cur.step.options.find((o) => o.id === optionId);
+    // 보이지 않는 옵션(visibleIf 거짓)은 고를 수 없다(실행기 choose 도 null 을 돌려준다)
+    const option = visibleOptions(state, cur.step).find((o) => o.id === optionId);
     if (!option) return;
     this.choiceLocked = true;
     this.choicesEl.classList.add('locked');
@@ -793,7 +824,7 @@ export class Game {
     // 지금 위치에서 가까운 그림부터 미리 불러오기 대기열을 다시 세운다(스텝마다: 곧 볼 CG·배경이 먼저. 몇 줄 안의 그림은 해독까지).
     // 무대 그림을 기다린 뒤에 세운다: 새로 해독할 그림이 이 줄의 무대 그림 해독과 겹치면 무대 쪽 해독이 함께 늦어진다
     // (Chromium 은 같은 때 요청된 해독을 한꺼번에 끝낸다)
-    this.preloadFrom(state.sceneId, state.stepId, state.stage, state.route);
+    this.preloadFrom(state.sceneId, state.stepId, state.stage, state);
     // 지금 무대에 떠 있는 CG 는 본 것으로 기록한다(추억 앨범). cg 이벤트(applyVisual)·불러오기 직후·
     // '장면 처음부터' 복구(장면 진입 무대에 이미 CG 가 있던 경우)·건너뛰기 중 모두 여기서 한 번 더 확인된다
     if (state.stage.cg) this.markCg(state.stage.cg);
@@ -806,6 +837,8 @@ export class Game {
         const info = this.speaker(step);
         const text = this.t(step.text);
         this.stage.setSpeaker(info.char);
+        // 익명 이름표(문자 메시지 '… · 문자' 는 제외)로 말하는 인물은 그림의 읽기 이름도 그 이름표로
+        if (info.char) this.stage.setCharLabel(info.char, step.label && !step.label.includes(' · ') ? info.name : null);
         pushLog(state, { id: step.id, name: info.name, text, kind: info.mono ? 'mono' : 'say' });
         this.autosave();
         // 그림을 기다리는 동안 건너뛰기를 켰을 수도 있어 지금 값을 본다
@@ -834,9 +867,14 @@ export class Game {
         this.setSkip(false, true);
         this.choiceLocked = false;
         this.stage.setSpeaker(null);
+        const shown = visibleOptions(state, step);
+        if (!shown.length) {
+          this.storyFailure(new StoryError(`선택지 ${step.id} 에 보이는 옵션이 없습니다`));
+          break;
+        }
         if (step.prompt) this.textbox.showStatic(null, '', this.t(step.prompt), true);
         this.autosave();
-        this.renderChoices(step.options.map((o) => ({ id: o.id, text: this.t(o.text) })));
+        this.renderChoices(shown.map((o) => ({ id: o.id, text: this.t(o.text) })));
         break;
       }
       case 'ending': {
@@ -1513,7 +1551,7 @@ export class Game {
       out.text = this.t(st.text);
       out.name = this.speaker(st).name ?? '';
     } else if (st.t === 'choice') {
-      out.text = (st.prompt ? this.t(st.prompt) : '') + st.options.map((o) => this.t(o.text)).join('');
+      out.text = (st.prompt ? this.t(st.prompt) : '') + this.shownOptions(st).map((o) => this.t(o.text)).join('');
     }
     return out;
   }
@@ -1567,7 +1605,8 @@ export class Game {
         out.name += this.speaker(st).name ?? '';
         break;
       } else if (st.t === 'choice') {
-        out.text += (st.prompt ? this.t(st.prompt) : '') + st.options.map((o) => this.t(o.text)).join('');
+        const shown = state ? visibleOptions(state, st) : visibleOptions(newGameState(this.story), st);
+        out.text += (st.prompt ? this.t(st.prompt) : '') + shown.map((o) => this.t(o.text)).join('');
         break;
       } else if (st.t === 'card' || st.t === 'ending' || st.t === 'jump' || st.t === 'routeBranch') break;
     }
@@ -1586,8 +1625,9 @@ export class Game {
     const autoDate = hasAuto ? this.autoDate() : '';
     // 같은 탭에서는 이 탭에만 있는 최신 진행을 이어 간다(BrowserStore.get 이 메모리 값을 먼저 본다). 그 사실을 작게 표시
     const autoTabOnly = hasAuto && !this.saves.slotPersisted('auto');
-    const album = this.hasAlbum() ? { seen: this.albumSeenCount(), total: this.c.cgCatalog!.length } : null;
-    const endings = Object.values(this.story.endings).map((e) => ({
+    const album = this.hasAlbum() ? this.albumCount() : null;
+    // 엔딩 배지: 기본 히로인 엔딩은 늘, 히든 히로인 엔딩은 도달한 뒤에만(reveal.ts)
+    const endings = titleEndings(Object.values(this.story.endings), reached).map((e) => ({
       id: e.id,
       heroine: e.heroine,
       name: this.c.heroineNames[e.heroine],
@@ -1748,7 +1788,7 @@ export class Game {
     const stage = state?.stage;
     const bg = stage?.bg ?? 'black';
     const date = state ? this.dateOf(state) : null;
-    const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${this.c.heroineNames[def.heroine]}와 함께`;
+    const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${withJosa(this.c.heroineNames[def.heroine], '와')} 함께`;
     const scr = buildEnding({
       id,
       heroine: def.heroine,
@@ -1758,10 +1798,11 @@ export class Game {
       bgColor: this.c.bgColor(bg),
       photo: this.endingPhoto(def.heroine, stage),
       caption,
-      medals: HEROINES.map((h) => ({
+      // 메달: 기본 히로인 + 도달했거나 지금 엔딩인 히든 히로인(reveal.ts)
+      medals: medalHeroines(Object.values(this.story.endings), reached, def.heroine).map((h) => ({
         heroine: h,
         name: this.c.heroineNames[h],
-        reached: Object.values(this.story.endings).some((e) => e.heroine === h && reached.has(e.id)),
+        reached: h === def.heroine || Object.values(this.story.endings).some((e) => e.heroine === h && reached.has(e.id)),
       })),
       onTitle: () => this.showTitle(),
     });
@@ -2048,7 +2089,11 @@ export class Game {
       case 'log':
         return buildLog({
           entries: this.state?.log ?? [],
-          speakerOf: (name) => Object.entries(this.c.speakerNames).find(([, v]) => v === name)?.[0] ?? null,
+          // 이름표 → 화자 id(이름 색). 문자 메시지 줄('아카네 · 문자')도 그 인물 색. 익명 라벨('여학생' 등)은 모르는 화자(npc 색)
+          speakerOf: (name) =>
+            Object.entries(this.c.speakerNames).find(([, v]) => v === name)?.[0] ??
+            Object.entries(this.c.speakerNames).find(([, v]) => name.startsWith(`${v} · `))?.[0] ??
+            null,
         });
       case 'album':
         return this.renderAlbum();
@@ -2073,9 +2118,18 @@ export class Game {
     if (known) this.saves.markCg(id);
   }
 
-  /** 모은 추억 수(목록에 있는 CG 만 센다) */
-  private albumSeenCount(): number {
-    return (this.c.cgCatalog ?? []).filter((e) => this.saves.hasSeenCg(e.id)).length;
+  /** 엔딩에 도달한 히로인(히든 히로인 공개 판정) */
+  private reachedHeroineList(): HeroineId[] {
+    return reachedHeroines(Object.values(this.story.endings), this.saves.endingsReached());
+  }
+
+  /**
+   * 타이틀 [추억 앨범] 옆 모은 수 / 총 장수. 앨범 화면과 같은 모델(albumModel)로 센다: 목록에 있는 CG 만,
+   * 아직 보지 않은 hidden CG 는 총 장수에도 넣지 않는다
+   */
+  private albumCount(): { seen: number; total: number } {
+    const m = albumModel(this.c.cgCatalog ?? [], this.saves.cgsSeenList(), this.reachedHeroineList());
+    return { seen: m.seen, total: m.total };
   }
 
   private renderAlbum(): SheetView {
@@ -2084,6 +2138,7 @@ export class Game {
     const view: AlbumView = buildAlbum({
       catalog: this.c.cgCatalog ?? [],
       seen: this.saves.cgsSeenList(),
+      reached: this.reachedHeroineList(),
       heroineName: (h) => this.c.heroineNames[h],
       thumbUrl: (id) => this.c.cgThumbUrl?.(id) ?? null,
       view: (order, start) => this.openViewer(order, start, view),
@@ -2395,28 +2450,39 @@ export class Game {
   // =========================================================================
 
   /**
+   * 이번 플레이에서 해금된 히든 히로인의 전용 그림(스프라이트·전용 배경)을 게임 전체 그림 대기열(나머지) 뒤에 더한다.
+   * 게임 전체 그림을 미리 받는 환경(데이터 절약·Apple 터치 기기가 아님)에서만. 해금 전에는 넣지 않는다(타이틀 포함)
+   */
+  private queueHiddenImages(known: KnownState | null) {
+    if (!known || !this.c.hiddenImageUrls || !this.preloadStarted) return;
+    if (prefersDataSaving() || this.renderMode === 'apple-touch') return;
+    this.unlockFlagMap ??= unlockFlags(this.story);
+    for (const h of HIDDEN_HEROINES) {
+      if (this.hiddenQueued.has(h) || !heroineUnlocked(this.unlockFlagMap, known, h)) continue;
+      this.hiddenQueued.add(h);
+      this.preloader.add(this.c.hiddenImageUrls(h));
+    }
+  }
+
+  /**
    * 지금 위치(sceneId·stepId 다음 스텝부터, 무대 stage)에서 지금 장면 끝 + 바로 다음 장면까지의 그림을
    * '지금 위치에서의 거리 - 종류별 당김(PRELOAD_LEAD)' 순으로 줄 세워 미리 불러오기 대기열에 넣는다.
    * 단 PRELOAD_DECODE_STEPS 안에서 처음 쓰는 그림은 당김과 상관없이 맨 앞이고(받은 뒤 해독까지 해 둔다),
    * 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다.
    * PRELOAD_NEAR_STEPS 안의 그림은 가까운 묶음(받는 동안 다른 그림은 새로 시작하지 않음), 나머지는 곧 쓸 그림.
-   * stepId 가 null 이면 장면 처음부터(빈 무대).
+   * stepId 가 null 이면 장면 처음부터(빈 무대). known: 지금 상태(조건·해금·루트·보이는 옵션 판정. 없으면 새 게임과 같이 본다).
+   * 이번 플레이에서 해금되지 않은 히든 히로인의 그림은 받지 않는다(sceneImages 가 해금 판정을 지금 상태로 한다).
    */
-  private preloadFrom(sceneId: string, stepId: string | null, stage: StageState | null, route: string | null) {
+  private preloadFrom(sceneId: string, stepId: string | null, stage: StageState | null, known: KnownState | null) {
+    this.queueHiddenImages(known);
     const r: PreloadResolver = {
       bgUrl: (id) => this.c.bgUrl(id),
       spriteUrl: (char, s) => this.c.spriteUrl(char, s.outfit, s.hair, s.expr),
       cgUrl: (id) => this.c.cgUrl?.(id) ?? null,
     };
     try {
-      const loc = stepId ? findStep(this.story, sceneId, stepId) : null;
-      // 지금 스텝의 그림은 무대가 직접 받고 있으므로 다음 스텝부터. 지금 선택지가 떠 있으면 그 뒤는 갈래를 모른다
-      const atChoice = !!loc && loc.scene.steps[loc.index]?.t === 'choice';
-      const cur = sceneImages(this.story, sceneId, stage, r, route, loc ? loc.index + 1 : 0, atChoice);
-      const items: PreloadItem[] = [...cur.items];
-      for (const next of cur.next) {
-        for (const it of sceneImages(this.story, next, cur.end, r, route).items) items.push({ ...it, at: it.at + cur.steps });
-      }
+      // 지금 장면 나머지 + 바로 다음 장면(지금 상태로 갈래·해금·루트를 판정. 선택지가 떠 있으면 보이는 옵션마다)
+      const items: PreloadItem[] = nearbyImages(this.story, sceneId, stepId, stage, known, r);
       const rank = new Map<string, number>();
       /** 처음 쓰이는 곳까지의 거리(당김 없이) */
       const dist = new Map<string, number>();
@@ -2458,10 +2524,16 @@ export class Game {
     return resolveText(s, this.c.vars);
   }
 
+  /** 지금 상태에서 화면에 보이는 옵션(visibleIf 가 참인 것, 원래 순서). 상태가 없으면 없음 */
+  private shownOptions(step: ChoiceStep): ChoiceOption[] {
+    return this.state ? visibleOptions(this.state, step) : [];
+  }
+
   private speaker(step: SayStep): { name: string | null; who: string; mono: boolean; char: CharId | null } {
     if (step.who === null) return { name: null, who: '', mono: true, char: null };
     const name = step.label ? this.t(step.label) : this.c.speakerNames[step.who] ?? step.who;
-    const char = step.who === 'osana' || step.who === 'tenko' ? step.who : null;
+    // 화자가 히로인(HEROINES)이면 무대의 그 인물을 밝게(라벨로 이름을 가린 익명 대사·문자 줄도 같은 인물)
+    const char = isHeroineId(step.who) ? step.who : null;
     return { name, who: step.who, mono: false, char };
   }
 

@@ -59,6 +59,9 @@ export const BACKGROUNDS: Record<BgId, ImageAsset> = {
   festival_street: { src: `${BG}/festival_street.webp`, thumb: `${BG}/thumb/festival_street.webp`, placeholder: false, desc: '여름 축제 노점 거리(밤, 제등)', tone: 'night' },
   riverbank_night: { src: `${BG}/riverbank_night.webp`, thumb: `${BG}/thumb/riverbank_night.webp`, placeholder: false, desc: '불꽃놀이를 보는 강변 둑(밤)', tone: 'night' },
   shrine_night: { src: `${BG}/shrine_night.webp`, thumb: `${BG}/thumb/shrine_night.webp`, placeholder: false, desc: '불꽃놀이가 보이는 신사 언덕(밤)', tone: 'night' },
+  // 코하루 루트 인계 패키지의 배경(원본·썸네일 모두 받은 그대로. 썸네일은 bg-thumbs.py 가 덮어쓰지 않는다)
+  kh_stationery: { src: `${BG}/kh_stationery.webp`, thumb: `${BG}/thumb/kh_stationery.webp`, placeholder: false, desc: '상점가 문구점 앞(민트색 차양, 유리 미닫이문, 나무 견본 테이블)', tone: 'day' },
+  kh_lantern_lane: { src: `${BG}/kh_lantern_lane.webp`, thumb: `${BG}/thumb/kh_lantern_lane.webp`, placeholder: false, desc: '축제 거리 끝 마지막 등롱길(밤)', tone: 'night' },
   black: { color: '#08070c', placeholder: false, desc: '검은 화면(파일 없음)' },
 };
 
@@ -100,6 +103,19 @@ export const SPRITE_SETS: Record<CharId, SpriteSet> = {
     ],
     expressions: EXPRS,
     aspect: 800 / 1200,
+  },
+  // 히든 히로인. 인계 패키지의 1200x1800 투명 WebP 를 그대로 쓴다(세 의상 모두 손 인사 기본 자세)
+  koharu: {
+    dir: 'assets/char/koharu',
+    ext: 'webp',
+    placeholder: false,
+    looks: [
+      { outfit: 'uniform', hair: 'default', desc: '교복(흰 블라우스·버건디 리본·잿빛 청보라 카디건·남색 플리츠스커트), 허리까지 푼 은백색 머리+관자놀이 땋은 한 가닥' },
+      { outfit: 'casual', hair: 'default', desc: '사복(둥근 흰 칼라의 세이지색 반팔 블라우스, 크림색 A라인 미디스커트, 탄색 크로스백), 같은 머리' },
+      { outfit: 'yukata', hair: 'default', desc: '유카타(살구색 바탕 아이보리 바람개비 무늬, 짙은 청록색 오비), 같은 머리' },
+    ],
+    expressions: EXPRS,
+    aspect: 1200 / 1800,
   },
 };
 

@@ -834,6 +834,14 @@ export class StageView {
     for (const [c, img] of this.chars) img.classList.toggle('dim', multi && char !== null && c !== char);
   }
 
+  /**
+   * 무대 인물의 스크린리더 이름을 바꾼다. 이름을 밝히기 전 익명 이름표('여학생')로 말하는 동안
+   * 그림의 aria-label 이 실제 이름을 먼저 읽어 주지 않게 한다(label 이 null 이면 원래 이름).
+   */
+  setCharLabel(char: CharId, label: string | null): void {
+    this.chars.get(char)?.setAttribute('aria-label', label ?? this.resolver.charLabel(char));
+  }
+
   renderSnapshot(stage: StageState): void {
     this.gen++;
     this.setBgInstant(stage.bg);

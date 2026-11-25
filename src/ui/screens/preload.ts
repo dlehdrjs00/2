@@ -17,12 +17,16 @@
  *   30장 뒤에도 유지). 해독 캐시는 크기 상한이 있어(그림 한 장 해독본 약 8MB) 가까운 묶음 전부가 아니라 몇 줄 안의 그림만
  *   해독한다(먼저 해독한 급한 그림이 나중 그림에 밀려 지워지지 않게). 해독은 한 번에 하나씩.
  *   해독한 Image 는 최근 것 몇 개만 붙잡아 둔다(메모리 캐시에서 빠져 무대가 다시 받지 않게).
- * - 장면 그림은 대본(배경·등장·표정 변화·CG)을 앞에서부터 훑어 계산한다. 조건 분기(when/if 스텝)는 따로 가르지 않고
- *   다음 줄로 넘어가므로 조건이 거짓인 갈래(그대로 이어지는 쪽)를 따라간다(지금 대본의 when 갈래에는 새 그림이 없다).
- *   아직 고르지 않은 선택지가 앞에 없으면 같은 장면 안의 goto(앞으로 가는 것)를 따라가, 고른 갈래 뒤에 놓인 다른 갈래의
- *   그림(가지 않을 갈래의 CG 등)을 받지 않는다. 같은 장면 안에서 선택지 뒤의 그림은 어느 갈래에서 쓰일지 모르므로 branch 로 표시한다.
+ * - 장면 그림은 대본(배경·등장·표정 변화·CG)을 실행 순서대로 훑어 계산한다(sceneImages). 지금 상태(known: 점수·플래그·
+ *   선택 기록·루트)의 복사본으로 실행기와 같은 규칙을 따라간다: goto·if(when) 를 따르고, 해금 판정(unlock)·루트 결정
+ *   (decideRoute)·루트 분기(routeBranch)도 지금 상태로 판정한다. 아직 고르지 않은 선택지에서는 '보이는 옵션'(visibleIf)마다
+ *   갈래를 나눠 각 갈래를 끝까지 따라가고, 그 뒤의 그림은 어느 갈래에서 쓰일지 모르므로 branch 로 표시한다.
+ *   아직 고르지 않은 선택지 뒤의 해금 판정은 '해금 안 됨'으로 본다(그 갈래의 점수를 미리 셈하지 않는다). 그래서 해금되지 않은
+ *   플레이에서는 히든 히로인 전용 그림(스프라이트·CG·배경)을 미리 받지 않고, 해금된 뒤에는 다음 장면 그림을 평소대로 받는다.
  */
-import type { CharId, CharState, StageState, Story } from '../../engine/types';
+import type { CharId, CharState, GameState, HeroineId, StageState, Step, Story } from '../../engine/types';
+import { BASE_HEROINES, HEROINES, isHeroineId } from '../../engine/types';
+import { applyUnlock, evalCond, initialStage, routeCandidates, routeFor, visibleOptions } from '../../engine/runner';
 
 export interface PreloadResolver {
   bgUrl(id: string): string | null;
@@ -394,14 +398,79 @@ export class ImagePreloader {
   }
 }
 
+/** 미리 불러오기가 갈래를 판단할 때 쓰는 지금 상태(GameState 의 일부) */
+export type KnownState = Pick<GameState, 'points' | 'flags' | 'choices' | 'route'> & Partial<Pick<GameState, 'lastHeroine'>>;
+
+/** 이야기의 해금 판정(unlock) 스텝: 히든 히로인 → 해금 플래그 이름 */
+export function unlockFlags(story: Story): Map<HeroineId, string> {
+  const out = new Map<HeroineId, string>();
+  for (const scene of Object.values(story.scenes)) {
+    for (const st of scene.steps) if (st.t === 'unlock' && !out.has(st.heroine)) out.set(st.heroine, st.flag);
+  }
+  return out;
+}
+
+/** 이번 플레이에서 그 히로인이 해금됐는지(해금 플래그가 true 이거나 그 루트로 확정됨) */
+export function heroineUnlocked(flags: ReadonlyMap<HeroineId, string>, state: KnownState | null, h: HeroineId): boolean {
+  if (!state) return false;
+  if (state.route === h) return true;
+  const f = flags.get(h);
+  return f !== undefined && state.flags[f] === true;
+}
+
+/** 실행기 함수(evalCond·applyUnlock·routeFor)에 넘길 수 있는 상태 복사본(무대·기록은 비어 있음) */
+function simState(k: KnownState | null): GameState {
+  const points = Object.fromEntries(HEROINES.map((h) => [h, k?.points?.[h] ?? 0])) as Record<HeroineId, number>;
+  return {
+    sceneId: '',
+    stepId: '',
+    points,
+    lastHeroine: k?.lastHeroine ?? null,
+    route: k?.route ?? null,
+    choices: { ...(k?.choices ?? {}) },
+    flags: { ...(k?.flags ?? {}) },
+    stage: initialStage(),
+    log: [],
+    endedWith: null,
+  };
+}
+
+function cloneSim(s: GameState): GameState {
+  return { ...s, points: { ...s.points }, choices: { ...s.choices }, flags: { ...s.flags } };
+}
+
+/** 한 갈래를 따라가는 훑기 위치 */
+interface Cursor {
+  i: number;
+  at: number;
+  /** 아직 고르지 않은 선택지를 지났다 */
+  branching: boolean;
+  bg: StageState['bg'];
+  chars: Partial<Record<CharId, CharState>>;
+  order: CharId[];
+  sim: GameState;
+  /** 이 갈래에서 지난 스텝 위치(같은 곳을 두 번 지나면 멈춘다: 뒤로 가는 goto 고리) */
+  seen: Set<number>;
+  /** 이 갈래가 지난 decideRoute 중 루트를 정하지 못한 것(아직 고르지 않은 선택지 뒤): 그 후보만 routeBranch 에서 따라간다 */
+  candidates: HeroineId[] | null;
+}
+
+/** 한 장면에서 나눌 갈래 수 상한(선택지가 여러 개 겹쳐도 미리 불러오기 계산이 커지지 않게) */
+const MAX_CURSORS = 48;
+/** 한 장면 훑기의 스텝 처리 상한 */
+const MAX_WALK = 20000;
+
 /**
  * 장면 하나가 쓰는 그림 주소와 이어지는 장면 id.
- * start: 훑기 시작할 때의 무대(모르면 빈 무대). route: 확정 루트(분기 장면을 하나로 좁힌다).
+ * start: 훑기 시작할 때의 무대(모르면 빈 무대). route: 확정 루트(known 이 없을 때 분기 장면을 하나로 좁힌다).
  * from: 훑기 시작할 스텝 위치(지금 위치 다음부터 볼 때. start 는 그 위치의 무대).
- * pastChoice: 훑기 시작하는 곳이 아직 고르지 않은 선택지 바로 뒤다(지금 선택지가 떠 있음).
- * items 의 at 은 from 부터 그 그림이 처음 쓰이는 곳까지의 블로킹 스텝 수, steps 는 장면 끝까지의 블로킹 스텝 수.
- * 고르지 않은 선택지를 지나기 전에는 goto 를 따라간다(앞으로 가는 것만. 고른 갈래에서 다른 갈래를 건너뛴다).
- * 선택지를 지난 뒤에는 모든 갈래를 차례로 훑는다(goto 를 따르지 않음).
+ * pastChoice: 훑기 시작하는 곳이 아직 고르지 않은 선택지 바로 뒤다(지금 선택지가 떠 있음). 바로 앞 스텝이 그 선택지면
+ *   보이는 옵션마다 갈래를 나눠 그 옵션이 가는 곳부터 따라간다.
+ * known: 지금 상태(점수·플래그·선택 기록·루트). 조건·해금·루트 판정에 쓴다. 없으면 빈 상태(해금 안 됨, 고른 것 없음)로 본다.
+ * items 의 at 은 from 부터 그 그림이 처음 쓰이는 곳까지의 블로킹 스텝 수(갈래 중 가장 가까운 것), steps 는 장면 끝까지의
+ * 블로킹 스텝 수(가장 짧은 갈래). next 의 장면마다 그 장면이 시작될 때의 무대(nextStage), 거기까지의 블로킹 스텝 수(nextAt),
+ * 그때의 상태(nextKnown: 이 장면에서 판정한 해금·루트·갈래 선택이 반영됨. 다음 장면을 훑을 때 known 으로 넘긴다),
+ * 아직 고르지 않은 선택지를 지나서만 닿는지(nextBranch).
  */
 export function sceneImages(
   story: Story,
@@ -411,85 +480,270 @@ export function sceneImages(
   route: string | null,
   from = 0,
   pastChoice = false,
-): { urls: string[]; items: PreloadItem[]; next: string[]; end: StageState; steps: number } {
+  known: KnownState | null = null,
+): {
+  urls: string[];
+  items: PreloadItem[];
+  next: string[];
+  end: StageState;
+  steps: number;
+  nextStage: Record<string, StageState>;
+  nextAt: Record<string, number>;
+  nextKnown: Record<string, KnownState>;
+  nextBranch: Record<string, boolean>;
+} {
   const scene = story.scenes[sceneId];
-  const chars: Partial<Record<CharId, CharState>> = {};
-  for (const [c, s] of Object.entries(start?.chars ?? {})) if (s) chars[c as CharId] = { ...s };
-  const end: StageState = { bg: start?.bg ?? 'black', chars, order: [...(start?.order ?? [])], bgm: start?.bgm ?? null };
+  const chars0: Partial<Record<CharId, CharState>> = {};
+  for (const [c, s] of Object.entries(start?.chars ?? {})) if (s) chars0[c as CharId] = { ...s };
+  const startStage: StageState = { bg: start?.bg ?? 'black', chars: chars0, order: [...(start?.order ?? [])], bgm: start?.bgm ?? null };
   const urls: string[] = [];
-  const items: PreloadItem[] = [];
+  const byUrl = new Map<string, PreloadItem>();
   const next: string[] = [];
-  let at = 0;
-  let branching = pastChoice;
-  if (!scene) return { urls, items, next, end, steps: 0 };
-  const push = (u: string | null, kind: PreloadKind) => {
-    if (u && !urls.includes(u)) {
-      urls.push(u);
-      items.push(branching ? { url: u, kind, at, branch: true } : { url: u, kind, at });
+  const nextStage: Record<string, StageState> = {};
+  const nextAt: Record<string, number> = {};
+  const nextKnown: Record<string, KnownState> = {};
+  /** 그 장면에 아직 고르지 않은 선택지를 지나서만 닿는다 */
+  const nextBranch: Record<string, boolean> = {};
+  let end: StageState | null = null;
+  let steps: number | null = null;
+  const out = () => ({
+    urls,
+    items: urls.map((u) => byUrl.get(u)!),
+    next,
+    end: end ?? startStage,
+    steps: steps ?? 0,
+    nextStage,
+    nextAt,
+    nextKnown,
+    nextBranch,
+  });
+  if (!scene) return out();
+
+  const effRoute = (c: Cursor): string | null => c.sim.route ?? (known ? null : route);
+  const stageOf = (c: Cursor): StageState => {
+    const ch: Partial<Record<CharId, CharState>> = {};
+    for (const [k, v] of Object.entries(c.chars)) if (v) ch[k as CharId] = { ...v };
+    return { bg: c.bg, chars: ch, order: [...c.order], bgm: start?.bgm ?? null };
+  };
+  const finish = (c: Cursor) => {
+    if (steps === null || c.at < steps) {
+      steps = c.at;
+      end = stageOf(c);
     }
   };
-  for (let i = Math.max(0, from); i < scene.steps.length; i++) {
-    const step = scene.steps[i];
-    switch (step.t) {
-      case 'bg':
-        end.bg = step.bg;
-        push(r.bgUrl(step.bg), 'bg');
-        break;
-      case 'show': {
-        const prev = chars[step.char];
-        const s: CharState = {
-          pos: step.pos ?? prev?.pos ?? 'center',
-          expr: step.expr ?? prev?.expr ?? 'neutral',
-          outfit: step.outfit ?? prev?.outfit ?? 'uniform',
-          hair: step.hair ?? prev?.hair ?? 'default',
-        };
-        chars[step.char] = s;
-        if (!end.order.includes(step.char)) end.order.push(step.char);
-        push(r.spriteUrl(step.char, s), 'sprite');
-        break;
-      }
-      case 'say': {
-        if (step.expr && (step.who === 'osana' || step.who === 'tenko')) {
-          const s = chars[step.who];
-          if (s) {
-            s.expr = step.expr;
-            push(r.spriteUrl(step.who, s), 'sprite');
-          }
-        }
-        at++;
-        break;
-      }
-      case 'card':
-        at++;
-        break;
-      case 'choice':
-        at++;
-        branching = true;
-        break;
-      case 'goto': {
-        if (branching) break;
-        const j = scene.steps.findIndex((s) => s.id === step.to);
-        if (j > i) i = j - 1;
-        break;
-      }
-      case 'hide': {
-        const targets = step.char === 'all' ? [...end.order] : [step.char];
-        for (const c of targets) delete chars[c];
-        end.order = end.order.filter((c) => !targets.includes(c));
-        break;
-      }
-      case 'cg':
-        if (step.cg) push(r.cgUrl?.(step.cg) ?? null, 'cg');
-        break;
-      case 'jump':
-        if (!next.includes(step.scene)) next.push(step.scene);
-        break;
-      case 'routeBranch':
-        for (const [h, id] of Object.entries(step.scenes)) if ((!route || route === h) && !next.includes(id)) next.push(id);
-        break;
-      default:
-        break;
+  const goNext = (c: Cursor, id: string) => {
+    if (!story.scenes[id]) return;
+    if (!next.includes(id)) next.push(id);
+    nextBranch[id] = (nextBranch[id] ?? true) && c.branching;
+    if (nextAt[id] === undefined || c.at < nextAt[id]) {
+      nextAt[id] = c.at;
+      nextStage[id] = stageOf(c);
+      nextKnown[id] = cloneSim(c.sim);
     }
+    finish(c);
+  };
+  const push = (c: Cursor, u: string | null, kind: PreloadKind) => {
+    if (!u) return;
+    const old = byUrl.get(u);
+    if (!old) {
+      urls.push(u);
+      byUrl.set(u, c.branching ? { url: u, kind, at: c.at, branch: true } : { url: u, kind, at: c.at });
+      return;
+    }
+    // 같은 그림이 여러 갈래에 있으면 가장 가까운 곳, 한 갈래라도 선택과 상관없이 쓰이면 branch 가 아니다
+    const at = Math.min(old.at, c.at);
+    const branch = !!old.branch && c.branching;
+    byUrl.set(u, branch ? { url: u, kind: old.kind, at, branch: true } : { url: u, kind: old.kind, at });
+  };
+  const indexOf = (id: string) => scene.steps.findIndex((s) => s.id === id);
+
+  const base: Cursor = {
+    i: Math.max(0, from),
+    at: 0,
+    branching: pastChoice,
+    bg: startStage.bg,
+    chars: chars0,
+    order: [...startStage.order],
+    sim: simState(known ?? (route && isHeroineId(route) ? { points: {} as Record<HeroineId, number>, flags: {}, choices: {}, route } : null)),
+    seen: new Set(),
+    candidates: null,
+  };
+  const work: Cursor[] = [];
+  let made = 1;
+  const fork = (c: Cursor, i: number, patch: (sim: GameState) => void): Cursor => {
+    const ch: Partial<Record<CharId, CharState>> = {};
+    for (const [k, v] of Object.entries(c.chars)) if (v) ch[k as CharId] = { ...v };
+    const sim = cloneSim(c.sim);
+    patch(sim);
+    made++;
+    return { i, at: c.at, branching: true, bg: c.bg, chars: ch, order: [...c.order], sim, seen: new Set(c.seen), candidates: c.candidates };
+  };
+  /** 선택지 step(위치 ci)에서 보이는 옵션마다 갈래를 나눈다 */
+  const branchAt = (c: Cursor, ci: number) => {
+    const step = scene.steps[ci];
+    if (step.t !== 'choice') return;
+    const opts = visibleOptions(c.sim, step);
+    for (const o of opts) {
+      if (made >= MAX_CURSORS) break;
+      const to = o.goto ? indexOf(o.goto) : ci + 1;
+      if (to < 0) continue;
+      work.push(
+        fork(c, to, (sim) => {
+          sim.choices[step.id] = o.id;
+        }),
+      );
+    }
+  };
+  const before = base.i - 1;
+  if (pastChoice && before >= 0 && scene.steps[before]?.t === 'choice') branchAt(base, before);
+  else work.push(base);
+
+  let budget = MAX_WALK;
+  while (work.length) {
+    const c = work.pop()!;
+    let done = false;
+    while (!done && c.i < scene.steps.length && budget-- > 0) {
+      if (c.seen.has(c.i)) {
+        done = true;
+        break;
+      }
+      c.seen.add(c.i);
+      const step: Step = scene.steps[c.i];
+      let to = c.i + 1;
+      switch (step.t) {
+        case 'bg':
+          c.bg = step.bg;
+          push(c, r.bgUrl(step.bg), 'bg');
+          break;
+        case 'show': {
+          const prev = c.chars[step.char];
+          const s: CharState = {
+            pos: step.pos ?? prev?.pos ?? 'center',
+            expr: step.expr ?? prev?.expr ?? 'neutral',
+            outfit: step.outfit ?? prev?.outfit ?? 'uniform',
+            hair: step.hair ?? prev?.hair ?? 'default',
+          };
+          c.chars[step.char] = s;
+          if (!c.order.includes(step.char)) c.order.push(step.char);
+          push(c, r.spriteUrl(step.char, s), 'sprite');
+          break;
+        }
+        case 'say': {
+          // 무대에 있는 히로인의 표정 변경(실행기 settle 과 같은 규칙: 화자가 히로인이고 무대에 있을 때만)
+          if (step.expr && isHeroineId(step.who)) {
+            const s = c.chars[step.who];
+            if (s) {
+              s.expr = step.expr;
+              push(c, r.spriteUrl(step.who, s), 'sprite');
+            }
+          }
+          c.at++;
+          break;
+        }
+        case 'card':
+          c.at++;
+          break;
+        case 'choice':
+          c.at++;
+          branchAt(c, c.i);
+          done = true;
+          break;
+        case 'hide': {
+          const targets = step.char === 'all' ? [...c.order] : [step.char];
+          for (const t of targets) delete c.chars[t];
+          c.order = c.order.filter((t) => !targets.includes(t));
+          break;
+        }
+        case 'cg':
+          if (step.cg) push(c, r.cgUrl?.(step.cg) ?? null, 'cg');
+          break;
+        case 'set':
+          for (const e of step.effects) {
+            if ('flag' in e) c.sim.flags[e.flag] = e.value;
+            else if (c.sim.route === null) c.sim.points[e.add] = (c.sim.points[e.add] ?? 0) + e.n;
+          }
+          break;
+        case 'if':
+          if (evalCond(c.sim, step.cond)) {
+            const j = indexOf(step.goto);
+            if (j >= 0) to = j;
+          }
+          break;
+        case 'goto': {
+          const j = indexOf(step.to);
+          if (j >= 0) to = j;
+          break;
+        }
+        case 'unlock':
+          // 아직 고르지 않은 선택지 뒤라면 그 갈래 점수를 모르므로 '해금 안 됨'(히든 그림을 미리 받지 않는다)
+          if (c.branching) {
+            if (typeof c.sim.flags[step.flag] !== 'boolean') c.sim.flags[step.flag] = false;
+          } else applyUnlock(c.sim, step);
+          break;
+        case 'decideRoute':
+          if (c.sim.route === null) {
+            if (!c.branching) c.sim.route = routeFor(story, c.sim, step);
+            else c.candidates = routeCandidates(c.sim, step);
+          }
+          break;
+        case 'routeBranch': {
+          const rt = effRoute(c);
+          for (const [h, id] of Object.entries(step.scenes) as Array<[HeroineId, string]>) {
+            if (rt ? rt === h : c.candidates ? c.candidates.includes(h) : BASE_HEROINES.includes(h) || heroineFlagOn(story, c.sim, h)) goNext(c, id);
+          }
+          done = true;
+          break;
+        }
+        case 'jump':
+          goNext(c, step.scene);
+          done = true;
+          break;
+        case 'ending':
+          finish(c);
+          done = true;
+          break;
+        default:
+          break;
+      }
+      if (!done) c.i = to;
+    }
+    if (!done) finish(c);
   }
-  return { urls, items, next, end, steps: at };
+  return out();
+}
+
+/** routeBranch 를 decideRoute 없이 만났을 때: 히든 히로인은 해금 플래그가 true 일 때만 따라간다 */
+function heroineFlagOn(story: Story, sim: GameState, h: HeroineId): boolean {
+  return heroineUnlocked(unlockFlags(story), sim, h);
+}
+
+/**
+ * 지금 위치에서 가까운 그림: 지금 장면의 나머지(stepId 다음 스텝부터) + 바로 이어지는 장면들(game.ts preloadFrom).
+ * 지금 스텝이 선택지면 그 뒤는 보이는 옵션마다 갈래를 나눠 훑는다. 다음 장면은 이 장면을 지나온 상태(해금·루트 판정과
+ * 갈래 선택이 반영된 것)로 훑고, at 은 지금 위치에서의 블로킹 스텝 수로 맞춘다. stepId 가 null 이면 장면 처음부터.
+ * known: 지금 상태(없으면 새 게임과 같이: 해금 안 됨·고른 것 없음).
+ */
+export function nearbyImages(
+  story: Story,
+  sceneId: string,
+  stepId: string | null,
+  stage: StageState | null,
+  known: KnownState | null,
+  r: PreloadResolver,
+): PreloadItem[] {
+  const scene = story.scenes[sceneId];
+  const index = stepId && scene ? scene.steps.findIndex((s) => s.id === stepId) : -1;
+  // 지금 스텝의 그림은 무대가 직접 받고 있으므로 다음 스텝부터. 지금 선택지가 떠 있으면 그 뒤는 보이는 옵션마다 갈래를 나눈다
+  const atChoice = index >= 0 && scene!.steps[index].t === 'choice';
+  const route = known?.route ?? null;
+  const cur = sceneImages(story, sceneId, stage, r, route, index >= 0 ? index + 1 : 0, atChoice, known);
+  const items: PreloadItem[] = [...cur.items];
+  for (const next of cur.next) {
+    const from = cur.nextKnown[next] ?? known;
+    const branch = cur.nextBranch[next] ?? false;
+    const nextItems = sceneImages(story, next, cur.nextStage[next] ?? cur.end, r, from?.route ?? route, 0, branch, from).items;
+    const offset = cur.nextAt[next] ?? cur.steps;
+    for (const it of nextItems) items.push({ ...it, at: it.at + offset });
+  }
+  return items;
 }

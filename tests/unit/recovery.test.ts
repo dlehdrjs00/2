@@ -8,7 +8,7 @@ import { advance, choose, LOG_LIMIT, newGameState, pushLog, settle, type StepRes
 import { GAME_KEY, SAVE_SCHEMA, SaveManager } from '../../src/engine/save';
 import { MemoryStore } from '../../src/engine/storage';
 import type { GameState, Story } from '../../src/engine/types';
-import { permissiveAssets, recoveryStory } from './fixtures';
+import { branchStory, permissiveAssets, recoveryStory } from './fixtures';
 
 const summary = { sceneTitle: 't', text: 'x', route: null };
 
@@ -45,7 +45,7 @@ const outcome = (s: GameState) => ({
 function brokenSave(story: Story) {
   const state = newGameState(story);
   drive(story, state, { 'r1.ch': 'a', 'r2.ch': 'a' }, 'r2.a20');
-  expect(state.points).toEqual({ osana: 2, tenko: 0 });
+  expect(state.points).toEqual({ osana: 2, tenko: 0, koharu: 0 });
   return { ...state, stepId: 'r2.a20-removed' };
 }
 
@@ -63,7 +63,7 @@ describe("'장면 처음부터' 복구", () => {
     const st = r.data.state;
     expect(st.sceneId).toBe('r2');
     expect(st.stepId).toBe(story.scenes.r2.steps[0].id);
-    expect(st.points).toEqual({ osana: 1, tenko: 0 });
+    expect(st.points).toEqual({ osana: 1, tenko: 0, koharu: 0 });
     expect(st.lastHeroine).toBe('osana');
     expect(st.choices).toEqual({ 'r1.ch': 'a' });
     expect(st.flags).toEqual({});
@@ -114,7 +114,7 @@ describe("'장면 처음부터' 복구", () => {
     if (r.status !== 'recoverable') return;
     expect(r.data.schema).toBe(SAVE_SCHEMA);
     const st = r.data.state;
-    expect(st.points).toEqual({ osana: 1, tenko: 0 });
+    expect(st.points).toEqual({ osana: 1, tenko: 0, koharu: 0 });
     expect(st.choices).toEqual({ 'r1.ch': 'a' });
     // 캐릭터는 아직 등장 전일 수 있어 비우고, 배경·음악만 남긴다
     expect(st.stage).toEqual({ bg: 'classroom_day', bgm: 'daily', chars: {}, order: [], cg: null });
@@ -123,7 +123,7 @@ describe("'장면 처음부터' 복구", () => {
     expect(st.sceneEntry?.sceneId).toBe('r2');
 
     drive(story, st, { 'r2.ch': 'b' });
-    expect(st.points).toEqual({ osana: 1, tenko: 1 });
+    expect(st.points).toEqual({ osana: 1, tenko: 1, koharu: 0 });
     expect(st.route).toBe('tenko');
   });
 
@@ -142,7 +142,7 @@ describe("'장면 처음부터' 복구", () => {
     expect(r.data.schema).toBe(SAVE_SCHEMA);
     expect(r.data.state.sceneEntry).toBeUndefined();
     drive(story, r.data.state, { 'r2.ch': 'a' }, 'r2.010');
-    expect(r.data.state.sceneEntry).toMatchObject({ sceneId: 'r2', points: { osana: 1, tenko: 0 }, logLength: 3 });
+    expect(r.data.state.sceneEntry).toMatchObject({ sceneId: 'r2', points: { osana: 1, tenko: 0, koharu: 0 }, logLength: 3 });
   });
 
   it('대화 기록이 LOG_LIMIT 로 잘려도 장면 진입 위치가 같은 항목을 가리켜, 복구 때 이 장면 기록만 잘린다', () => {
@@ -178,5 +178,51 @@ describe("'장면 처음부터' 복구", () => {
     if (r.status !== 'recoverable') return;
     expect(r.data.state.stage.bg).toBe('black');
     expect(r.notes).toEqual(['배경 정보를 복원하지 못했어요']);
+  });
+});
+
+describe("'장면 처음부터' 복구와 해금 판정", () => {
+  /** 초반 a,b,b,a(5/4 해금)로 c7.j20 까지 진행한 저장에서 그 문장이 사라진 상황 */
+  function metSave(story: Story) {
+    const state = newGameState(story);
+    drive(story, state, { 'c3.ch': 'a', 'c4.ch': 'b', 'c6.ch': 'b', 'c7.ch': 'a' }, 'c7.j20');
+    expect(state.flags['kh.met']).toBe(true);
+    expect(state.points).toEqual({ osana: 5, tenko: 4, koharu: 4.5 });
+    return { ...state, stepId: 'c7.j20-removed' };
+  }
+
+  it('장면 진입 스냅샷으로 해금 전 상태로 돌아가고, 다시 진행하면 해금·시작 점수가 한 번만 들어간다', () => {
+    const story = branchStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    sm.write('1', metSave(story), summary);
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    const st = r.data.state;
+    expect(st.sceneId).toBe('c7_friday');
+    expect(st.points).toEqual({ osana: 2, tenko: 4, koharu: 0 });
+    expect('kh.met' in st.flags).toBe(false);
+    drive(story, st, { 'c7.ch': 'a' }, 'c8.ch');
+    expect(st.flags['kh.met']).toBe(true);
+    expect(st.points).toEqual({ osana: 5, tenko: 4, koharu: 4.5 });
+  });
+
+  it('스냅샷이 없어도(손상) 이 장면의 선택 점수와 해금 판정을 함께 되돌린다', () => {
+    const story = branchStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    const broken: Partial<GameState> = metSave(story);
+    delete broken.sceneEntry;
+    sm.write('1', broken as GameState, summary);
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    const st = r.data.state;
+    expect(st.points).toEqual({ osana: 2, tenko: 4, koharu: 0 });
+    expect('kh.met' in st.flags).toBe(false);
+    expect(st.choices).toEqual({ 'c3.ch': 'a', 'c4.ch': 'b', 'c6.ch': 'b' });
+    // 이번엔 b(+3) → 2/7 미해금
+    drive(story, st, { 'c7.ch': 'b' }, 'c8.ch');
+    expect(st.flags['kh.met']).toBe(false);
+    expect(st.points).toEqual({ osana: 2, tenko: 7, koharu: 0 });
   });
 });

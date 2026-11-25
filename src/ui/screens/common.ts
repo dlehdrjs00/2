@@ -1,10 +1,15 @@
 /** 화면들이 함께 쓰는 값·도우미 */
 import type { HeroineId } from '../../engine/types';
 
-/** 히로인 → 인물 색 토큰(docs/UI_DESIGN.md 3장). -1 은 흰 글자를 올리는 바탕, -2 는 밝은 쪽 */
+/**
+ * 히로인 → 인물 색 토큰(docs/UI_DESIGN.md 3장). -1 은 흰 글자를 올리는 바탕, -2 는 밝은 쪽.
+ * 코하루는 민트(유카타 오비의 청록)를 바탕, 살구(유카타 바탕색)는 장식 토큰 --koharu-apricot 으로 둔다
+ * (살구를 바탕으로 쓰면 아카네의 붉은 바탕과 배지·메달에서 구별되지 않는다).
+ */
 export const HEROINE_COLORS: Record<HeroineId, { c1: string; c2: string }> = {
   osana: { c1: 'var(--akane-1)', c2: 'var(--akane-2)' },
   tenko: { c1: 'var(--hina-1)', c2: 'var(--hina-2)' },
+  koharu: { c1: 'var(--koharu-1)', c2: 'var(--koharu-2)' },
 };
 
 export function prefersReducedMotion(): boolean {

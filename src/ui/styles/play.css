@@ -490,6 +490,10 @@
   --name-1: var(--hina-1);
   --name-2: var(--hina-2);
 }
+.textbox[data-who='koharu'] {
+  --name-1: var(--koharu-1);
+  --name-2: var(--koharu-2);
+}
 .textbox[data-who='me'] {
   --name-1: var(--me-1);
   --name-2: var(--me-2);
@@ -526,6 +530,10 @@
 }
 .textbox.mono::after {
   background: linear-gradient(90deg, var(--sky-400), rgba(162, 212, 246, 0.6) 40%, rgba(255, 255, 255, 0) 100%);
+}
+/* 코하루: 위 테두리 띠만 민트 → 살구(유카타의 오비·바탕색). 글자가 올라가지 않는 장식이라 대비 규칙과 상관없다 */
+.textbox[data-who='koharu']::after {
+  background: linear-gradient(90deg, var(--koharu-1), var(--koharu-apricot) 30%, rgba(255, 255, 255, 0) 100%);
 }
 
 /* 이름표: 대사창 위 테두리 왼쪽에 붙은 탭. 오른쪽 빠른 메뉴 탭(--qbw)과 겹치지 않게 최대 폭을 줄인다 */

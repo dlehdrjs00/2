@@ -11,7 +11,7 @@ function toNextChoice(story = miniStory(), state = newGameState(story)) {
   return { story, state, r };
 }
 
-describe('루트 결정 규칙', () => {
+describe('루트 결정 규칙(예전 2인 호환 함수 decideRoute)', () => {
   it('점수가 높은 히로인으로 간다', () => {
     expect(decideRoute({ osana: 3, tenko: 1 }, 'tenko')).toBe('osana');
     expect(decideRoute({ osana: 1, tenko: 3 }, 'osana')).toBe('tenko');
@@ -77,7 +77,7 @@ describe('실행기 입력 방어', () => {
     expect(first?.step.id).toBe('c1.a10');
     const second = choose(story, state, 'b');
     expect(second).toBeNull();
-    expect(state.points).toEqual({ osana: 1, tenko: 0 });
+    expect(state.points).toEqual({ osana: 1, tenko: 0, koharu: 0 });
     expect(state.choices['c1.ch']).toBe('a');
   });
 
@@ -109,9 +109,25 @@ describe('스토리 검증기', () => {
   it('합성 스토리는 통과하고 모든 조합이 기대 루트로 끝난다', () => {
     const rep = validateStory(miniStory(), permissiveAssets, {});
     expect(rep.errors).toEqual([]);
-    // 16개 조합 중 소꿉 8개(루트 안 선택지 2개씩) + 전학 8개
-    expect(rep.paths.length).toBe(8 * 2 + 8);
+    // 미해금(첫 선택 a·b): 16개 조합 중 소꿉 8개(루트 안 선택지 2개씩) + 전학 8개 = 24
+    // 해금(첫 선택 c): 2×2×3 = 12개 조합 중 소꿉 5개(×2) + 전학 5개 + 후배 2개 = 17
+    expect(rep.paths.length).toBe(8 * 2 + 8 + (5 * 2 + 5 + 2));
     for (const p of rep.paths) expect(p.route).toBe(p.expectedRoute);
+    expect(rep.branching).toMatchObject({
+      paths: 41,
+      earlyCombos: 3,
+      unlockedEarlyCombos: 1,
+      endings: { osana: 26, tenko: 13, koharu: 2 },
+      ties: 11,
+      tiesUnlocked: 2,
+      tiesLocked: 9,
+      earlyCombosReachingAll: 3,
+    });
+    // 해금된 경로만 met, 해금 판정은 첫 선택 직후
+    for (const p of rep.paths) {
+      expect(p.met).toBe(p.choices[0].option === 'c');
+      expect(p.gateAt).toBe(1);
+    }
   });
 
   it('없는 장면·라벨·엔딩 연결을 잡아낸다', () => {

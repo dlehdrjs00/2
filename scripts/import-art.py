@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
 """
-최종 캐릭터 스프라이트·이벤트 CG 가져오기 (Python 3 + Pillow + numpy 만 사용)
+최종 캐릭터 스프라이트·이벤트 CG·배경 가져오기 (Python 3 + Pillow + numpy 만 사용)
 
     python3 scripts/import-art.py                 # art-inbox/ → public/assets/
     python3 scripts/import-art.py --src 다른폴더 --only char
     python3 scripts/import-art.py --dry-run       # 입력만 검사하고 쓰지 않음
 
 입력 규칙 (기본 src = 저장소의 art-inbox/, .gitignore 대상)
-    <src>/char/{osana,tenko}/{outfit}_{hair}_{expr}.(png|webp|jpg)
+    <src>/char/{osana,tenko,koharu}/{outfit}_{hair}_{expr}.(png|webp|jpg)   outfit: uniform·casual·yukata
     <src>/cg/{id}.(png|webp|jpg)
+    <src>/bg/{id}.(png|webp|jpg)                 id 는 src/story/assets.ts BACKGROUNDS 의 키(예: kh_stationery)
   · 같은 이름에 확장자가 여럿이면 png > webp > jpg 순으로 하나만 쓴다.
-  · 예전 안내(docs/ART_PROMPTS.md)의 <src>/{osana,tenko}/ 배치도 char/ 가 없을 때 받아 준다.
+  · 예전 안내(docs/ART_PROMPTS.md)의 <src>/{osana,tenko,koharu}/ 배치도 char/ 가 없을 때 받아 준다.
+  · 코하루 편집용 ZIP(art-inbox/ 의 같은 이름 PNG)도 이 규칙 그대로 받는다. 단, 게임에는 인계 패키지의 WebP 를
+    그대로 넣었으므로(다시 인코딩하지 않음) 편집 원본을 고친 경우에만 돌린다. 돌리면 그 파일들의 바이트가 바뀐다.
 
 출력
-    public/assets/char/{osana,tenko}/{outfit}_{hair}_{expr}.webp   1200x1800 RGBA (--sprite-height, 작업은 1600x2400)
-    public/assets/cg/{id}.webp                                     1920x1080
-    public/assets/cg/thumb/{id}.webp                               480x270
+    public/assets/char/{osana,tenko,koharu}/{outfit}_{hair}_{expr}.webp   1200x1800 RGBA (--sprite-height, 작업은 1600x2400)
+    public/assets/cg/{id}.webp                                            1920x1080
+    public/assets/cg/thumb/{id}.webp                                      480x270
+    public/assets/bg/{id}.webp                                            1920x1080 (품질 82, --bg-quality)
+    public/assets/bg/thumb/{id}.webp                                      480x270 (scripts/bg-thumbs.py 와 같은 방식)
+  · 새 배경 id 는 먼저 src/engine/types.ts BgId 와 src/story/assets.ts BACKGROUNDS(desc·tone·thumb)에 등록한다.
+    여기서는 BG_IDS 에 없는 id 도 변환은 하되 경고한다.
 
 스프라이트 처리
   1. 알파 확인. 불투명(배경 있음)이면 네 가장자리에서 시작하는 flood-fill 로 '가장자리와 이어진
@@ -61,14 +68,21 @@ DEFAULT_SRC = ROOT / 'art-inbox'
 DEFAULT_OUT = ROOT / 'public' / 'assets'
 
 # src/engine/types.ts · src/story/assets.ts · src/story/cg.ts 와 맞출 것(검사·경고용)
-CHARS = ('osana', 'tenko')
+CHARS = ('osana', 'tenko', 'koharu')
 EXPRS = ('neutral', 'smile', 'fluster', 'shy', 'pout', 'sad')
 KNOWN_LOOKS = {
     'osana': {('uniform', 'default'), ('yukata', 'default')},
     'tenko': {('uniform', 'default'), ('uniform', 'ponytail'), ('yukata', 'ponytail')},
+    'koharu': {('uniform', 'default'), ('casual', 'default'), ('yukata', 'default')},
 }
 CG_IDS = ('kv', 'rain_osana', 'rain_tenko', 'door_osana', 'ramune_osana', 'fireworks_osana', 'homeward_osana',
-          'cats_tenko', 'bench_tenko', 'selfie_tenko', 'shutter_tenko', 'polaroid_tenko')
+          'cats_tenko', 'bench_tenko', 'selfie_tenko', 'shutter_tenko', 'polaroid_tenko',
+          'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date')
+# 파일이 있는 배경(BACKGROUNDS 중 color 만 쓰는 black 제외)
+BG_IDS = ('title', 'road_morning', 'road_evening', 'road_rain', 'road_night', 'classroom_day', 'classroom_evening',
+          'hallway', 'shoe_lockers', 'shoe_lockers_rain', 'courtyard', 'shotengai', 'riverbank_evening',
+          'station_morning', 'apartment_door', 'shrine_steps', 'festival_street', 'riverbank_night', 'shrine_night',
+          'kh_stationery', 'kh_lantern_lane')
 
 EXT_RANK = {'.png': 0, '.webp': 1, '.jpg': 2, '.jpeg': 2}
 ALLOWED_FORMATS = {'PNG', 'WEBP', 'JPEG'}
@@ -605,8 +619,10 @@ def process_sprite_group(char, outfit, hair, items, out_dir, opts):
     return res
 
 
-def process_cg(cg_id, path, out_dir, opts):
-    res = {'kind': 'cg', 'group': f'cg/{cg_id}', 'files': [], 'warn': [], 'info': [], 'errors': []}
+def process_cg(cg_id, path, out_dir, opts, kind='cg'):
+    """이벤트 CG(kind='cg') 또는 배경(kind='bg'): 1920x1080 RGB 로 맞추고 480x270 썸네일을 함께 쓴다.
+    배경 썸네일은 scripts/bg-thumbs.py 와 같은 크기·방식(LANCZOS, reducing_gap 3, 품질 80, method 6)."""
+    res = {'kind': kind, 'group': f'{kind}/{cg_id}', 'files': [], 'warn': [], 'info': [], 'errors': []}
     try:
         im = load_image(path)
     except ArtError as e:
@@ -631,9 +647,9 @@ def process_cg(cg_id, path, out_dir, opts):
             res['warn'].append(f'{path.name}: 원본이 작아 {s:.2f}배 확대됨')
         im = im.resize((CG_W, CG_H), Image.LANCZOS, box=box)
     thumb = im.resize((THUMB_W, THUMB_H), Image.LANCZOS, reducing_gap=3.0)
-    dest = out_dir / 'cg' / f'{cg_id}.webp'
-    tdest = out_dir / 'cg' / 'thumb' / f'{cg_id}.webp'
-    size = save_webp(im, dest, opts.dry_run, quality=opts.cg_quality)
+    dest = out_dir / kind / f'{cg_id}.webp'
+    tdest = out_dir / kind / 'thumb' / f'{cg_id}.webp'
+    size = save_webp(im, dest, opts.dry_run, quality=opts.bg_quality if kind == 'bg' else opts.cg_quality)
     tsize = save_webp(thumb, tdest, opts.dry_run, quality=opts.thumb_quality)
     res['files'].append({'dest': dest, 'size': size, 'src': path.name, 'dim': (CG_W, CG_H)})
     res['files'].append({'dest': tdest, 'size': tsize, 'src': path.name, 'dim': (THUMB_W, THUMB_H), 'thumb': True})
@@ -691,6 +707,18 @@ def collect(src: Path, only: str | None):
             missing = [c for c in CG_IDS if c not in files]
             if missing:
                 notes.append(f'cg: 입력 없음 {" ".join(missing)}')
+    if only in (None, 'bg'):
+        # 배경은 일부만 고쳐 넣는 일이 보통이라 빠진 id 는 알리지 않는다
+        files, n = pick_files(src / 'bg')
+        notes += [f'bg/{m}' for m in n]
+        for stem, p in sorted(files.items()):
+            if not CG_RE.match(stem):
+                notes.append(f'bg/{p.name}: 이름 규칙([a-z0-9_]) 위반 → 건너뜀')
+                continue
+            if stem not in BG_IDS:
+                notes.append(f'bg/{p.name}: src/story/assets.ts BACKGROUNDS 에 없는 id(변환은 함, '
+                             'types.ts BgId·assets.ts 에 등록 필요)')
+            jobs.append(('bg', (stem, p)))
     return jobs, notes
 
 
@@ -698,7 +726,7 @@ def run_job(job, out_dir, opts):
     kind, args = job
     if kind == 'char':
         return process_sprite_group(*args, out_dir, opts)
-    return process_cg(*args, out_dir, opts)
+    return process_cg(*args, out_dir, opts, kind=kind)
 
 
 def kb(n: int) -> str:
@@ -706,16 +734,17 @@ def kb(n: int) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description='최종 스프라이트·CG 를 게임용 WebP 로 변환')
+    ap = argparse.ArgumentParser(description='최종 스프라이트·CG·배경을 게임용 WebP 로 변환')
     ap.add_argument('--src', type=Path, default=DEFAULT_SRC, help=f'입력 폴더(기본 {DEFAULT_SRC})')
     ap.add_argument('--out', type=Path, default=DEFAULT_OUT, help=f'출력 폴더(기본 {DEFAULT_OUT})')
-    ap.add_argument('--only', choices=('char', 'cg'), help='한 종류만 처리')
+    ap.add_argument('--only', choices=('char', 'cg', 'bg'), help='한 종류만 처리')
     ap.add_argument('--quality', type=int, default=SPRITE_QUALITY, help=f'스프라이트 WebP 품질(기본 {SPRITE_QUALITY})')
     ap.add_argument('--sprite-height', type=int, default=SPRITE_OUT_H,
                     help=f'스프라이트 저장 세로 크기(기본 {SPRITE_OUT_H}, 가로는 2:3). {SPRITE_H} 이면 줄이지 않음')
     ap.add_argument('--alpha-quality', type=int, default=90, help='스프라이트 알파 품질(기본 90)')
     ap.add_argument('--cg-quality', type=int, default=85, help='CG WebP 품질(기본 85)')
-    ap.add_argument('--thumb-quality', type=int, default=80, help='CG 썸네일 품질(기본 80)')
+    ap.add_argument('--bg-quality', type=int, default=82, help='배경 WebP 품질(기본 82)')
+    ap.add_argument('--thumb-quality', type=int, default=80, help='CG·배경 썸네일 품질(기본 80)')
     ap.add_argument('--no-defringe', dest='defringe', action='store_false', help='가장자리 번짐 보정 끄기')
     ap.add_argument('--defringe-strength', type=float, default=1.0, help='번짐 보정 세기 0~1(기본 1)')
     ap.add_argument('-j', '--jobs', type=int, default=min(4, os.cpu_count() or 1), help='병렬 작업 수')
@@ -754,7 +783,7 @@ def main(argv=None) -> int:
         except ValueError:
             return str(p)
 
-    tot = {'char': [0, 0], 'cg': [0, 0], 'thumb': [0, 0]}
+    tot = {'char': [0, 0], 'cg': [0, 0], 'bg': [0, 0], 'thumb': [0, 0]}
     warns, errors = [], []
     for r in results:
         print(f'\n[{r["group"]}]')
@@ -778,7 +807,8 @@ def main(argv=None) -> int:
     print('\n요약')
     print(f'  스프라이트 {tot["char"][0]}장 {kb(tot["char"][1])}'
           + (f' (평균 {kb(tot["char"][1] // tot["char"][0])})' if tot['char'][0] else ''))
-    print(f'  CG {tot["cg"][0]}장 {kb(tot["cg"][1])}, 썸네일 {tot["thumb"][0]}장 {kb(tot["thumb"][1])}')
+    print(f'  CG {tot["cg"][0]}장 {kb(tot["cg"][1])}, 배경 {tot["bg"][0]}장 {kb(tot["bg"][1])}, '
+          f'썸네일 {tot["thumb"][0]}장 {kb(tot["thumb"][1])}')
     print(f'  총 {sum(v[0] for v in tot.values())}개 파일 {kb(sum(v[1] for v in tot.values()))}  ({time.time() - t0:.1f}s)')
     for n in notes:
         print(f'  ! {n}')

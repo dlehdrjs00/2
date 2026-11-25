@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORY } from '../../src/story';
 import { manifestChecker } from '../../src/story/checker';
-import { advance, choose, LOG_LIMIT, newGameState, pushLog, settle, type StepResult } from '../../src/engine/runner';
+import { advance, choose, LOG_LIMIT, newGameState, pushLog, settle, visibleOptions, type StepResult } from '../../src/engine/runner';
 import { SaveManager } from '../../src/engine/save';
 import { BrowserStore, MemoryStore, openStore, ROOM_PROBE_KEY } from '../../src/engine/storage';
 import type { GameState } from '../../src/engine/types';
@@ -111,14 +111,14 @@ class Play {
       this.tracker.cleared();
     }
   }
-  /** 한 줄(선택지는 첫 선택지). 엔딩이면 false */
+  /** 한 줄(선택지는 보이는 첫 선택지). 엔딩이면 false */
   step(): boolean {
     const step = this.res.step;
     if (step.t === 'ending') return false;
     this.line++;
     this.clock += 3000; // 한 줄 3초
     if (step.t === 'choice') {
-      const opt = step.options[0];
+      const opt = visibleOptions(this.state, step)[0];
       pushLog(this.state, { id: `${step.id}:${opt.id}`, name: null, text: `▶ ${opt.text}`, kind: 'choice' });
       this.res = choose(STORY, this.state, opt.id)!;
     } else {
@@ -143,6 +143,8 @@ function open(quota?: number) {
 }
 
 describe('실제 용량 초과(늘어나는 만큼만 따짐)에서 자동 저장 알림', () => {
+  /** 아래 경우들에서 꽉 찬 뒤 저장에 성공(low-space)한 줄이 있었는지. 대본 문장 길이에 따라 경우마다 다르다 */
+  const sawLowSpace: number[] = [];
   it.each([130, 150, 160, 170, 190])('기록이 상한에 닿은 뒤(%i줄째) 저장 공간이 꽉 차면 60줄 동안 경고 한 번뿐이고, 상태는 실제 저장 여부를 따른다', (at) => {
     const { ls, saves } = open();
     const p = new Play(saves);
@@ -162,8 +164,14 @@ describe('실제 용량 초과(늘어나는 만큼만 따짐)에서 자동 저�
     // 첫 실패 뒤로는 회복으로 보지 않는다(여유 공간이 없음): 성공한 줄은 low-space(저장됨·공간 부족), 실패한 줄은 tab-only
     // (첫 실패 전에는 자동 저장이 짧아지는 동안 덮어쓰기가 성공해 ok 로 남을 수 있다)
     expect(during.slice(first)).not.toContain('ok');
-    expect(during.slice(first)).toContain('low-space');
+    expect(during.slice(first).every((st) => st === 'tab-only' || st === 'low-space')).toBe(true);
+    if (during.slice(first).includes('low-space')) sawLowSpace.push(at);
     expect(p.mismatches).toEqual([]);
+  });
+
+  it('위 경우 중 적어도 하나는 꽉 찬 뒤에도 더 짧은 자동 저장이 성공해 low-space 를 거친다(성공·실패가 오가는 구간 확인)', () => {
+    // 성공한 줄의 상태는 위에서 mismatches 로 확인했다. 여기서는 그 경로가 실제로 실행됐는지만 본다
+    expect(sawLowSpace.length).toBeGreaterThan(0);
   });
 
   it('남은 공간이 조금(200자) 있어도 알림은 2번 이하', () => {

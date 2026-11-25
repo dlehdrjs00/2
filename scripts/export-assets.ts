@@ -4,10 +4,10 @@
  *
  * 출력 내용
  *  - 분류별 상태(최종/임시), 파일 존재 여부·크기·픽셀 크기(WebP 머리글·SVG viewBox 를 직접 읽음)
- *  - 이벤트 CG: src/story/cg.ts 의 CGS·KEY_VISUAL·ENDING_CG 와, 대본에서 CG 가 떠 있는 구간
+ *  - 이벤트 CG: src/story/cg.ts 의 CGS·KEY_VISUAL·ENDING_CG 와, 대본에서 CG 가 떠 있는 구간(hidden CG 는 '관람 전 숨김' 표기)
  *  - 스프라이트 배치 규칙: src/ui/styles/play.css·screens.css·src/ui/stage.ts 의 실제 값을 생성할 때 읽고,
  *    대사창이 덮는 범위는 src/ui/layout.ts computeLayout 으로 계산한다(문서에 숫자를 손으로 적지 않는다)
- *  - 배경 사양(최종 WebP·썸네일·레터박스), 남은 임시 에셋(음악·효과음)의 교체 사양, scripts/import-art.py 사용법(옵션은 스크립트에서 읽음)
+ *  - 배경 사양(최종 WebP·썸네일·레터박스), 남은 임시 에셋(음악·효과음)의 교체 사양, scripts/import-art.py 사용법(옵션·허용 목록은 스크립트에서 읽음)
  *  - 문장 속 상태(최종/임시)는 매니페스트의 placeholder 로 정한다(배경을 다시 임시로 돌리면 문장도 따라 바뀐다)
  */
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -20,13 +20,15 @@ import { STORY, SCENE_ORDER } from '../src/story';
 import { resolveText } from '../src/engine/text';
 import { computeLayout } from '../src/ui/layout';
 import { TEXT_SCALES } from '../src/engine/settings';
-import type { CgId, Step } from '../src/engine/types';
+import type { CgId, HeroineId, Step } from '../src/engine/types';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out: string[] = [];
 const w = (s = '') => out.push(s);
 const t = (s: string) => resolveText(s, TEXT_VARS);
-const H = { osana: NAMES.osana.given, tenko: NAMES.tenko.given } as const;
+const H: Record<HeroineId, string> = { osana: NAMES.osana.given, tenko: NAMES.tenko.given, koharu: NAMES.koharu.given };
+/** 히로인 역할(문서 표기용) */
+const ROLE: Record<HeroineId, string> = { osana: '소꿉친구', tenko: '전학생', koharu: '히든 후배, 해금된 플레이에서만 등장' };
 const EXPR_KO: Record<string, string> = { neutral: '기본', smile: '웃음', fluster: '당황', shy: '부끄러움', pout: '삐짐', sad: '쓸쓸' };
 const TONE_KO: Record<string, string> = { day: '낮', evening: '노을', night: '밤' };
 const FINAL = '🟢 최종';
@@ -191,6 +193,8 @@ const SPRITE_OUT = (() => {
   return { w: Math.round((w * oh) / h), h: oh };
 })();
 const pyCgIds = [...(/CG_IDS\s*=\s*\(([^)]*)\)/s.exec(importPy)?.[1] ?? '').matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
+const pyBgIds = [...(/BG_IDS\s*=\s*\(([^)]*)\)/s.exec(importPy)?.[1] ?? '').matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
+const pyChars = [...(/^CHARS\s*=\s*\(([^)]*)\)/m.exec(importPy)?.[1] ?? '').matchAll(/'([a-z0-9_]+)'/g)].map((m) => m[1]);
 /** 호출 인자 문자열에서 키워드 인자 값(괄호 안 쉼표는 건너뜀) */
 function pyArg(args: string, key: string): string | null {
   const i = args.search(new RegExp(`\\b${key}=`));
@@ -328,11 +332,13 @@ const bgThumbs = bgEntries.map(([, a]) => a.thumb).filter((p): p is string => !!
 /** 배경 파일이 든 폴더(매니페스트의 src·thumb 경로에서) */
 const bgDirs = [...new Set([...bgEntries.map(([, a]) => a.src!), ...bgThumbs].map((p) => p.slice(0, p.lastIndexOf('/') + 1)))];
 const cgList = CG_ORDER.map((id) => CGS[id]);
+/** 관람 전에는 앨범 칸·제목·썸네일·총 장수에 나오지 않는 CG(cg.ts hidden) */
+const hiddenCgs = CG_ORDER.filter((id) => CGS[id].hidden);
 
 const rows = [
   {
     kind: '캐릭터 스프라이트',
-    count: `${spriteFiles.length}장 (${Object.entries(SPRITE_SETS).map(([c, s]) => `${H[c as 'osana' | 'tenko']} ${s.looks.length * s.expressions.length}`).join(' · ')})`,
+    count: `${spriteFiles.length}장 (${Object.entries(SPRITE_SETS).map(([c, s]) => `${H[c as HeroineId]} ${s.looks.length * s.expressions.length}`).join(' · ')})`,
     st: status(Object.values(SPRITE_SETS).map((s) => s.placeholder)),
     what: '사용자가 준 최종 일러스트 → WebP 변환',
     where: Object.values(SPRITE_SETS).map((s) => `\`public/${s.dir}/\``).join(' '),
@@ -340,7 +346,7 @@ const rows = [
   },
   {
     kind: '이벤트 CG',
-    count: `${cgList.length}장 + 썸네일 ${cgList.length}장`,
+    count: `${cgList.length}장 + 썸네일 ${cgList.length}장${hiddenCgs.length ? ` (그중 관람 전 숨김 ${hiddenCgs.length}장)` : ''}`,
     st: status(cgList.map((c) => c.placeholder)),
     what: '사용자가 준 최종 일러스트 → WebP 변환',
     where: '`public/assets/cg/`, `public/assets/cg/thumb/`',
@@ -409,6 +415,7 @@ for (const r of rows) w(`| ${r.kind} | ${r.count} | ${r.st} | ${r.what} | ${r.wh
 w();
 const allImages = [...spriteFiles, ...cgList.flatMap((c) => [c.src]), KEY_VISUAL.src, ...bgEntries.map(([, a]) => a.src!)];
 w(`- 인물·CG·키 비주얼은 **사용자가 준 최종 일러스트**를 \`scripts/import-art.py\` 로 변환해 넣은 것이다(원본은 \`art-inbox/\`, 저장소에 넣지 않음).`);
+w(`- ${H.koharu}(히든 히로인)의 스프라이트·이벤트 CG·배경 2장·썸네일은 **코하루 루트 인계 패키지의 WebP 를 그대로** 넣었다(다시 인코딩·리사이즈하지 않음, sha256 대조). 편집 원본을 고쳐 다시 넣을 때만 import-art 를 쓴다.`);
 {
   const temp = [
     ...(bgFinal ? [] : [['배경', '#배경--임시-svg']]),
@@ -434,7 +441,7 @@ w('   - 배경·음악·효과음: `src/story/assets.ts` 의 `BACKGROUNDS` / `BG
 w('     예: `classroom_day: { src: \'assets/bg/classroom_day.webp\', placeholder: false, desc: \'2학년 3반 교실(낮, 창가)\' },`');
 w('   - 캐릭터: `SPRITE_SETS.<캐릭터>.dir` 과 `ext`(파일명 규칙 `${outfit}_${hair}_${expr}.${ext}` 유지). 그림 자체를 바꿀 때는 아래 [그림 교체 파이프라인](#그림-교체-파이프라인-scriptsimport-artpy)을 쓴다.');
 w('   - 이벤트 CG·키 비주얼: `src/story/cg.ts`(경로는 `assets/cg/{id}.webp`, 썸네일 `assets/cg/thumb/{id}.webp` 고정).');
-w('   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 매니페스트의 `thumb` 경로와 맞출 것.');
+w('   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 빠졌거나 원본보다 오래된 것만 새로 만들고(`--force` 는 전부), 인계 패키지가 원본과 함께 준 썸네일(`kh_*`)은 원본이 그대로인 동안 덮어쓰지 않는다. 매니페스트의 `thumb` 경로와 맞출 것.');
 w('3. `npm run validate` — 매니페스트가 가리키는 파일(배경 썸네일 포함)이 없으면 오류로 알려 준다.');
 w('4. `npm run docs` — 이 문서와 대본 문서를 다시 만든다.');
 w('5. `npm run dev` 로 띄워 데스크톱·휴대폰 가로 화면에서 확인한다(주소 끝에 `?debug` 를 붙이면 콘솔에서 `window.__vn.info()` 로 상태 조회).');
@@ -484,9 +491,13 @@ w();
 w(`→ **얼굴과 표정이 읽혀야 하는 부분은 스프라이트 캔버스 위쪽 약 ${fx(Math.floor(toSpriteY(100 - worstDefault)))}% 안**(기본 글자, 가장 낮은 휴대폰 화면 기준)에 있어야 대사창·탭에 가리지 않는다. 글자 '더 크게'까지 고려하면 약 ${fx(Math.floor(toSpriteY(100 - worst)))}%.`);
 w();
 for (const [char, set] of Object.entries(SPRITE_SETS)) {
-  const who = char === 'osana' ? `${H.osana}(소꿉친구)` : `${H.tenko}(전학생)`;
+  const who = `${H[char as HeroineId]}(${ROLE[char as HeroineId]})`;
   w(`### ${who} — ${set.placeholder ? TEMP : FINAL} (\`public/${set.dir}/\`)`);
   w();
+  if (char === 'koharu') {
+    w(`- 인계 패키지의 투명 WebP ${set.looks.length * set.expressions.length}장을 그대로 쓴다. 세 의상 모두 손 인사가 기본 자세이고, 같은 의상 안에서는 얼굴만 다르다(알파 동일). 원본 비율 ${fx(set.aspect, 3)}(2:3).`);
+    w();
+  }
   w('| 의상/헤어 | 표정 | 파일 | 상태 | 픽셀 | 크기 |');
   w('|---|---|---|---|---|---|');
   for (const look of set.looks) {
@@ -506,6 +517,9 @@ w(`- 규격: **WebP ${pyConst('CG_W')}×${pyConst('CG_H')}(16:9, 배경 포함 �
 w(`- 표시: 대본의 \`cg(id)\` 명령. 무대 가득(\`background-size: cover\`) — 인물·햇살·빛망울 **앞**, 대사창 **뒤**. 그림을 해독한 뒤 ${DUR.cg ?? '?'}ms 크로스페이드.`);
 w('- 걷힘: `cg(null)` 또는 **`bg` 명령(배경 전환)이 오면 자동으로 걷힌다**(`src/engine/runner.ts`). 저장·불러오기 때 떠 있던 CG 도 복원된다(`state.stage.cg`).');
 w('- 한 번 본 CG 는 전역 기록(`src/engine/save.ts` GlobalRecord `cgs`, `markCg`)에 남아 타이틀의 추억 앨범에서 다시 볼 수 있다. 앨범 표시 순서는 아래 표 순서(`CG_ORDER`).');
+if (hiddenCgs.length) {
+  w(`- **🔒 관람 전 숨김**(\`cg.ts\` \`hidden: true\`, ${hiddenCgs.length}장: ${hiddenCgs.map((id) => `\`${id}\``).join(' ')}): 한 번이라도 본 뒤에만 앨범의 칸·제목·썸네일과 총 장수(\`n / 전체\`)에 들어간다. 보기 전에는 빈칸도 없고 타이틀 화면에서도 드러나지 않는다(히든 히로인을 미리 예고하지 않음). 루트가 \`공통\`인 숨김 CG 는 해금된 플레이의 공통 장면에서만 나온다.`);
+}
 w(`- 대사창이 아래쪽을 덮으므로(위 표: 기본 ${fx(Math.min(...VIEWPORTS.map(([, vw, vh]) => cover(vw, vh, 1).band)))}~${fx(worstDefault)}%) 얼굴·중요한 손짓은 화면 위쪽 약 ${fx(Math.floor(100 - worstDefault))}% 안에 두는 것이 좋다.`);
 w();
 w('| 순서 | id | 앨범 제목 | 루트 | 대본 위치(cg.ts desc) | 화면에 떠 있는 구간 | 파일 | 픽셀 | 크기 | 썸네일 |');
@@ -521,7 +535,7 @@ CG_ORDER.forEach((id, i) => {
         .join('<br>')
     : '⚠ 대본에서 쓰지 않음';
   const route = c.route ? `${H[c.route]}${uses.some((u) => STORY.scenes[u.scene].route === 'common') ? '(공통 선택)' : ''}` : '공통';
-  w(`| ${i + 1} | \`${id}\` | ${c.title} | ${route} | ${c.desc} | ${span} | \`${c.src.split('/').pop()}\` ${f.mark} | ${f.dim} | ${f.size} | ${th.mark} ${th.dim} ${th.size} |`);
+  w(`| ${i + 1} | \`${id}\` | ${c.title}${c.hidden ? ' 🔒 관람 전 숨김' : ''} | ${route} | ${c.desc} | ${span} | \`${c.src.split('/').pop()}\` ${f.mark} | ${f.dim} | ${f.size} | ${th.mark} ${th.dim} ${th.size} |`);
 });
 w();
 w('### 타이틀 키 비주얼');
@@ -539,7 +553,7 @@ w();
 w('엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG.');
 w();
 for (const [heroine, id] of Object.entries(ENDING_CG)) {
-  w(`- ${H[heroine as 'osana' | 'tenko']} 엔딩 → \`${id}\` 「${CGS[id].title}」 (${CGS[id].desc})`);
+  w(`- ${H[heroine as HeroineId]} 엔딩 → \`${id}\` 「${CGS[id].title}」 (${CGS[id].desc})${CGS[id].hidden ? ' · 🔒 관람 전 숨김' : ''}`);
 }
 w();
 
@@ -562,7 +576,7 @@ w('|---|---|');
 w('| 형식 | **WebP**(권장, 품질 80~85) 또는 JPEG. 투명 불필요 |');
 w('| 해상도 | **1920×1080(16:9)** 권장. 무대가 늘 16:9 라 그대로면 잘리지 않는다. 비율이 다르면 가운데 기준으로 잘린다(`background-size: cover`) |');
 w('| 용량 | 파일당 800KB 이하(표준 렌더링은 게임 전체 그림을 백그라운드로 미리 받으므로 휴대폰 데이터 고려) |');
-w('| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(`--check` 는 빠졌거나 오래된 것만 알림) |');
+w('| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(빠졌거나 오래된 것만 새로 만듦. 인계 패키지가 준 `kh_*` 썸네일은 원본이 그대로인 동안 덮어쓰지 않음. `--check` 는 쓰지 않고 빠짐·오래됨·크기만 알림) |');
 w(`| 구도 | 인물이 무대 폭 ${posLeft.left}·${posLeft.center}·${posLeft.right} 자리에 서고, 아래쪽 약 ${fx(Math.floor(Math.min(...VIEWPORTS.map(([, vw, vh]) => cover(vw, vh, 1).band))))}~${fx(Math.ceil(worstDefault))}%는 대사창·탭이 반투명하게 덮는다. 사람·글자 없는 빈 장소 그림 |`);
 w('| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별 |');
 w('| 레터박스 | 무대 밖 여백은 표준 렌더링에서는 같은 배경을 흐려 채운다(`.backdrop`). Apple 터치 기기는 흐림 대신 톤별(낮·노을·밤) 그라데이션, 암전은 그 색(`src/ui/styles/performance.css`). 따로 만들 그림 없음 |');
@@ -621,41 +635,56 @@ w();
 // ---- import-art ----
 w('## 그림 교체 파이프라인 (`scripts/import-art.py`)');
 w();
-w('캐릭터 스프라이트·이벤트 CG·키 비주얼을 다시 받았을 때 쓰는 변환 스크립트. 필요: Python 3 + Pillow + numpy.');
+w('캐릭터 스프라이트·이벤트 CG·키 비주얼·배경을 다시 받았을 때 쓰는 변환 스크립트. 필요: Python 3 + Pillow + numpy.');
 w();
 w('**입력**(기본 `art-inbox/` — `.gitignore` 대상이라 원본은 저장소에 들어가지 않는다)');
 w();
 w('```');
 w('art-inbox/char/osana/{outfit}_{hair}_{expr}.png    예: art-inbox/char/osana/uniform_default_smile.png');
 w('art-inbox/char/tenko/{outfit}_{hair}_{expr}.png    예: art-inbox/char/tenko/yukata_ponytail_shy.png');
-w('art-inbox/cg/{id}.png                              예: art-inbox/cg/rain_osana.png, art-inbox/cg/kv.png');
+w('art-inbox/char/koharu/{outfit}_{hair}_{expr}.png   예: art-inbox/char/koharu/casual_default_smile.png');
+w('art-inbox/cg/{id}.png                              예: art-inbox/cg/rain_osana.png, art-inbox/cg/kv.png, art-inbox/cg/kh_meet.png');
+w('art-inbox/bg/{id}.png                              예: art-inbox/bg/kh_stationery.png');
 w('```');
 w();
 w('- 확장자는 png·webp·jpg(jpeg). 같은 이름이 여럿이면 png > webp > jpg 순으로 하나만 쓴다.');
 w(`- 표정(expr): ${Object.keys(EXPR_KO).map((e) => `\`${e}\``).join(' ')}. 의상·헤어 조합은 \`src/story/assets.ts\` 의 \`looks\`.`);
+w(`- 캐릭터: ${pyChars.map((c) => `\`${c}\``).join(' ')}. 의상: ${[...new Set(Object.values(SPRITE_SETS).flatMap((s) => s.looks.map((l) => l.outfit)))].map((o) => `\`${o}\``).join(' ')}.`);
 w(`- CG id: ${pyCgIds.map((id) => `\`${id}\``).join(' ')} (\`kv\` = 타이틀 키 비주얼).`);
+w(`- 배경 id: ${pyBgIds.map((id) => `\`${id}\``).join(' ')}. 새 배경은 \`src/engine/types.ts\` \`BgId\` 와 \`src/story/assets.ts\` \`BACKGROUNDS\`(desc·tone·thumb)에 먼저 등록한다.`);
 {
   const want = ['kv', ...CG_ORDER].sort();
   const have = [...pyCgIds].sort();
   if (want.join() !== have.join()) {
     w(`- ⚠ import-art.py 의 CG_IDS 가 \`src/story/cg.ts\` 와 다르다: cg.ts 에만 있음 [${want.filter((x) => !have.includes(x)).join(', ')}], 스크립트에만 있음 [${have.filter((x) => !want.includes(x)).join(', ')}]`);
   }
+  const wantBg = bgEntries.map(([id]) => id).sort();
+  const haveBg = [...pyBgIds].sort();
+  if (wantBg.join() !== haveBg.join()) {
+    w(`- ⚠ import-art.py 의 BG_IDS 가 \`src/story/assets.ts\` BACKGROUNDS 와 다르다: assets.ts 에만 있음 [${wantBg.filter((x) => !haveBg.includes(x)).join(', ')}], 스크립트에만 있음 [${haveBg.filter((x) => !wantBg.includes(x)).join(', ')}]`);
+  }
+  const wantChars = Object.keys(SPRITE_SETS).sort();
+  if (wantChars.join() !== [...pyChars].sort().join()) {
+    w(`- ⚠ import-art.py 의 CHARS(${pyChars.join(', ')})가 \`src/story/assets.ts\` SPRITE_SETS(${wantChars.join(', ')})와 다르다`);
+  }
 }
-w('- 예전 안내대로 `art-inbox/{osana,tenko}/` 에 넣어도, `char/` 폴더가 없으면 그 폴더를 대신 읽는다(알림 표시).');
+w(`- 예전 안내대로 \`art-inbox/{${pyChars.join(',')}}/\` 에 넣어도, \`char/\` 폴더가 없으면 그 폴더를 대신 읽는다(알림 표시).`);
 w('- 원본은 신뢰하지 않는 데이터로 다룬다: PNG/WebP/JPEG 로만 열고, 심볼릭 링크는 읽지 않으며, 5천만 화소를 넘는 이미지는 거부한다.');
 w();
 w('**출력**');
 w();
 w('```');
-w(`public/assets/char/{osana,tenko}/{outfit}_{hair}_{expr}.webp   ${SPRITE_OUT.w}x${SPRITE_OUT.h} RGBA (작업 캔버스 ${pyConst('SPRITE_W')}x${pyConst('SPRITE_H')})`);
+w(`public/assets/char/{${pyChars.join(',')}}/{outfit}_{hair}_{expr}.webp   ${SPRITE_OUT.w}x${SPRITE_OUT.h} RGBA (작업 캔버스 ${pyConst('SPRITE_W')}x${pyConst('SPRITE_H')})`);
 w(`public/assets/cg/{id}.webp                                     ${pyConst('CG_W')}x${pyConst('CG_H')}`);
 w(`public/assets/cg/thumb/{id}.webp                               ${pyConst('THUMB_W')}x${pyConst('THUMB_H')}`);
+w(`public/assets/bg/{id}.webp                                     ${pyConst('CG_W')}x${pyConst('CG_H')}`);
+w(`public/assets/bg/thumb/{id}.webp                               ${pyConst('THUMB_W')}x${pyConst('THUMB_H')}`);
 w('```');
 w();
 w('**처리 내용**');
 w();
 w('- 스프라이트: ① 불투명 원본이면 가장자리와 이어진 단색 배경을 지운다(크로마키 초록 같은 채도 높은 색이면 팔·머리카락 사이의 닫힌 틈도 지우고, 흰색 등 무채색이면 닫힌 틈은 남기고 경고). ② 가장자리 번짐(halo) 색 보정(알파·실루엣은 그대로). ③ 1600×2400 이 아니면 묶음(같은 의상·헤어) 전체에 같은 변환으로 2:3 캔버스·머리 위 5%·가로 가운데에 맞춤. ④ 캔버스 전체를 같은 비율로 줄여(기본 세로 1800px, `--sprite-height`) WebP 저장. ⑤ 묶음 안 실루엣 bbox 가 다르면 경고(표정 교체 시 흔들림).');
-w('- CG: 투명 부분은 검은색 위에 합성, 16:9 가 아니면 가운데를 잘라 맞춤, 원본이 작아 확대되면 경고, 썸네일 함께 생성.');
+w('- CG·배경: 투명 부분은 검은색 위에 합성, 16:9 가 아니면 가운데를 잘라 맞춤, 원본이 작아 확대되면 경고, 썸네일 함께 생성(배경 썸네일은 `scripts/bg-thumbs.py` 와 같은 방식). 배경은 빠진 id 를 알리지 않는다(일부만 고쳐 넣는 일이 보통).');
 w('- 파일은 임시 파일에 쓴 뒤 이름을 바꿔 넣는다(중간에 멈춰도 반쯤 쓴 파일이 남지 않음).');
 w();
 w('**옵션**(스크립트에서 읽은 목록)');
@@ -672,11 +701,12 @@ w('```bash');
 w('python3 scripts/import-art.py --dry-run --strict   # 쓰지 않고 검사만(크기는 메모리 인코딩으로 계산)');
 w('python3 scripts/import-art.py                      # art-inbox/ → public/assets/ 변환');
 w('python3 scripts/import-art.py --only cg            # CG·키 비주얼만');
+w('python3 scripts/import-art.py --only bg            # 배경(과 그 썸네일)만');
 w('python3 scripts/import-art.py --src ~/받은그림 --only char   # 다른 폴더에서 스프라이트만');
 w('npm run validate && npm run docs                   # 연결 확인, 문서 갱신');
 w('```');
 w();
-w('새 의상·헤어 조합이나 새 CG 를 추가할 때는 `src/engine/types.ts`(타입), `src/story/assets.ts` 또는 `src/story/cg.ts`(매니페스트), `scripts/import-art.py` 의 `KNOWN_LOOKS`·`CG_IDS`(검사용)를 함께 고친다. 스크립트는 목록에 없는 조합·id 도 변환은 하되 알림을 남긴다.');
+w('새 인물·의상·헤어 조합이나 새 CG·배경을 추가할 때는 `src/engine/types.ts`(타입), `src/story/assets.ts` 또는 `src/story/cg.ts`(매니페스트), `scripts/import-art.py` 의 `CHARS`·`KNOWN_LOOKS`·`CG_IDS`·`BG_IDS`(검사용)를 함께 고친다. 스크립트는 목록에 없는 조합·id 도 변환은 하되 알림을 남긴다.');
 w();
 
 // ---- 출처 ----
@@ -685,6 +715,7 @@ w();
 w('| 분류 | 출처 | 라이선스·조건 | 비고 |');
 w('|---|---|---|---|');
 w('| 캐릭터 스프라이트·이벤트 CG·키 비주얼 | 사용자 제공 최종 일러스트 | 사용자 제공(이 게임에 사용) | 제작 프롬프트 `docs/ART_PROMPTS.md`, 변환 `scripts/import-art.py` |');
+w(`| ${H.koharu} 스프라이트 18·이벤트 CG 6·배경 2(\`kh_*\`)·썸네일 8 | 사용자가 준 코하루 루트 인계 패키지(2026-11-25). 스프라이트는 1024×1536 생성 후 확대, CG·배경은 생성 후 1920×1080 리샘플(패키지 README). 생성 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건은 기록에 없어 **확인 필요** | 받은 WebP 그대로(sha256 대조), 그림 지침은 패키지의 \`docs/ART_PROMPTS_KOHARU.md\`, 배경 기록 \`docs/BACKGROUND_PROMPTS.md\` |`);
 if (bgFinal) {
   w('| 배경 | 사용자가 준 묶음(이미지 생성 도구로 제작, 2026-11-24). 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건(상업 이용·웹 배포 허용)은 기록에 없어 **확인 필요** | 제작 프롬프트 `docs/BACKGROUND_PROMPTS.md`(앞 3장은 요약만 남음), 썸네일 `scripts/bg-thumbs.py` |');
 } else {
@@ -704,7 +735,7 @@ w('## 아직 없는(선택) 에셋과 정리 대상');
 w();
 w(`- ${H.osana} 잠옷·마스크 차림 스프라이트: 없음. 감기 문병 장면(o2)은 이벤트 CG \`door_osana\` 와 서술로 처리한다.`);
 w('- 주인공 그림: 기획상 없음(CG 에서도 얼굴을 보이지 않게 그림).');
-w('- 사복: 본편 일정을 방과 후 중심으로 짜서 필요 없음.');
+w(`- 사복: ${H.osana}·${H.tenko}는 본편 일정을 방과 후 중심으로 짜서 필요 없음. ${H.koharu}만 사복(\`casual\`)이 있다(토요일 추첨·방학 문구점·첫 데이트).`);
 {
   const old = dirBytes(pub('assets/placeholder/char'));
   const referenced = Object.values(SPRITE_SETS).some((s) => s.dir.startsWith('assets/placeholder/char'));

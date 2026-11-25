@@ -8,7 +8,7 @@
  *  - t5 축제, 처음으로 찍히는 쪽이 된 {tenko} → t6 불꽃 전의 고백과 분명한 승낙, 둘이 함께 찍힌 첫 사진
  *  - t7 연인이 된 첫 귀갓길 → 엔딩
  * 헤어: 체육 있는 날(2주 차 수·목 = t2·t3)은 포니테일, 축제(t5~t7)는 유카타+포니테일, 그 외 기본(긴 웨이브).
- *   체육은 매주 수·목(1주 차 목요일 c5·c6, 2주 차 수요일 t2·o3). 히나는 '체육 있는 날만 묶거든'(c5.090).
+ *   체육은 매주 수·목(1주 차 수요일 c45_journal·목요일 c5·c6, 2주 차 수요일 t2·o3). 히나는 '체육 있는 날만 묶거든'(c5.090).
  */
 import type { Scene } from '../../engine/types';
 import { bg, bgm, card, cg, chose, ending, flash, goto, hide, jump, label, me, mono, place, say, scene, sfx, show, when } from '../../engine/dsl';
