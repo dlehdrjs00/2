@@ -43,6 +43,11 @@ export interface PreloadItem {
   at: number;
   /** 아직 고르지 않은 선택지 뒤에서 처음 쓰인다(고르는 갈래에 따라 쓰이지 않을 수 있다) */
   branch?: boolean;
+  /**
+   * branch 이지만 그 선택지의 보이는 옵션 갈래 모두에서 쓰인다(어느 쪽을 골라도 쓰는 그림. 예: 모든 갈래가 같은 배경으로
+   * 바꾸는 c6.ch 의 road_rain). 같은 장면 안의 첫 선택지 기준이다
+   */
+  allBranches?: boolean;
 }
 
 /** 붙잡은 무대 그림 하나 */
@@ -156,6 +161,14 @@ export class ImagePreloader {
     if (front) this.bulk.unshift(...fresh);
     else this.bulk.push(...fresh);
     this.pump();
+  }
+
+  /** 아직 받기 시작하지 않은 그림을 대기열에서 뺀다(이미 받는 중이거나 받은 그림은 그대로) */
+  drop(urls: Iterable<string>): void {
+    const out = new Set(urls);
+    if (!out.size) return;
+    this.near = this.near.filter((u) => !out.has(u));
+    this.bulk = this.bulk.filter((u) => !out.has(u));
   }
 
   /**
@@ -445,6 +458,8 @@ interface Cursor {
   at: number;
   /** 아직 고르지 않은 선택지를 지났다 */
   branching: boolean;
+  /** 이 장면에서 처음 만난 고르지 않은 선택지의 몇 번째 옵션 갈래인지(그 앞이면 null. 안쪽 선택지에서 나뉘어도 그대로) */
+  lane: number | null;
   bg: StageState['bg'];
   chars: Partial<Record<CharId, CharState>>;
   order: CharId[];
@@ -506,9 +521,16 @@ export function sceneImages(
   const nextBranch: Record<string, boolean> = {};
   let end: StageState | null = null;
   let steps: number | null = null;
+  /** 그림마다 그 그림을 쓰는 갈래(lane) */
+  const lanesOf = new Map<string, Set<number>>();
+  /** 첫 선택지에서 나눈 갈래 수(0 이면 이 장면 안에서 나눈 적 없음) */
+  let laneTotal = 0;
   const out = () => ({
     urls,
-    items: urls.map((u) => byUrl.get(u)!),
+    items: urls.map((u) => {
+      const it = byUrl.get(u)!;
+      return it.branch && laneTotal > 0 && (lanesOf.get(u)?.size ?? 0) >= laneTotal ? { ...it, allBranches: true } : it;
+    }),
     next,
     end: end ?? startStage,
     steps: steps ?? 0,
@@ -544,6 +566,11 @@ export function sceneImages(
   };
   const push = (c: Cursor, u: string | null, kind: PreloadKind) => {
     if (!u) return;
+    if (c.lane !== null) {
+      const set = lanesOf.get(u) ?? new Set<number>();
+      set.add(c.lane);
+      lanesOf.set(u, set);
+    }
     const old = byUrl.get(u);
     if (!old) {
       urls.push(u);
@@ -561,6 +588,7 @@ export function sceneImages(
     i: Math.max(0, from),
     at: 0,
     branching: pastChoice,
+    lane: null,
     bg: startStage.bg,
     chars: chars0,
     order: [...startStage.order],
@@ -570,32 +598,38 @@ export function sceneImages(
   };
   const work: Cursor[] = [];
   let made = 1;
-  const fork = (c: Cursor, i: number, patch: (sim: GameState) => void): Cursor => {
+  const fork = (c: Cursor, i: number, lane: number | null, patch: (sim: GameState) => void): Cursor => {
     const ch: Partial<Record<CharId, CharState>> = {};
     for (const [k, v] of Object.entries(c.chars)) if (v) ch[k as CharId] = { ...v };
     const sim = cloneSim(c.sim);
     patch(sim);
     made++;
-    return { i, at: c.at, branching: true, bg: c.bg, chars: ch, order: [...c.order], sim, seen: new Set(c.seen), candidates: c.candidates };
+    return { i, at: c.at, branching: true, lane, bg: c.bg, chars: ch, order: [...c.order], sim, seen: new Set(c.seen), candidates: c.candidates };
   };
   /** 선택지 step(위치 ci)에서 보이는 옵션마다 갈래를 나눈다 */
-  const branchAt = (c: Cursor, ci: number) => {
+  const branchAt = (c: Cursor, ci: number, top: boolean) => {
     const step = scene.steps[ci];
     if (step.t !== 'choice') return;
     const opts = visibleOptions(c.sim, step);
-    for (const o of opts) {
+    // top: 이 장면의 첫 고르지 않은 선택지(지금 떠 있는 선택지, 또는 갈래 밖의 훑기가 만난 것)면 옵션마다 새 갈래 번호,
+    // 갈래 안의 선택지면 그 갈래 번호 그대로. 갈래 표시로 시작한 훑기(앞 장면의 선택지 뒤에서 이어지는 다음 장면)는 번호를 매기지 않는다
+    const laneBase = laneTotal;
+    // 갈래 수는 보이는 옵션 수 그대로(상한 MAX_CURSORS 로 훑지 못한 갈래가 있으면 '모든 갈래'로 보지 않게)
+    if (top) laneTotal += opts.length;
+    for (const [k, o] of opts.entries()) {
       if (made >= MAX_CURSORS) break;
       const to = o.goto ? indexOf(o.goto) : ci + 1;
       if (to < 0) continue;
+      const lane = top ? laneBase + k : c.lane;
       work.push(
-        fork(c, to, (sim) => {
+        fork(c, to, lane, (sim) => {
           sim.choices[step.id] = o.id;
         }),
       );
     }
   };
   const before = base.i - 1;
-  if (pastChoice && before >= 0 && scene.steps[before]?.t === 'choice') branchAt(base, before);
+  if (pastChoice && before >= 0 && scene.steps[before]?.t === 'choice') branchAt(base, before, true);
   else work.push(base);
 
   let budget = MAX_WALK;
@@ -645,7 +679,7 @@ export function sceneImages(
           break;
         case 'choice':
           c.at++;
-          branchAt(c, c.i);
+          branchAt(c, c.i, c.lane === null && !c.branching);
           done = true;
           break;
         case 'hide': {

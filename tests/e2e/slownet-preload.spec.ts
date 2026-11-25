@@ -165,7 +165,7 @@ test('느린 망: 선택지 스텝에서 그림을 기다리는 동안 Enter 는
     await page.keyboard.press('Enter');
     // 기다림의 상한(8초)보다 훨씬 빨리 선택지가 뜬다
     await expect.poll(async () => (await info(page)).transitioning, { timeout: 2500 }).toBe(false);
-    await expect(page.locator('.choices .choice')).toHaveCount(2);
+    await expect(page.locator('.choices .choice')).toHaveCount(3);
     await page.waitForTimeout(700);
     const i = await info(page);
     expect(i.step).toBe('c6.ch');
@@ -397,6 +397,78 @@ test('타이틀: 자동 저장이 있으면 미리 불러오기를 [이어하기
     await expect.poll(() => idx(bgRe('road_morning')), { timeout: 20_000 }).toBeGreaterThanOrEqual(0);
     const road = idx(bgRe('road_morning'));
     expect(shy < road && fluster < road, JSON.stringify({ shy, fluster, road })).toBe(true);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('타이틀: 해금된 자동 저장 기준으로 대기열에 넣은 코하루 그림은, 새 게임(미해금)을 시작하면 받지 않는다', async ({ page, browser }, ti) => {
+  test.skip(ti.project.name !== 'desktop', '미리 불러오기 대기열 검사(desktop 에서만)');
+  await boot(page);
+  await newGame(page);
+  await toTitle(page);
+  // 자동 저장을 해금된 토요일 추첨(c8r.030, 코하루 사복)으로 바꾼 저장소를 새 브라우저 문맥에 넣는다
+  const store = await page.evaluate(() => {
+    const d = JSON.parse(localStorage.getItem('ashita.save.auto')!);
+    Object.assign(d.state, {
+      sceneId: 'c8_raffle',
+      stepId: 'c8r.030',
+      route: null,
+      points: { osana: 4, tenko: 4, koharu: 4 },
+      flags: { 'kh.met': true },
+      choices: { 'c3.ch': 'c', 'c4.ch': 'c', 'c6.ch': 'c', 'c7.ch': 'c' },
+      stage: { bg: 'shotengai', bgm: null, chars: { koharu: { pos: 'center', expr: 'smile', outfit: 'casual', hair: 'default' } }, order: ['koharu'], cg: null },
+    });
+    delete d.state.sceneEntry;
+    localStorage.setItem('ashita.save.auto', JSON.stringify(d));
+    const out: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)!;
+      out[k] = localStorage.getItem(k)!;
+    }
+    return out;
+  });
+  const ctx = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 1280, height: 720 } });
+  try {
+    await ctx.addInitScript((store) => {
+      if (sessionStorage.getItem('__seeded')) return;
+      sessionStorage.setItem('__seeded', '1');
+      for (const [k, v] of Object.entries(store)) localStorage.setItem(k, v);
+    }, store);
+    const p2 = await ctx.newPage();
+    // 키 비주얼 밖의 그림 요청은 모두 붙잡아 대기열이 진행되지 않게 한다(코하루 그림이 받기 시작하기 전에 새 게임을 누르도록)
+    let holding = true;
+    const held: Array<() => void> = [];
+    await p2.route(/\/assets\/(?:bg|char|cg)\/.*\.webp$/, async (route) => {
+      if (!holding || /\/cg\/(?:thumb\/)?kv\.webp$/.test(route.request().url())) return route.continue();
+      await new Promise<void>((r) => held.push(r));
+      await route.continue().catch(() => undefined);
+    });
+    const KOHARU = /assets\/char\/koharu\/|assets\/(?:bg|cg)\/(?:thumb\/)?kh_/;
+    let phase: 'title' | 'new' = 'title';
+    const reqs: Array<{ phase: string; url: string }> = [];
+    p2.on('request', (r) => reqs.push({ phase, url: r.url() }));
+    await p2.goto('./?debug');
+    await expect(p2.locator('.title-screen.kv-ready')).toHaveCount(1, { timeout: 20_000 });
+    // 미리 불러오기가 [이어하기] 위치 기준으로 섰고(가까운 묶음·나머지), 받기는 붙잡혀 있다
+    await expect.poll(async () => (await preload(p2)).bulk, { timeout: 20_000 }).toBeGreaterThan(0);
+    phase = 'new';
+    await p2.locator('[data-action=new]').click();
+    const ok = p2.locator('[data-panel=confirm] [data-action=ok]');
+    if (await ok.isVisible().catch(() => false)) await ok.click();
+    await expect(p2.locator('#vn')).toHaveAttribute('data-mode', 'play');
+    holding = false;
+    for (const r of held.splice(0)) r();
+    // 게임 전체 그림을 다 받을 때까지(대기열이 빈다) 기다린 뒤 본다
+    await expect.poll(async () => {
+      const q = await preload(p2);
+      return q.near + q.bulk + q.active;
+    }, { timeout: 60_000 }).toBe(0);
+    const after = reqs.filter((r) => r.phase === 'new');
+    expect(after.length, '새 게임 뒤 그림을 받았다(검사가 헛돌지 않음)').toBeGreaterThan(20);
+    expect(after.filter((r) => KOHARU.test(r.url)).map((r) => r.url), '새 게임(미해금) 뒤 받은 코하루 그림').toEqual([]);
+    // 타이틀에서는 [이어하기] 위치의 코하루 그림을 받으려 했다(대기열에 들어 있었음을 확인)
+    expect(reqs.filter((r) => r.phase === 'title' && KOHARU.test(r.url)).length).toBeGreaterThan(0);
   } finally {
     await ctx.close();
   }

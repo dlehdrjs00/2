@@ -84,7 +84,7 @@ test('선택지: 배경 클릭으로 넘어가지 않고, 빠른 연속 입력�
   await page.waitForTimeout(300);
   let now = await info(page);
   expect(now.step).toBe(c.step);
-  expect(now.points).toEqual({ osana: 0, tenko: 0 });
+  expect(now.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
 
   // 같은 선택지 연타 + 다른 선택지 즉시 클릭(선택지가 다 나타나 누를 수 있게 된 뒤)
   await waitChoicesArmed(page);
@@ -96,10 +96,12 @@ test('선택지: 배경 클릭으로 넘어가지 않고, 빠른 연속 입력�
   await page.mouse.click(ab.x + ab.width / 2, ab.y + ab.height / 2, { clickCount: 2 });
   await page.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
   await page.keyboard.press('2');
+  await page.keyboard.press('3');
   await expect.poll(async () => (await info(page)).frame).not.toBe('choice');
   await waitSettled(page);
   now = await info(page);
-  expect(now.points).toEqual({ osana: 1, tenko: 0 });
+  // 첫 입력(a, c3 개인 +2)만 반영. 뒤의 b 클릭·숫자 키 2·3(함께)은 무시된다
+  expect(now.points).toEqual({ osana: 2, tenko: 0, koharu: 0 });
   expect(now.frame).not.toBe('choice');
   const firstReaction = now.step;
   // 선택 직후 연타가 다음 대사까지 넘기지 않았는지(첫 반응 대사에 머묾)
@@ -151,7 +153,7 @@ test('대사→선택지 경계의 연타, 선택지·대사에서 [이어하기
   let now = await info(page);
   expect(now.step).toBe(c.step);
   expect(now.frame).toBe('choice');
-  expect(now.points).toEqual({ osana: 0, tenko: 0 });
+  expect(now.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
 
   // 2) 자동 저장이 선택지일 때 타이틀의 [이어하기]를 두 번 누른다 → 복원된 선택지가 골라지지 않음
   await page.reload();
@@ -162,7 +164,7 @@ test('대사→선택지 경계의 연타, 선택지·대사에서 [이어하기
   now = await info(page);
   expect(now.mode).toBe('play');
   expect(now.step).toBe(c.step);
-  expect(now.points).toEqual({ osana: 0, tenko: 0 });
+  expect(now.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
   expect((await readSlot(page, 'auto'))!.state.stepId).toBe(c.step);
 
   // 3) 자동 저장이 대사일 때 [이어하기] 더블클릭 → 이어 읽을 문장이 넘어가지 않음

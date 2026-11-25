@@ -111,6 +111,12 @@ const isHeroineOrNull = (v: unknown): v is HeroineId | null => v === null || (ty
 const uniq = (xs: string[]): string[] => [...new Set(xs)];
 
 const GLOBAL_KEY = `${KEY_PREFIX}global`;
+/**
+ * 전역 기록 보조 키: 도달한 엔딩을 한 번 더 적어 둔다. 옛 빌드(코하루 확장 전)는 전역 기록을 다시 쓸 때 자기가 모르는
+ * 엔딩 id 를 걸러 내므로, 옛 탭이 한 번 쓰면 GLOBAL_KEY 의 새 엔딩(koharu)이 사라진다. 옛 빌드는 이 키를 모르고 건드리지 않으므로
+ * 읽을 때 두 키의 엔딩을 합친다(GLOBAL_SCHEMA 는 그대로: 옛 빌드가 새 기록을 '알 수 없는 형식'으로 버리지 않게)
+ */
+const GLOBAL_EXT_KEY = `${KEY_PREFIX}global.ext`;
 const NOTE_BG = '배경 정보를 복원하지 못했어요';
 const NOTE_CHARS = '캐릭터 그림 정보를 일부 복원하지 못했어요';
 /** 무대 재구성 때 장면을 다시 실행하는 최대 블로킹 스텝 수 */
@@ -181,7 +187,7 @@ export class SaveManager {
     this.cgsSeen = new Set(g.cgs ?? []);
     // 다른 탭이 읽은 대사·엔딩을 기록하면 바로 합쳐 둔다(건너뛰기 판정·엔딩 배지가 탭마다 어긋나지 않게)
     store.watch?.((key) => {
-      if (key === null || key === GLOBAL_KEY) this.syncFromStore();
+      if (key === null || key === GLOBAL_KEY || key === GLOBAL_EXT_KEY) this.syncFromStore();
     });
   }
 
@@ -221,20 +227,35 @@ export class SaveManager {
   // ---- 전역 기록 ------------------------------------------------------------
 
   private readGlobal(): GlobalRecord {
+    const extra = this.readEndingsExt();
     const raw = this.store.get(GLOBAL_KEY);
-    if (!raw) return { schema: GLOBAL_SCHEMA, read: [], endings: [] };
+    if (!raw) return { schema: GLOBAL_SCHEMA, read: [], endings: extra };
     try {
       const v = JSON.parse(raw) as unknown;
       if (!isObj(v)) throw new Error('bad');
       const read = Array.isArray(v.read) ? v.read.filter((x): x is string => typeof x === 'string') : [];
-      const endings = Array.isArray(v.endings)
-        ? v.endings.filter((x): x is EndingId => typeof x === 'string' && x in this.story.endings)
-        : [];
+      const endings = Array.isArray(v.endings) ? this.knownEndings(v.endings) : [];
       const cgs = Array.isArray(v.cgs) ? v.cgs.filter((x): x is string => typeof x === 'string') : [];
-      return { schema: GLOBAL_SCHEMA, read, endings, cgs };
+      return { schema: GLOBAL_SCHEMA, read, endings: uniq([...endings, ...extra]) as EndingId[], cgs };
     } catch {
-      // 전역 기록이 손상되면 읽음 기록만 잃고 계속한다
-      return { schema: GLOBAL_SCHEMA, read: [], endings: [] };
+      // 전역 기록이 손상되면 읽음 기록만 잃고 계속한다(보조 키의 엔딩은 살린다)
+      return { schema: GLOBAL_SCHEMA, read: [], endings: extra };
+    }
+  }
+
+  private knownEndings(xs: unknown[]): EndingId[] {
+    return xs.filter((x): x is EndingId => typeof x === 'string' && x in this.story.endings);
+  }
+
+  /** 보조 키(GLOBAL_EXT_KEY)의 엔딩. 없거나 손상되면 빈 목록 */
+  private readEndingsExt(): EndingId[] {
+    const raw = this.store.get(GLOBAL_EXT_KEY);
+    if (!raw) return [];
+    try {
+      const v = JSON.parse(raw) as unknown;
+      return isObj(v) && Array.isArray(v.endings) ? this.knownEndings(v.endings) : [];
+    } catch {
+      return [];
     }
   }
 
@@ -304,6 +325,9 @@ export class SaveManager {
     this.syncFromStore();
     const rec: GlobalRecord = { schema: GLOBAL_SCHEMA, read: [...this.readSet], endings: [...this.endings], cgs: [...this.cgsSeen] };
     this.store.set(GLOBAL_KEY, JSON.stringify(rec));
+    // 엔딩은 보조 키에도(옛 빌드가 전역 기록을 다시 써서 모르는 엔딩을 지워도 남게). 전역 기록과 같이 매번 쓴다:
+    // 용량 초과로 이 탭 메모리에만 남은 값도 다음 기록 때 다시 브라우저 저장소에 들어가게(값이 같다고 건너뛰지 않는다)
+    if (rec.endings.length) this.store.set(GLOBAL_EXT_KEY, JSON.stringify({ endings: rec.endings }));
     this.globalDirty = false;
   }
 

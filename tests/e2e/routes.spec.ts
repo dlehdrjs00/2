@@ -1,19 +1,28 @@
 /**
- * 두 히로인의 엔딩까지 실제 화면으로 플레이. 휴대폰 프로젝트에서는 모든 대사의 잘림도 확인.
+ * 세 히로인(아카네·히나·히든 코하루)의 엔딩까지 실제 화면으로 플레이. 휴대폰 프로젝트에서는 모든 대사의 잘림도 확인.
+ * 선택은 공통 7회(초반 c3·c4·c6·c7, 후반 c8·c9·c10). 기대값은 계약 0절 규칙으로 직접 계산했다:
+ *  - a×7: 초반 osana 2+2+2+3=9, tenko 0 → 차 9 > 1 미해금 → 후반 a×3 → 18/0 → osana
+ *  - b×7: 대칭 → 0/18 → tenko
+ *  - c,c,c,c,a,b,k: 초반 함께 4회 → 4/4 → 차 0 해금(koharu 4) → 후반 a,b,k → 7/7/7 동점 → 가장 최근 개인 선택 k → koharu
+ * 추억 앨범의 총 장수는 관람 전 히든 CG(kh_* 6장)를 빼고 센다(11). 코하루 엔딩에서는 6장을 모두 보므로 6 / 17.
+ * 미해금 플레이(a×7·b×7)를 마친 타이틀에는 코하루 엔딩 배지가 없다.
  * 긴 진행 동안 무대 해독 캐시(src/ui/image-cache.ts)가 상한(8장·12Mi 픽셀)을 넘겨 쌓이지 않는지도 대사마다 본다.
  * 해독 중인 그림·화면에 붙은 CG 는 상한 밖이고, 해독 직후 정리 사이에 화면에서 떨어진 CG 한 장만큼의 여유를 둔다.
  */
 import { expect, test } from '@playwright/test';
-import { boot, expectCssImages, info, newGame, playToEnding, type Info } from './helpers';
+import { boot, expectCssImages, info, newGame, playToEnding, readGlobal, type Info } from './helpers';
 
 /** 이 크기(배경·CG 1920x1080)의 그림 한 장 */
 const ONE_IMAGE_PX = 1920 * 1080;
 
-for (const [route, picks] of [
-  ['osana', ['a', 'a', 'a', 'a']],
-  ['tenko', ['b', 'b', 'b', 'b']],
+for (const [route, picks, album] of [
+  // album: 엔딩 뒤 타이틀의 '모은 추억 n / 전체'(전체 = 일반 11 + 관람한 히든)
+  ['osana', ['a', 'a', 'a', 'a', 'a', 'a', 'a'], '5 / 11'], // rain_osana·door·ramune·fireworks·homeward
+  ['tenko', ['b', 'b', 'b', 'b', 'b', 'b', 'b'], '6 / 11'], // rain_tenko·cats·bench·selfie·shutter·polaroid
+  ['koharu', ['c', 'c', 'c', 'c', 'a', 'b', 'k'], '6 / 17'], // 우산 CG 없음(c6 함께), kh_meet·draw·relay·confession·home·date
 ] as const) {
   test(`${route} 엔딩까지 도달하고 엔딩 기록이 남는다`, async ({ page }) => {
+    test.setTimeout(330_000); // 공통 선택 7회·새 공통 장면(c45·c8~c10)으로 한 바퀴가 길어졌다
     await boot(page);
     await newGame(page);
     const overflowAt: string[] = [];
@@ -52,13 +61,18 @@ for (const [route, picks] of [
     await expectCssImages(page, '.ending-screen .polaroid .mini');
     await page.locator('.ending-screen [data-action=to-title]').click();
     await expect(page.locator(`.title-screen [data-ending=${route}]`)).toHaveAttribute('data-reached', '1');
+    expect((await readGlobal(page)).endings).toEqual([route]);
+    // 코하루 배지는 그 엔딩에 도달한 뒤에만 있다(아카네·히나 배지는 늘 있음)
+    await expect(page.locator('.title-screen .badge[data-ending=koharu]')).toHaveCount(route === 'koharu' ? 1 : 0);
+    for (const h of ['osana', 'tenko']) await expect(page.locator(`.title-screen .badge[data-ending=${h}]`)).toHaveCount(1);
+    await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 ${album}`);
     // 엔딩 후 자동 저장은 비워져 이어하기 비활성
     await expect(page.locator('[data-action=continue]')).toBeDisabled();
     // 새 게임에서 이전 루트 상태가 남지 않음
     await newGame(page);
     const fresh = await info(page);
     expect(fresh.route).toBeNull();
-    expect(fresh.points).toEqual({ osana: 0, tenko: 0 });
+    expect(fresh.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
     expect(fresh.lastHeroine).toBeNull();
     expect(fresh.readCount).toBeGreaterThan(50); // 읽은 대사 기록은 유지
   });

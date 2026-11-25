@@ -252,8 +252,11 @@ export function buildTitle(o: TitleOptions): HTMLElement {
 
   const foot = el('div', 'title-foot');
   foot.setAttribute('aria-label', '엔딩');
+  // 배지 수(screens.css: 3개면 좁은 가로 화면에서 '엔딩' 글자를 보이지 않게 줄여 한 줄에 둔다. 읽기는 그대로 'OO 엔딩')
+  foot.dataset.n = String(o.endings.length);
   for (const e of o.endings) {
-    const b = el('span', `badge${e.reached ? ' got' : ''}`, `${e.name} 엔딩`);
+    const b = el('span', `badge${e.reached ? ' got' : ''}`);
+    b.append(e.name, el('span', 'bw', ' 엔딩'));
     b.dataset.ending = e.id;
     b.dataset.reached = e.reached ? '1' : '0';
     b.title = e.reached ? `「${e.title}」` : '아직 보지 못한 엔딩';

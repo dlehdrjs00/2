@@ -32,11 +32,11 @@ export default defineConfig({
       name: 'phone-se-landscape',
       use: { viewport: { width: 667, height: 375 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 },
     },
-    // WebKit + iPad 기기 설정(옛 iPad UA 라 #vn[data-render='apple-touch']). 두 엔딩·저장·렌더링·자동 저장 실패 안내를 본다.
+    // WebKit + iPad 기기 설정(옛 iPad UA 라 #vn[data-render='apple-touch']). 엔딩·저장·렌더링·자동 저장 실패 안내·코하루 루트(koharu.spec)를 본다.
     // 다른 스펙은 CDP(Chromium 전용) 입력이나 데스크톱·휴대폰 전용 검사가 많아 넣지 않았다(CDP 검사는 WebKit 에서 건너뜀)
     {
       name: 'ipad-webkit',
-      testMatch: /(?:routes|saveload|rendering|autosave)\.spec\.ts/,
+      testMatch: /(?:routes|saveload|rendering|autosave|koharu)\.spec\.ts/,
       use: { ...devices['iPad (gen 7) landscape'], browserName: 'webkit' },
     },
   ],

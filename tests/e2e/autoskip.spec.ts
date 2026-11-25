@@ -27,7 +27,7 @@ test('자동 진행은 선택지에서 멈추고, 메뉴가 열려 있는 동안
   const still = await info(page);
   expect(still.step).toBe(c.step);
   expect(still.auto).toBe(true);
-  await expect(page.locator('.choice')).toHaveCount(2);
+  await expect(page.locator('.choice')).toHaveCount(3);
 
   // 선택 후 자동 진행 계속
   await pick(page, 'a');

@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { LINE_MAX_CHARS, OPTION_MAX_CHARS } from '../../src/engine/validate';
-import { advanceToStop, boot, continueAt, info, newGame, openMenu, requireCdp, waitChoicesArmed, waitSettled } from './helpers';
+import { advanceToStop, boot, continueAt, info, newGame, openMenu, requireCdp, toTitle, visibleChoiceIds, waitChoicesArmed, waitSettled } from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name !== 'desktop', '뷰포트를 직접 정하는 배치 검사(desktop 프로젝트에서만)');
@@ -35,6 +35,50 @@ async function rects(page: Page, selector: string): Promise<Box[]> {
   );
 }
 
+/** 지원 화면: 아이폰 SE 가로, 휴대폰 가로(브라우저 UI 포함), 안드로이드 크롬 주소창 표시, 360dp 폰 크롬 가로 */
+const LOW_SIZES: Array<[number, number]> = [
+  [667, 375],
+  [740, 320],
+  [740, 280],
+  [692, 280],
+];
+
+/** 지금 떠 있는 선택지 count 개가 각 크기에서 글자를 다 담고(44px 이상), HUD·대사창·서로와 겹치지 않고, 스크롤 없이 보이며, 가운데를 누르면 그 버튼이 눌린다 */
+async function expectChoicesFit(page: Page, name: string, count: number) {
+  for (const [w, h] of LOW_SIZES) {
+    await relayoutTo(page, w, h);
+    const where = `${name} @${w}x${h}`;
+    const list = (await rects(page, '.choices'))[0];
+    const btns = await rects(page, '.choice');
+    const hud = await rects(page, '.hud button');
+    const tb = (await rects(page, '.textbox'))[0];
+    expect(btns.length, where).toBe(count);
+    // 버튼 높이가 글자를 다 담는다(flex 축소로 글자가 버튼 밖으로 삐져나오던 문제)
+    const clipped = await page.locator('.choice').evaluateAll((els) => els.map((e) => e.scrollHeight - e.clientHeight));
+    for (const d of clipped) expect(d, `${where}: 버튼 글자 넘침`).toBeLessThanOrEqual(1);
+    for (const [i, b] of btns.entries()) {
+      // 44px 이상(소수점 배치 오차 0.01px 허용)
+      expect(b.bottom - b.top, where).toBeGreaterThanOrEqual(44 - 0.01);
+      for (const hb of hud) expect(overlap(b, hb), `${where}: ${i + 1}번이 HUD 와 겹침`).toBe(false);
+      expect(overlap(b, tb), `${where}: ${i + 1}번이 대사창과 겹침`).toBe(false);
+      for (const [j, c] of btns.entries()) if (j > i) expect(overlap(b, c), `${where}: ${i + 1}·${j + 1}번 겹침`).toBe(false);
+      // 스크롤 없이 목록 안에 다 보인다
+      expect(b.top, where).toBeGreaterThanOrEqual(list.top - 0.5);
+      expect(b.bottom, where).toBeLessThanOrEqual(list.bottom + 0.5);
+      // 버튼 가운데를 누르면 그 버튼이 눌린다(HUD 등에 가리지 않음)
+      const hit = await page.evaluate(
+        ([x, y]) => {
+          const e = document.elementFromPoint(x, y);
+          const btn = e?.closest('.choice');
+          return btn ? [...document.querySelectorAll('.choice')].indexOf(btn) : -1;
+        },
+        [(b.left + b.right) / 2, (b.top + b.bottom) / 2],
+      );
+      expect(hit, where).toBe(i);
+    }
+  }
+}
+
 test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치지 않고 HUD·대사창과 겹치지 않으며 스크롤 없이 보인다', async ({ page }) => {
   await page.setViewportSize({ width: 740, height: 320 });
   await boot(page);
@@ -42,6 +86,9 @@ test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치�
   const c = await advanceToStop(page);
   expect(c.frame).toBe('choice');
   await waitChoicesArmed(page);
+  // 실제 첫 선택지(c3.ch): 아카네·히나·함께 3개
+  expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'c']);
+  await expectChoicesFit(page, '실제 c3.ch 3개', 3);
 
   const long = '히나에게 우산을 빌려주고 아카네의 우산에 같이 들어가서 집까지 걸어간다'.slice(0, OPTION_MAX_CHARS);
   const setChoices = (texts: string[]) =>
@@ -63,52 +110,75 @@ test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치�
   const shapes: Array<[string, string[]]> = [
     ['두 줄 문구 2개', [long, long]],
     ['선택지 3개(긴 문구 포함)', [long, '추천보다 먼저 히나의 취향을 묻는다', '아무 말도 하지 않는다']],
-  ];
-  // 지원 화면: 아이폰 SE 가로, 휴대폰 가로(브라우저 UI 포함), 안드로이드 크롬 주소창 표시, 360dp 폰 크롬 가로
-  const sizes: Array<[number, number]> = [
-    [667, 375],
-    [740, 320],
-    [740, 280],
-    [692, 280],
+    // 공통 선택지는 늘 3개(a·b·함께 또는 a·b·코하루): 검사기 한도(OPTION_MAX_CHARS) 길이 문구 3개도 스크롤 없이 들어간다
+    // (dense 단계는 한 줄짜리 기준이라 667×375 에서 넘치던 것 → game.ts fitChoices 가 촘촘하게·가로로 맞춘다)
+    ['두 줄 문구 3개', [long, long, long]],
   ];
   for (const [name, texts] of shapes) {
     await setChoices(texts);
     // 새로 붙인 버튼의 등장 연출(아래에서 8px 올라옴)이 끝난 뒤의 자리를 잰다
     await page.evaluate(() => Promise.all([...document.querySelectorAll('.choice')].flatMap((e) => e.getAnimations().map((a) => a.finished.catch(() => undefined)))));
-    for (const [w, h] of sizes) {
-      await relayoutTo(page, w, h);
-      const where = `${name} @${w}x${h}`;
-      const list = (await rects(page, '.choices'))[0];
-      const btns = await rects(page, '.choice');
-      const hud = await rects(page, '.hud button');
-      const tb = (await rects(page, '.textbox'))[0];
-      expect(btns.length, where).toBe(texts.length);
-      // 버튼 높이가 글자를 다 담는다(flex 축소로 글자가 버튼 밖으로 삐져나오던 문제)
-      const clipped = await page.locator('.choice').evaluateAll((els) => els.map((e) => e.scrollHeight - e.clientHeight));
-      for (const d of clipped) expect(d, `${where}: 버튼 글자 넘침`).toBeLessThanOrEqual(1);
-      for (const [i, b] of btns.entries()) {
-        // 44px 이상(소수점 배치 오차 0.01px 허용)
-        expect(b.bottom - b.top, where).toBeGreaterThanOrEqual(44 - 0.01);
-        for (const hb of hud) expect(overlap(b, hb), `${where}: ${i + 1}번이 HUD 와 겹침`).toBe(false);
-        expect(overlap(b, tb), `${where}: ${i + 1}번이 대사창과 겹침`).toBe(false);
-        // 스크롤 없이 목록 안에 다 보인다
-        expect(b.top, where).toBeGreaterThanOrEqual(list.top - 0.5);
-        expect(b.bottom, where).toBeLessThanOrEqual(list.bottom + 0.5);
-        // 버튼 가운데를 누르면 그 버튼이 눌린다(HUD 등에 가리지 않음)
-        const hit = await page.evaluate(
-          ([x, y]) => {
-            const e = document.elementFromPoint(x, y);
-            const btn = e?.closest('.choice');
-            return btn ? [...document.querySelectorAll('.choice')].indexOf(btn) : -1;
-          },
-          [(b.left + b.right) / 2, (b.top + b.bottom) / 2],
-        );
-        expect(hit, where).toBe(i);
-      }
-    }
+    await expectChoicesFit(page, name, texts.length);
   }
   // 고른 화면에서도 진행 상태는 그대로(배치만 바뀜)
   expect((await info(page)).step).toBe(c.step);
+});
+
+test('낮은 가로 화면: 실제 공통 선택지 7곳(후반은 해금·미해금 둘 다)의 3개 버튼이 모두 들어간다', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 740, height: 320 });
+  await boot(page);
+  const at: Array<[string, string, boolean | null, string[]]> = [
+    ['c3_break', 'c3.ch', null, ['a', 'b', 'c']],
+    ['c4_lunch', 'c4.ch', null, ['a', 'b', 'c']],
+    ['c6_rain', 'c6.ch', null, ['a', 'b', 'c']],
+    ['c7_friday', 'c7.ch', null, ['a', 'b', 'c']],
+    // 후반: 해금이면 a·b·k(코하루), 미해금이면 a·b·c(함께)
+    ['c8_bakery', 'c8.ch', true, ['a', 'b', 'k']],
+    ['c8_bakery', 'c8.ch', false, ['a', 'b', 'c']],
+    ['c9_puzzle', 'c9.ch', true, ['a', 'b', 'k']],
+    ['c9_puzzle', 'c9.ch', false, ['a', 'b', 'c']],
+    ['c10_window', 'c10.ch', true, ['a', 'b', 'k']],
+    ['c10_window', 'c10.ch', false, ['a', 'b', 'c']],
+  ];
+  for (const [n, [sceneId, stepId, met, ids]] of at.entries()) {
+    if (n > 0) {
+      await relayoutTo(page, 740, 320);
+      await toTitle(page);
+    }
+    await continueAt(page, { sceneId, stepId, flags: met === null ? undefined : { 'kh.met': met } });
+    expect((await info(page)).frame).toBe('choice');
+    expect(await visibleChoiceIds(page), `${stepId} kh.met=${met}`).toEqual(ids);
+    await expectChoicesFit(page, `${stepId}${met === null ? '' : met ? ' 해금' : ' 미해금'}`, 3);
+  }
+});
+
+test('타이틀: 히든 엔딩까지 본 엔딩 배지 3개가 낮은 가로 화면에서도 한 줄로 화면 안에 있고, 메뉴와 겹치지 않으며 읽기 이름은 그대로', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('badge-seeded')) return;
+    sessionStorage.setItem('badge-seeded', '1');
+    localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: [], endings: ['osana', 'tenko', 'koharu'], cgs: ['kh_date'] }));
+  });
+  await boot(page);
+  await expect(page.locator('.title-foot .badge')).toHaveCount(3);
+  // 화면 글자로 줄여도 읽기 이름(글자 내용)은 'OO 엔딩' 그대로
+  expect(await page.locator('.title-foot .badge').allTextContents()).toEqual(['아카네 엔딩', '히나 엔딩', '코하루 엔딩']);
+  // 타이틀을 맞춰 둔 크기(album.spec 의 타이틀 검사와 같은 최저 높이 320). 높이 280 타이틀은 배지 수와 상관없이 메뉴가 화면을 다 쓴다
+  for (const [w, h] of [[667, 375], [740, 320], [844, 390], [932, 430], [1280, 720]] as const) {
+    await relayoutTo(page, w, h);
+    const where = `${w}x${h}`;
+    const badges = await rects(page, '.title-foot .badge');
+    const menu = await rects(page, '.title-menu .btn');
+    expect(badges.length, where).toBe(3);
+    for (const [i, b] of badges.entries()) {
+      expect(b.left >= -0.5 && b.top >= -0.5 && b.right <= w + 0.5 && b.bottom <= h + 0.5, `${where}: 배지 ${i + 1} 화면 밖 ${JSON.stringify(b)}`).toBe(true);
+      expect(Math.abs(b.top - badges[0].top), `${where}: 배지가 한 줄이 아님`).toBeLessThan(1);
+      for (const m of menu) expect(overlap(b, m), `${where}: 배지 ${i + 1}이 메뉴 버튼과 겹침`).toBe(false);
+    }
+    // 배지 글자가 배지 밖으로 넘치지 않음
+    const clipped = await page.locator('.title-foot .badge').evaluateAll((els) => els.map((e) => e.scrollWidth - e.clientWidth));
+    for (const d of clipped) expect(d, `${where}: 배지 글자 넘침`).toBeLessThanOrEqual(1);
+  }
 });
 
 test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사창이 위로 늘어나 글자가 잘리지 않는다', async ({ page }) => {

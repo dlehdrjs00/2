@@ -5,7 +5,8 @@ export interface Info {
   step: string | null;
   frame: string | null;
   route: string | null;
-  points: { osana: number; tenko: number } | null;
+  /** 누적 점수. koharu 는 해금 판정 때 두 점수의 평균(0.5 단위)으로 정해지고, 미해금이면 0 그대로 */
+  points: { osana: number; tenko: number; koharu: number } | null;
   lastHeroine: string | null;
   auto: boolean;
   skip: boolean;
@@ -144,18 +145,56 @@ export async function advanceToStop(page: Page, onSay?: (i: Info) => Promise<voi
   throw new Error('너무 깁니다');
 }
 
-/** 끝까지 플레이. picks 는 공통 선택지 순서대로의 옵션 id, 루트 확정 후 선택지는 첫 옵션 */
+/** 공통 선택 7회(시간순). 초반 4회는 a/b/c(함께), 후반 3회는 a/b + 해금 시 k, 미해금 시 c(함께) */
+export const COMMON_CHOICES = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch', 'c8.ch', 'c9.ch', 'c10.ch'] as const;
+
+/** 루트 첫 장면(o1_shop·t1_cats·k1)의 대사 id 접두사 */
+export const ROUTE_FIRST_STEP: Record<'osana' | 'tenko' | 'koharu', string> = { osana: 'o1.', tenko: 't1.', koharu: 'k1.' };
+
+/** 지금 화면에 보이는 선택지의 옵션 id(위에서부터). 선택지가 다 나타나 누를 수 있게 된 뒤에 읽는다 */
+export async function visibleChoiceIds(page: Page): Promise<string[]> {
+  await waitChoicesArmed(page);
+  return page.locator('.choices.on .choice').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.option ?? ''));
+}
+
+/**
+ * 끝까지 플레이. picks 는 공통 선택지 7회(COMMON_CHOICES 순서)의 옵션 id, 루트 확정 후 선택지는 첫 옵션.
+ * picks 가 모자라거나 고를 옵션이 화면에 없으면(예: 미해금인데 k) 바로 실패한다.
+ */
 export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info) => Promise<void>) {
   let n = 0;
   for (let guard = 0; guard < 50; guard++) {
     const i = await advanceToStop(page, onSay);
-    if (i.mode === 'ending') return i;
+    if (i.mode === 'ending') {
+      expect(n, '쓰지 않은 공통 선택').toBe(picks.length);
+      return i;
+    }
     if (i.frame === 'choice') {
-      const opt = i.route === null ? picks[n++] : await page.locator('.choice').first().getAttribute('data-option');
+      let opt: string | null;
+      if (i.route === null) {
+        expect(n, `공통 선택 ${i.step} 에 고를 옵션이 없음(picks ${picks.join(',')})`).toBeLessThan(picks.length);
+        opt = picks[n++];
+        expect(await visibleChoiceIds(page), `${i.step} 에 보이는 옵션`).toContain(opt);
+      } else {
+        opt = await page.locator('.choice').first().getAttribute('data-option');
+      }
       await pick(page, opt!);
     }
   }
   throw new Error('엔딩에 도달하지 못함');
+}
+
+/** 루트가 정해질 때까지(마지막 공통 선택 뒤 독백을 지나 decideRoute 가 실행될 때까지) 진행. 루트가 없던 마지막 대사를 돌려준다 */
+export async function advanceToRoute(page: Page): Promise<{ lastCommon: string | null; first: Info }> {
+  let lastCommon: string | null = null;
+  for (let g = 0; g < 120; g++) {
+    const i = await info(page);
+    if (i.route !== null) return { lastCommon, first: i };
+    if (i.frame === 'choice') throw new Error(`루트가 정해지기 전에 선택지가 또 나옴: ${i.step}`);
+    lastCommon = i.step;
+    await advanceOne(page);
+  }
+  throw new Error('루트가 정해지지 않음');
 }
 
 export async function openMenu(page: Page) {
@@ -275,7 +314,14 @@ export async function expectCssImages(page: Page, selector: string, min = 1) {
  */
 export async function continueAt(
   page: Page,
-  at: { sceneId: string; stepId: string; route?: string | null; stage?: Record<string, unknown> },
+  at: {
+    sceneId: string;
+    stepId: string;
+    route?: string | null;
+    stage?: Record<string, unknown>;
+    /** 상태에 덮어쓸 플래그(예: { 'kh.met': true } 로 코하루 해금 상태의 후반 선택지에 서기) */
+    flags?: Record<string, boolean | number | string>;
+  },
 ) {
   await newGame(page);
   await toTitle(page);
@@ -285,6 +331,7 @@ export async function continueAt(
     d.state.stepId = at.stepId;
     d.state.route = at.route ?? null;
     d.state.stage = at.stage ?? { bg: 'black', bgm: null, chars: {}, order: [], cg: null };
+    if (at.flags) d.state.flags = { ...d.state.flags, ...at.flags };
     delete d.state.sceneEntry;
     const raw = JSON.stringify(d);
     localStorage.setItem('ashita.save.auto', raw);
@@ -303,4 +350,19 @@ export async function continueAt(
 /** 전역 기록(읽은 대사·엔딩·본 CG, src/engine/save.ts GLOBAL_KEY 'ashita.global') */
 export async function readGlobal(page: Page): Promise<{ schema: number; read: string[]; endings: string[]; cgs?: string[] }> {
   return page.evaluate(() => JSON.parse(localStorage.getItem('ashita.global') ?? '{"schema":1,"read":[],"endings":[],"cgs":[]}'));
+}
+
+/** 자동 저장(ashita.save.auto)에 든 진행 상태 중 분기 확인에 쓰는 부분(플래그는 화면·debugInfo 에 나오지 않는다) */
+export async function readAutoState(page: Page): Promise<{
+  sceneId: string;
+  stepId: string;
+  route: string | null;
+  points: Record<string, number>;
+  choices: Record<string, string>;
+  flags: Record<string, boolean | number | string>;
+} | null> {
+  return page.evaluate(() => {
+    const raw = localStorage.getItem('ashita.save.auto');
+    return raw ? JSON.parse(raw).state : null;
+  });
 }

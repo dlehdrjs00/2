@@ -32,12 +32,14 @@ test('가로: 대사창·HUD·선택지·메뉴가 잘리거나 겹치지 않고
   const c = await advanceToStop(page);
   expect(c.frame).toBe('choice');
   const choices = await inViewport(page, '.choice');
+  // 공통 선택지는 늘 3개(초반: 두 히로인 + 함께)
+  expect(choices.length).toBe(3);
   for (const b of choices) {
     expect(b.height).toBeGreaterThanOrEqual(44);
     expect(overlap(b, tb)).toBe(false);
     for (const h of hud) expect(overlap(b, h)).toBe(false);
   }
-  expect(overlap(choices[0], choices[1])).toBe(false);
+  for (let i = 0; i < choices.length; i++) for (let j = i + 1; j < choices.length; j++) expect(overlap(choices[i], choices[j]), `선택지 ${i + 1}·${j + 1} 겹침`).toBe(false);
   await page.screenshot({ path: test.info().outputPath('choice.png') });
 
   // 메뉴와 저장 화면

@@ -575,4 +575,27 @@ describe('신판(스키마 3) 저장', () => {
     expect(fresh.endingsReached()).toEqual(['koharu']);
     expect(fresh.hasSeenCg('kh_date')).toBe(true);
   });
+
+  it('옛 빌드가 전역 기록을 모르는 엔딩 없이 다시 써도 코하루 엔딩은 보조 키로 남는다', () => {
+    const story = branchStory();
+    const store = new MemoryStore(true);
+    const sm = new SaveManager(store, story, permissiveAssets);
+    sm.markEnding('osana');
+    sm.markEnding('koharu');
+    sm.markCg('kh_date');
+    // 옛 빌드(11612b4)의 flushGlobal 흉내: 자기가 아는 엔딩(osana·tenko)만 남기고 같은 키에 다시 쓴다. 보조 키는 모른다
+    const g = JSON.parse(store.get('ashita.global')!);
+    store.set('ashita.global', JSON.stringify({ ...g, endings: g.endings.filter((e: string) => e === 'osana' || e === 'tenko'), read: [...g.read, 'old.010'] }));
+    const fresh = new SaveManager(store, story, permissiveAssets);
+    expect(fresh.endingsReached().sort()).toEqual(['koharu', 'osana']);
+    expect(fresh.isRead('old.010')).toBe(true);
+    // 새 빌드가 다시 쓰면 전역 기록에도 돌아온다
+    fresh.flushGlobal();
+    expect(JSON.parse(store.get('ashita.global')!).endings.sort()).toEqual(['koharu', 'osana']);
+    // 보조 키가 손상되거나 모르는 엔딩이 있어도 전역 기록만으로 계속한다
+    store.set('ashita.global.ext', '{bad');
+    expect(new SaveManager(store, story, permissiveAssets).endingsReached().sort()).toEqual(['koharu', 'osana']);
+    store.set('ashita.global.ext', JSON.stringify({ endings: ['nope', 'tenko'] }));
+    expect(new SaveManager(store, story, permissiveAssets).endingsReached().sort()).toEqual(['koharu', 'osana', 'tenko']);
+  });
 });

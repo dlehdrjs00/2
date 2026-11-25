@@ -247,6 +247,8 @@ export class Game {
   private choicesArmedAt = 0;
   private choicePointerDownAt = -Infinity;
   private armTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 선택지 버튼 크기 변화(글꼴 도착 등)를 보고 목록 맞춤(fitChoices)을 다시 한다 */
+  private choiceRo: ResizeObserver | null = null;
   private lastLayoutSize: { vw: number; vh: number } | null = null;
   /** 마지막으로 요청한 배경음(테스트·디버그용) */
   private bgmRequested: string | null = null;
@@ -272,7 +274,7 @@ export class Game {
   private preloadStarted = false;
   /** 이야기의 해금 플래그(히든 히로인 → 플래그 이름). 처음 쓸 때 한 번 훑는다 */
   private unlockFlagMap: Map<HeroineId, string> | null = null;
-  /** 히든 히로인 전용 그림을 나머지 대기열에 넣은 히로인(한 번만) */
+  /** 미리 불러오기가 마지막으로 본 플레이에서 해금돼 있던 히든 히로인(전용 그림을 나머지 대기열에 넣음) */
   private hiddenQueued = new Set<HeroineId>();
 
   constructor(mount: HTMLElement, content: GameContent, store: KeyValueStore) {
@@ -312,7 +314,8 @@ export class Game {
       bgUrl: (id) => content.bgUrl(id),
       bgColor: (id) => content.bgColor(id),
       spriteUrl: (char, s) => content.spriteUrl(char, s.outfit, s.hair, s.expr),
-      charLabel: (char) => content.heroineNames[char],
+      // 무대 그림의 읽기 이름: 이름을 밝히기 전(익명 이름표로 말하는 장면)에는 그 이름표(charReadName)
+      charLabel: (char) => this.charReadName(char),
       cgUrl: content.cgUrl ? (id: CgId) => content.cgUrl!(id) : undefined,
     });
     this.stage.onBackdrop = (url, color, tone?: string) => this.paintBackdrop(url, color, tone);
@@ -336,6 +339,7 @@ export class Game {
     this.choicesEl.dataset.noadvance = '';
     this.choicesEl.setAttribute('role', 'group');
     this.choicesEl.setAttribute('aria-label', '선택지');
+    if (typeof ResizeObserver === 'function') this.choiceRo = new ResizeObserver(() => this.fitChoices());
 
     this.overlayRoot = el('div', 'overlay-root');
     this.rotateEl = this.buildRotate();
@@ -837,8 +841,8 @@ export class Game {
         const info = this.speaker(step);
         const text = this.t(step.text);
         this.stage.setSpeaker(info.char);
-        // 익명 이름표(문자 메시지 '… · 문자' 는 제외)로 말하는 인물은 그림의 읽기 이름도 그 이름표로
-        if (info.char) this.stage.setCharLabel(info.char, step.label && !step.label.includes(' · ') ? info.name : null);
+        // 익명 이름표로 말하는 인물은 그림의 읽기 이름도 그 이름표로(이름을 밝힌 줄 뒤에는 원래 이름. charReadName)
+        if (info.char) this.stage.setCharLabel(info.char, null);
         pushLog(state, { id: step.id, name: info.name, text, kind: info.mono ? 'mono' : 'say' });
         this.autosave();
         // 그림을 기다리는 동안 건너뛰기를 켰을 수도 있어 지금 값을 본다
@@ -1163,14 +1167,44 @@ export class Game {
       this.choicesEl.append(b);
     });
     this.choicesEl.classList.add('on');
+    this.choiceRo?.disconnect();
+    for (const b of this.choicesEl.children) this.choiceRo?.observe(b);
+    this.fitChoices();
   }
 
   private hideChoices() {
     if (this.armTimer) clearTimeout(this.armTimer);
     this.armTimer = null;
+    this.choiceRo?.disconnect();
     delete this.choicesEl.dataset.armed;
+    delete this.choicesEl.dataset.fit;
     this.choicesEl.classList.remove('on', 'locked');
     this.choicesEl.replaceChildren();
+  }
+
+  /**
+   * 선택지 목록 맞춤. 배치 단계(layout.ts dense)는 한 줄짜리 버튼 기준이라, 두 줄 문구 여러 개는 목록 높이를 넘쳐 마지막 버튼이
+   * 스크롤해야 보였다(667×375 에서 34자 문구 3개). 넘치면 한 단계 촘촘하게(data-fit=tight: dense 1 모양), 그래도 넘치면 가로로
+   * 나란히(row) 놓는다. 버튼 자리는 변형(등장 연출의 translate)과 상관없는 offsetTop/offsetHeight 로 잰다.
+   * 선택지를 그릴 때·화면 크기가 바뀔 때(relayout)·버튼 크기가 바뀔 때(글꼴 도착 등, choiceRo) 다시 한다.
+   */
+  private fitChoices(): void {
+    const list = this.choicesEl;
+    delete list.dataset.fit;
+    if (!list.classList.contains('on') || !list.isConnected) return;
+    const btns = [...list.children].filter((e): e is HTMLElement => e instanceof HTMLElement);
+    if (!btns.length) return;
+    const overflows = () => {
+      const cs = getComputedStyle(list);
+      const room = list.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+      const top = Math.min(...btns.map((b) => b.offsetTop));
+      const bottom = Math.max(...btns.map((b) => b.offsetTop + b.offsetHeight));
+      return bottom - top > room + 0.5;
+    };
+    for (const fit of ['tight', 'row'] as const) {
+      if (!overflows()) return;
+      list.dataset.fit = fit;
+    }
   }
 
   // =========================================================================
@@ -1187,6 +1221,8 @@ export class Game {
     // [새 게임]·확인창 더블클릭의 두 번째 입력이 첫 대사를 넘기지 않게
     this.inputLockUntil = performance.now() + START_LOCK_MS;
     this.state = newGameState(this.story);
+    // 타이틀에서 해금된 [이어하기] 위치로 대기열에 넣은 히든 히로인 그림은 첫 화면 그림을 받기 전에 뺀다(곧바로 받기 시작하지 않게)
+    this.queueHiddenImages(this.state);
     this.current = null;
     this.stage.clearAll();
     this.textbox.clear();
@@ -1216,6 +1252,7 @@ export class Game {
     // [이어하기]·슬롯 더블클릭의 두 번째 입력이 복원된 대사를 넘기거나 선택지를 고르지 않게
     this.inputLockUntil = performance.now() + START_LOCK_MS;
     this.state = state;
+    this.queueHiddenImages(state);
     this.current = null;
     this.hideScreen();
     this.textbox.clear();
@@ -2089,11 +2126,8 @@ export class Game {
       case 'log':
         return buildLog({
           entries: this.state?.log ?? [],
-          // 이름표 → 화자 id(이름 색). 문자 메시지 줄('아카네 · 문자')도 그 인물 색. 익명 라벨('여학생' 등)은 모르는 화자(npc 색)
-          speakerOf: (name) =>
-            Object.entries(this.c.speakerNames).find(([, v]) => v === name)?.[0] ??
-            Object.entries(this.c.speakerNames).find(([, v]) => name.startsWith(`${v} · `))?.[0] ??
-            null,
+          // 이름표 → 화자 id(이름 색). 대사창 이름표 색과 같은 규칙(speakerOfName)
+          speakerOf: (name) => this.speakerOfName(name),
         });
       case 'album':
         return this.renderAlbum();
@@ -2428,6 +2462,7 @@ export class Game {
       this.root.dataset.aschip = autosaveChipRow(L.sy, safe.t, L.fs, L.btn);
       this.stage.placeHintIn(L.mode === 'below' ? this.root : null);
       this.placeToast();
+      this.fitChoices();
     }
     const showRotate = isPhonePortrait(vw, vh) && !this.rotateDismissed;
     if (showRotate !== this.rotateShown) {
@@ -2451,24 +2486,46 @@ export class Game {
 
   /**
    * 이번 플레이에서 해금된 히든 히로인의 전용 그림(스프라이트·전용 배경)을 게임 전체 그림 대기열(나머지) 뒤에 더한다.
-   * 게임 전체 그림을 미리 받는 환경(데이터 절약·Apple 터치 기기가 아님)에서만. 해금 전에는 넣지 않는다(타이틀 포함)
+   * 게임 전체 그림을 미리 받는 환경(데이터 절약·Apple 터치 기기가 아님)에서만. 해금 전에는 넣지 않는다(타이틀 포함).
+   * 해금된 상태로 본 뒤 해금되지 않은 플레이로 바뀌면(타이틀에서 해금된 [이어하기] 위치로 세웠다가 새 게임·미해금 저장 불러오기)
+   * 그 인물 그림(전용 그림 + 숨은 CG) 중 아직 받기 시작하지 않은 것은 대기열에서 뺀다(모든 환경. 가까운 묶음에서 밀려난 것 포함).
+   * known 이 없으면 새 게임과 같이 본다(해금 안 됨)
    */
   private queueHiddenImages(known: KnownState | null) {
-    if (!known || !this.c.hiddenImageUrls || !this.preloadStarted) return;
-    if (prefersDataSaving() || this.renderMode === 'apple-touch') return;
+    if (!this.preloadStarted) return;
     this.unlockFlagMap ??= unlockFlags(this.story);
     for (const h of HIDDEN_HEROINES) {
-      if (this.hiddenQueued.has(h) || !heroineUnlocked(this.unlockFlagMap, known, h)) continue;
-      this.hiddenQueued.add(h);
-      this.preloader.add(this.c.hiddenImageUrls(h));
+      const on = heroineUnlocked(this.unlockFlagMap, known, h);
+      if (on === this.hiddenQueued.has(h)) continue;
+      if (on) {
+        this.hiddenQueued.add(h);
+        if (this.c.hiddenImageUrls && !prefersDataSaving() && this.renderMode !== 'apple-touch') this.preloader.add(this.c.hiddenImageUrls(h));
+      } else {
+        this.hiddenQueued.delete(h);
+        this.preloader.drop(this.hiddenArtUrls(h));
+      }
     }
+  }
+
+  /**
+   * 해금되지 않은 플레이로 바뀔 때 대기열에서 뺄 그 히든 히로인 그림: 전용 그림(hiddenImageUrls) + 숨은 CG(앨범 목록의 hidden,
+   * 그 루트이거나 공통). CG 는 게임 전체 그림에 없고 타이틀의 [이어하기] 위치 기준 가까운 묶음으로만 들어온다
+   */
+  private hiddenArtUrls(h: HeroineId): string[] {
+    const out = [...(this.c.hiddenImageUrls?.(h) ?? [])];
+    for (const e of this.c.cgCatalog ?? []) {
+      if (!e.hidden || (e.route !== null && e.route !== h)) continue;
+      const u = this.c.cgUrl?.(e.id);
+      if (u) out.push(u);
+    }
+    return out;
   }
 
   /**
    * 지금 위치(sceneId·stepId 다음 스텝부터, 무대 stage)에서 지금 장면 끝 + 바로 다음 장면까지의 그림을
    * '지금 위치에서의 거리 - 종류별 당김(PRELOAD_LEAD)' 순으로 줄 세워 미리 불러오기 대기열에 넣는다.
    * 단 PRELOAD_DECODE_STEPS 안에서 처음 쓰는 그림은 당김과 상관없이 맨 앞이고(받은 뒤 해독까지 해 둔다),
-   * 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다.
+   * 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다. 그 선택지 뒤에서만 쓰는 그림(갈래 그림)은 미리 해독하지 않는다.
    * PRELOAD_NEAR_STEPS 안의 그림은 가까운 묶음(받는 동안 다른 그림은 새로 시작하지 않음), 나머지는 곧 쓸 그림.
    * stepId 가 null 이면 장면 처음부터(빈 무대). known: 지금 상태(조건·해금·루트·보이는 옵션 판정. 없으면 새 게임과 같이 본다).
    * 이번 플레이에서 해금되지 않은 히든 히로인의 그림은 받지 않는다(sceneImages 가 해금 판정을 지금 상태로 한다).
@@ -2484,7 +2541,7 @@ export class Game {
       // 지금 장면 나머지 + 바로 다음 장면(지금 상태로 갈래·해금·루트를 판정. 선택지가 떠 있으면 보이는 옵션마다)
       const items: PreloadItem[] = nearbyImages(this.story, sceneId, stepId, stage, known, r);
       const rank = new Map<string, number>();
-      /** 처음 쓰이는 곳까지의 거리(당김 없이) */
+      /** 처음 쓰이는 곳까지의 거리(당김 없이). 아직 고르지 않은 선택지 뒤에서만 쓰이는 그림(branch)은 넣지 않는다 */
       const dist = new Map<string, number>();
       for (const it of items) {
         // 아직 고르지 않은 선택지 뒤의 CG 는 당기지 않는다(갈래마다 하나씩이라 고르기 전에는 반은 쓰지 않는다. 큰 CG 두 장이
@@ -2493,11 +2550,16 @@ export class Game {
         const p = it.at - lead;
         const old = rank.get(it.url);
         if (old === undefined || p < old) rank.set(it.url, p);
+        // 갈래 그림은 미리 해독·맨 앞 받기(urgent)에서 뺀다: 보이는 옵션마다 갈래를 나눠 훑으므로 모든 갈래의 첫 몇 줄이
+        // 같은 거리가 되어, 고르지 않을 갈래의 CG·표정까지 해독하던 것(선택지 3개에서 해독 대상이 2~3배로 늘어 Apple 터치의
+        // 붙잡기 한도 APPLE_PRELOAD_HOT_MAX 를 넘었다). 받기는 당긴 거리 순으로 그대로 하고, 고른 뒤 그 갈래에서 해독한다.
+        // 어느 옵션을 골라도 쓰는 그림(allBranches, 예: c6.ch 의 모든 갈래가 바꾸는 빗길 배경)은 평소대로 해독한다
+        if (it.branch && !it.allBranches) continue;
         const d = dist.get(it.url);
         if (d === undefined || it.at < d) dist.set(it.url, it.at);
       }
       // 미리 해독할 만큼 가까운 그림(PRELOAD_DECODE_STEPS 안)은 당김과 상관없이 맨 앞(가까운 것부터), 나머지는 당긴 거리 순
-      const urgent = (u: string) => dist.get(u)! <= PRELOAD_DECODE_STEPS;
+      const urgent = (u: string) => (dist.get(u) ?? Infinity) <= PRELOAD_DECODE_STEPS;
       const ordered = [...rank.entries()].sort((a, b) => {
         const ua = urgent(a[0]);
         if (ua !== urgent(b[0])) return ua ? -1 : 1;
@@ -2529,12 +2591,44 @@ export class Game {
     return this.state ? visibleOptions(this.state, step) : [];
   }
 
+  /**
+   * who: 이름표 색을 고르는 화자 id. 이름표(label)가 있는 줄은 대화 기록과 같은 규칙으로 이름표 글자에서 찾는다:
+   * 문자 메시지('아카네 · 문자')는 그 인물 색, 익명 이름표('여학생' 등)는 모르는 화자(npc 색). 이름을 밝히기 전의
+   * 히든 히로인이 대사창 색으로 먼저 드러나지 않게 한다.
+   */
   private speaker(step: SayStep): { name: string | null; who: string; mono: boolean; char: CharId | null } {
     if (step.who === null) return { name: null, who: '', mono: true, char: null };
     const name = step.label ? this.t(step.label) : this.c.speakerNames[step.who] ?? step.who;
+    const who = step.label ? this.speakerOfName(name) ?? 'npc' : step.who;
     // 화자가 히로인(HEROINES)이면 무대의 그 인물을 밝게(라벨로 이름을 가린 익명 대사·문자 줄도 같은 인물)
     const char = isHeroineId(step.who) ? step.who : null;
-    return { name, who: step.who, mono: false, char };
+    return { name, who, mono: false, char };
+  }
+
+  /** 이름표 글자 → 화자 id(이름표 색). 이름 그대로이거나 '이름 · 문자' 형식이면 그 화자, 모르는 이름(익명 이름표)은 null */
+  private speakerOfName(name: string): string | null {
+    const names = Object.entries(this.c.speakerNames);
+    return names.find(([, v]) => v === name)?.[0] ?? names.find(([, v]) => name.startsWith(`${v} · `))?.[0] ?? null;
+  }
+
+  /**
+   * 무대 그림의 읽기 이름(aria-label). 지금 장면에서 그 인물이 지금 줄까지 마지막으로 말한 줄(아직 말하지 않았으면 앞으로
+   * 처음 말할 줄)의 이름표가 익명이면 그 이름표, 아니면 원래 이름. 그림이 처음 나타날 때·불러오기로 다시 그릴 때·이름표 없는
+   * 줄(독백·주인공)에서도 같은 답이라, 이름을 밝히기 전에 실제 이름이 접근성 트리에 먼저 나오지 않는다.
+   */
+  private charReadName(char: CharId): string {
+    const real = this.c.heroineNames[char];
+    const st = this.state;
+    const steps = st ? this.story.scenes[st.sceneId]?.steps : undefined;
+    if (!st || !steps) return real;
+    const at = Math.max(0, steps.findIndex((x) => x.id === st.stepId));
+    const says = (x: (typeof steps)[number]): x is SayStep => x.t === 'say' && x.who === char;
+    let line: SayStep | undefined;
+    for (let i = at; i >= 0 && !line; i--) if (says(steps[i])) line = steps[i] as SayStep;
+    for (let i = at + 1; i < steps.length && !line; i++) if (says(steps[i])) line = steps[i] as SayStep;
+    if (!line?.label) return real;
+    const name = this.t(line.label);
+    return this.speakerOfName(name) === null ? name : real;
   }
 
   private storyFailure(e: unknown) {

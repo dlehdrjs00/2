@@ -1,6 +1,24 @@
 /** 선택 전후 · 루트 진입 후 · 후일담에서의 저장/불러오기, 새로고침 후 이어하기 */
 import { expect, test, type Page } from '@playwright/test';
-import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readSlot, tapBackground, toTitle, waitChoicesArmed, waitSettled } from './helpers';
+import {
+  COMMON_CHOICES,
+  ROUTE_FIRST_STEP,
+  advanceOne,
+  advanceToRoute,
+  advanceToStop,
+  boot,
+  info,
+  newGame,
+  openMenu,
+  pick,
+  readAutoState,
+  readSlot,
+  tapBackground,
+  toTitle,
+  visibleChoiceIds,
+  waitChoicesArmed,
+  waitSettled,
+} from './helpers';
 
 test.beforeEach(async ({}, ti) => {
   test.skip(ti.project.name === 'phone-se-landscape', '저장 흐름은 데스크톱·휴대폰 1종에서 확인');
@@ -46,76 +64,99 @@ test('선택 전 저장 → 다른 선택 → 불러오기 → 같은 선택지�
   await saveTo(page, '1');
   await pick(page, 'b');
   const afterB = await info(page);
-  expect(afterB.points).toEqual({ osana: 0, tenko: 1 });
+  expect(afterB.points).toEqual({ osana: 0, tenko: 2, koharu: 0 }); // c3 개인 선택 +2
   await advanceOne(page);
   await loadFrom(page, '1');
   const back = await info(page);
   expect(back.step).toBe(c1.step);
   expect(back.frame).toBe('choice');
-  expect(back.points).toEqual({ osana: 0, tenko: 0 });
-  await expect(page.locator('.choice')).toHaveCount(2);
+  expect(back.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
+  expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'c']);
   await pick(page, 'a');
   const afterA = await info(page);
-  expect(afterA.points).toEqual({ osana: 1, tenko: 0 });
+  expect(afterA.points).toEqual({ osana: 2, tenko: 0, koharu: 0 });
   expect(afterA.step).not.toBe(afterB.step); // 선택 직후 반응이 다르다
+  // '함께'도 같은 자리에서 다시 고를 수 있다(osana +1, tenko +1)
+  await loadFrom(page, '1');
+  await pick(page, 'c');
+  expect((await info(page)).points).toEqual({ osana: 1, tenko: 1, koharu: 0 });
 });
 
-test('루트 진입 후·후일담 저장, 새로고침 후 불러오기와 이어하기', async ({ page }) => {
-  test.setTimeout(240_000);
-  await boot(page);
-  await newGame(page);
-  for (const p of ['a', 'b', 'a', 'b']) {
-    await advanceToStop(page);
-    await pick(page, p);
-  }
-  // 루트는 마지막 공통 선택지의 반응 대사 뒤에 확정된다
-  for (let g = 0; g < 80 && (await info(page)).route === null; g++) await advanceOne(page);
-  const inRoute = await info(page);
-  expect(inRoute.route).toBe('tenko');
-  await advanceOne(page);
-  const routeLine = await info(page);
-  await saveTo(page, '2');
-
-  // 후일담까지 진행
-  let epi = await info(page);
-  for (let g = 0; g < 400; g++) {
-    epi = await info(page);
-    if (epi.frame === 'choice') {
-      await pick(page, (await page.locator('.choice').first().getAttribute('data-option'))!);
-      continue;
+for (const [route, picks, epilogue, early, final, meetFlag] of [
+  // a,b,a,b: osana 4, tenko 5 → 해금(koharu 4.5) → 후반 b,b,b → tenko 5+9=14 단독
+  ['tenko', 'ababbbb', /^t[5-7]\./, { osana: 4, tenko: 5, koharu: 4.5 }, { osana: 4, tenko: 14, koharu: 4.5 }, true],
+  // 함께 4회 4/4 → 해금(koharu 4) → 후반 a,b,k → 7/7/7 동점 → 마지막 k → koharu
+  ['koharu', 'ccccabk', /^k[5-8]\./, { osana: 4, tenko: 4, koharu: 4 }, { osana: 7, tenko: 7, koharu: 7 }, true],
+] as const) {
+  test(`루트 진입 후·후일담 저장, 새로고침 후 불러오기와 이어하기 (${route})`, async ({ page }, ti) => {
+    test.skip(route === 'koharu' && ti.project.name === 'phone-landscape', '코하루 루트 저장은 데스크톱·iPad WebKit 에서(휴대폰은 히나 루트로 같은 흐름)');
+    test.setTimeout(330_000);
+    await boot(page);
+    await newGame(page);
+    for (const [n, p] of [...picks].entries()) {
+      const c = await advanceToStop(page);
+      expect(c.step).toBe(COMMON_CHOICES[n]);
+      if (n === 4) expect(c.points, '해금 판정 뒤').toEqual(early);
+      await pick(page, p);
     }
-    const inEpilogue = await page.evaluate(() => document.querySelector('#vn')!.getAttribute('data-step'));
-    if (/^t[5-7]/.test(inEpilogue ?? '')) break;
+    // 루트는 마지막 공통 선택(c10)의 반응과 독백(c10.j10) 뒤에 확정된다
+    const { lastCommon, first } = await advanceToRoute(page);
+    expect(lastCommon).toBe('c10.j10');
+    expect(first.route).toBe(route);
+    expect(first.step!.startsWith(ROUTE_FIRST_STEP[route])).toBe(true);
+    expect(first.points).toEqual(final);
+    const routePoints = final;
     await advanceOne(page);
-  }
-  expect(epi.step).toMatch(/^t[5-7]/);
-  await advanceOne(page);
-  const epiLine = await info(page);
-  await saveTo(page, '3');
-  await advanceOne(page);
-  await advanceOne(page);
-  const beforeReload = await info(page);
+    const routeLine = await info(page);
+    await saveTo(page, '2');
 
-  // 새로고침 → 이어하기: 마지막으로 보던 문장
-  await page.reload();
-  await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
-  await page.locator('[data-action=continue]').click();
-  await waitSettled(page);
-  const cont = await info(page);
-  expect(cont.step).toBe(beforeReload.step);
-  expect(cont.route).toBe('tenko');
+    // 후일담까지 진행
+    let epi = await info(page);
+    for (let g = 0; g < 400; g++) {
+      epi = await info(page);
+      if (epi.frame === 'choice') {
+        await pick(page, (await page.locator('.choice').first().getAttribute('data-option'))!);
+        continue;
+      }
+      const inEpilogue = await page.evaluate(() => document.querySelector('#vn')!.getAttribute('data-step'));
+      if (epilogue.test(inEpilogue ?? '')) break;
+      await advanceOne(page);
+    }
+    expect(epi.step).toMatch(epilogue);
+    await advanceOne(page);
+    const epiLine = await info(page);
+    await saveTo(page, '3');
+    await advanceOne(page);
+    await advanceOne(page);
+    const beforeReload = await info(page);
 
-  // 후일담 저장 불러오기
-  await loadFrom(page, '3');
-  expect((await info(page)).step).toBe(epiLine.step);
+    // 새로고침 → 이어하기: 마지막으로 보던 문장, 루트·점수·해금 기록 그대로
+    await page.reload();
+    await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
+    await page.locator('[data-action=continue]').click();
+    await waitSettled(page);
+    const cont = await info(page);
+    expect(cont.step).toBe(beforeReload.step);
+    expect(cont.route).toBe(route);
+    expect(cont.points).toEqual(routePoints);
+    expect((await readAutoState(page))!.flags['kh.met']).toBe(meetFlag);
 
-  // 타이틀에서 루트 저장 불러오기
-  await page.reload();
-  await loadFrom(page, '2');
-  const r2 = await info(page);
-  expect(r2.step).toBe(routeLine.step);
-  expect(r2.route).toBe('tenko');
-});
+    // 후일담 저장 불러오기
+    await loadFrom(page, '3');
+    expect((await info(page)).step).toBe(epiLine.step);
+    expect((await info(page)).points).toEqual(routePoints);
+
+    // 타이틀에서 루트 저장 불러오기
+    await page.reload();
+    await loadFrom(page, '2');
+    const r2 = await info(page);
+    expect(r2.step).toBe(routeLine.step);
+    expect(r2.route).toBe(route);
+    expect(r2.points).toEqual(routePoints);
+    const slot2 = (await readSlot(page, '2')) as unknown as { state: { flags: Record<string, unknown> } };
+    expect(slot2.state.flags['kh.met']).toBe(meetFlag);
+  });
+}
 
 test('손상된 저장 데이터는 안내 후 삭제할 수 있고 게임은 계속된다', async ({ page }) => {
   await page.addInitScript(() => {
@@ -148,7 +189,7 @@ test('선택지가 떠 있을 때 불러오면 이전 선택지가 화면에 남
   await saveTo(page, '1');
   const c = await advanceToStop(page);
   expect(c.frame).toBe('choice');
-  await expect(page.locator('.choice')).toHaveCount(2);
+  await expect(page.locator('.choice')).toHaveCount(3);
   await loadFrom(page, '1');
   const back = await info(page);
   expect(back.step).toBe(saved);
@@ -225,8 +266,100 @@ test("'장면 처음부터' 복구는 그 장면의 배경·음악을 되살리�
   await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'play');
   await waitSettled(page);
   const r = await info(page);
-  expect(r.points).toEqual({ osana: 0, tenko: 0 }); // 그 장면의 선택이 되돌려짐(엔진 복구)
+  expect(before.points).toEqual({ osana: 2, tenko: 0, koharu: 0 });
+  expect(r.points).toEqual({ osana: 0, tenko: 0, koharu: 0 }); // 그 장면의 선택이 되돌려짐(엔진 복구)
   expect(r.bg).not.toBe('black');
   expect(r.bgm).toBe(before.bgm); // 타이틀 곡이 계속 나오지 않음
-  await expect(page.locator('.choice')).toHaveCount(r.frame === 'choice' ? 2 : 0);
+  await expect(page.locator('.choice')).toHaveCount(r.frame === 'choice' ? 3 : 0);
+});
+
+/**
+ * 구판 저장(스키마 2): 기준 커밋 11612b4 의 엔진·대본으로 실제로 쓴 원문(초반 a,b,a,b 조합, 예전 가중치 +1).
+ * 계약 1절 이전 규칙으로 기대값을 직접 계산했다:
+ *  - 점수는 새 가중치로 다시 합산: c3 a +2, c4 b +2, c6 a +2, c7 b +3, koharu 0
+ *  - 노을길(c7.j20~j40)이나 루트 안 저장은 kh.met = false(첫 만남을 소급하지 않음), 그 앞 공통 저장은 플래그 없음(새 규칙대로 판정)
+ *  - 위치·루트는 그대로
+ */
+const LEGACY_SCHEMA2 = {
+  /** c5_gym 의 c5.020(c3 a·c4 b, 예전 점수 1/1) */
+  c5: "{\"schema\":2,\"game\":\"ashita-mo-issho\",\"storyVersion\":\"0.1.0\",\"savedAt\":\"2026-11-25T16:56:49.931Z\",\"summary\":{\"sceneTitle\":\"음료 내기\",\"text\":\"\",\"route\":null},\"state\":{\"sceneId\":\"c5_gym\",\"stepId\":\"c5.020\",\"points\":{\"osana\":1,\"tenko\":1},\"lastHeroine\":\"tenko\",\"route\":null,\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\"},\"flags\":{},\"stage\":{\"bg\":\"hallway\",\"chars\":{\"osana\":{\"pos\":\"left\",\"expr\":\"smile\",\"outfit\":\"uniform\",\"hair\":\"default\"},\"tenko\":{\"pos\":\"right\",\"expr\":\"smile\",\"outfit\":\"uniform\",\"hair\":\"ponytail\"}},\"order\":[\"osana\",\"tenko\"],\"bgm\":\"daily\",\"cg\":null},\"log\":[],\"endedWith\":null,\"sceneEntry\":{\"sceneId\":\"c5_gym\",\"points\":{\"osana\":1,\"tenko\":1},\"lastHeroine\":\"tenko\",\"route\":null,\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\"},\"flags\":{},\"stage\":{\"bg\":\"courtyard\",\"chars\":{\"osana\":{\"pos\":\"left\",\"expr\":\"neutral\",\"outfit\":\"uniform\",\"hair\":\"default\"},\"tenko\":{\"pos\":\"right\",\"expr\":\"shy\",\"outfit\":\"uniform\",\"hair\":\"default\"}},\"order\":[\"osana\",\"tenko\"],\"bgm\":\"daily\",\"cg\":null},\"logLength\":0}}}",
+  /** c7_friday 노을길 c7.j30(a,b,a,b 를 다 고른 뒤, 예전 점수 2/2) */
+  c7road: "{\"schema\":2,\"game\":\"ashita-mo-issho\",\"storyVersion\":\"0.1.0\",\"savedAt\":\"2026-11-25T16:56:49.932Z\",\"summary\":{\"sceneTitle\":\"금요일 노을\",\"text\":\"\",\"route\":null},\"state\":{\"sceneId\":\"c7_friday\",\"stepId\":\"c7.j30\",\"points\":{\"osana\":2,\"tenko\":2},\"lastHeroine\":\"tenko\",\"route\":null,\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\",\"c6.ch\":\"a\",\"c7.ch\":\"b\"},\"flags\":{},\"stage\":{\"bg\":\"road_evening\",\"chars\":{\"osana\":{\"pos\":\"left\",\"expr\":\"smile\",\"outfit\":\"uniform\",\"hair\":\"default\"},\"tenko\":{\"pos\":\"right\",\"expr\":\"smile\",\"outfit\":\"uniform\",\"hair\":\"default\"}},\"order\":[\"osana\",\"tenko\"],\"bgm\":\"evening\",\"cg\":null},\"log\":[],\"endedWith\":null,\"sceneEntry\":{\"sceneId\":\"c7_friday\",\"points\":{\"osana\":2,\"tenko\":1},\"lastHeroine\":\"osana\",\"route\":null,\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\",\"c6.ch\":\"a\"},\"flags\":{},\"stage\":{\"bg\":\"road_rain\",\"chars\":{\"osana\":{\"pos\":\"left\",\"expr\":\"pout\",\"outfit\":\"uniform\",\"hair\":\"default\"}},\"order\":[\"osana\"],\"bgm\":\"heart\",\"cg\":null},\"logLength\":0}}}",
+  /** 히나 루트 t2_notebook 의 t2.010(예전 동점 처리로 tenko) */
+  t2: "{\"schema\":2,\"game\":\"ashita-mo-issho\",\"storyVersion\":\"0.1.0\",\"savedAt\":\"2026-11-25T16:56:49.932Z\",\"summary\":{\"sceneTitle\":\"이름 외우기 수첩\",\"text\":\"\",\"route\":\"tenko\"},\"state\":{\"sceneId\":\"t2_notebook\",\"stepId\":\"t2.010\",\"points\":{\"osana\":2,\"tenko\":2},\"lastHeroine\":\"tenko\",\"route\":\"tenko\",\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\",\"c6.ch\":\"a\",\"c7.ch\":\"b\"},\"flags\":{},\"stage\":{\"bg\":\"hallway\",\"chars\":{},\"order\":[],\"bgm\":\"daily\",\"cg\":null},\"log\":[],\"endedWith\":null,\"sceneEntry\":{\"sceneId\":\"t2_notebook\",\"points\":{\"osana\":2,\"tenko\":2},\"lastHeroine\":\"tenko\",\"route\":\"tenko\",\"choices\":{\"c3.ch\":\"a\",\"c4.ch\":\"b\",\"c6.ch\":\"a\",\"c7.ch\":\"b\"},\"flags\":{},\"stage\":{\"bg\":\"shrine_steps\",\"chars\":{\"tenko\":{\"pos\":\"center\",\"expr\":\"shy\",\"outfit\":\"uniform\",\"hair\":\"default\"}},\"order\":[\"tenko\"],\"bgm\":\"heart\",\"cg\":null},\"logLength\":0}}}",
+} as const;
+
+/** 구판 원문을 슬롯 1에 넣고(첫 문서에서만) 타이틀의 [불러오기]로 연다 */
+async function loadLegacy(page: Page, raw: string) {
+  await page.addInitScript((raw) => {
+    if (sessionStorage.getItem('legacy-seeded')) return;
+    sessionStorage.setItem('legacy-seeded', '1');
+    localStorage.setItem('ashita.save.1', raw);
+  }, raw);
+  await boot(page);
+  await loadFrom(page, '1');
+}
+
+test.describe('구판 저장(스키마 2) 불러오기', () => {
+  test.beforeEach(async ({}, ti) => {
+    test.skip(ti.project.name === 'phone-landscape', '저장 이전 규칙은 데스크톱·iPad WebKit 에서 확인');
+  });
+
+  test('c7 이전 공통 저장: 점수를 새 가중치로 다시 세고 플래그 없이 이어, c7 뒤 해금 판정을 새 규칙대로 한다', async ({ page }) => {
+    test.setTimeout(240_000);
+    await loadLegacy(page, LEGACY_SCHEMA2.c5);
+    const i = await info(page);
+    expect(i.step).toBe('c5.020');
+    expect(i.route).toBeNull();
+    expect(i.points).toEqual({ osana: 2, tenko: 2, koharu: 0 }); // 예전 1/1 → c3 a +2, c4 b +2
+    expect(i.lastHeroine).toBe('tenko');
+    await advanceOne(page);
+    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe((await info(page)).step);
+    expect((await readAutoState(page))!.flags).not.toHaveProperty('kh.met');
+    // c6 a(+2) → 4/2, c7 b(+3) → 4/5 → 차 1 해금, koharu 4.5 → 복도 첫 만남 → 토요일 추첨 → c8.ch 에 k
+    const seen: string[] = [];
+    const onSay = async (x: { step: string | null }) => void seen.push(x.step!);
+    expect((await advanceToStop(page, onSay)).step).toBe('c6.ch');
+    await pick(page, 'a');
+    expect((await advanceToStop(page, onSay)).step).toBe('c7.ch');
+    await pick(page, 'b');
+    const c8 = await advanceToStop(page, onSay);
+    expect(c8.step).toBe('c8.ch');
+    expect(c8.points).toEqual({ osana: 4, tenko: 5, koharu: 4.5 });
+    expect(seen).toContain('c7.m20');
+    expect(seen.some((s) => s.startsWith('c8r.'))).toBe(true);
+    expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'k']);
+    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('c8.ch');
+    expect((await readAutoState(page))!.flags['kh.met']).toBe(true);
+  });
+
+  test('노을길(c7.j30) 저장: 점수를 다시 세고 kh.met = false 라 복도·추첨 없이 후반 선택지는 함께(c)', async ({ page }) => {
+    await loadLegacy(page, LEGACY_SCHEMA2.c7road);
+    const i = await info(page);
+    expect(i.step).toBe('c7.j30');
+    expect(i.route).toBeNull();
+    // a,b,a,b: osana 2+2=4, tenko 2+3=5 → 새 규칙이면 해금될 차이지만 판정 지점을 이미 지난 저장이라 소급하지 않는다
+    expect(i.points).toEqual({ osana: 4, tenko: 5, koharu: 0 });
+    const seen: string[] = [];
+    const c8 = await advanceToStop(page, async (x) => void seen.push(x.step!));
+    expect(c8.step).toBe('c8.ch');
+    expect(c8.points).toEqual({ osana: 4, tenko: 5, koharu: 0 });
+    expect(seen.filter((s) => s.startsWith('c7.m') || s.startsWith('c8r.')), '코하루 장면').toEqual([]);
+    expect(seen).toContain('c7.j40');
+    expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'c']);
+    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('c8.ch');
+    expect((await readAutoState(page))!.flags['kh.met']).toBe(false);
+  });
+
+  test('루트 안(t2.010) 저장: 위치·루트 그대로, 점수만 새 가중치, kh.met = false', async ({ page }) => {
+    await loadLegacy(page, LEGACY_SCHEMA2.t2);
+    const i = await info(page);
+    expect(i.step).toBe('t2.010');
+    expect(i.route).toBe('tenko');
+    expect(i.points).toEqual({ osana: 4, tenko: 5, koharu: 0 });
+    await advanceOne(page);
+    expect((await info(page)).route).toBe('tenko');
+    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe((await info(page)).step);
+    expect((await readAutoState(page))!.flags['kh.met']).toBe(false);
+  });
 });

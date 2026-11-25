@@ -1,6 +1,7 @@
 /**
  * 추억 앨범(타이틀 시트의 이벤트 CG 갤러리)과 감상 화면(뷰어).
- * - 처음엔 0 / 11, 모든 칸 잠김. 잠긴 칸은 눌러도 열리지 않는다.
+ * - 처음엔 0 / 11, 모든 칸 잠김. 잠긴 칸은 눌러도 열리지 않는다. 11 은 일반 CG 수(히든 kh_* 6장은 관람 전 칸·총 장수에 없음).
+ * - 히든 CG 는 본 한 장씩만 칸·총 장수·제목에 나타나고, 코하루 묶음은 보일 칸이 있을 때만 생긴다(공통 kh_meet·kh_draw 는 공통 묶음).
  * - 전역 기록(ashita.global 의 cgs)에 있는 CG 만 열리고, 새 게임을 해도 남는다.
  * - 실제 진행에서 본 CG 는 기록된다(보통 진행·건너뛰기 중·불러오기 직후).
  * - 감상: ←/→·좌우 버튼·스와이프로 '본 그림' 사이를 오가고 Esc·닫기·빈 곳으로 닫힌다. 입력은 뒤의 타이틀·시트로 새지 않고,
@@ -13,6 +14,13 @@ import { STORY } from '../../src/story';
 import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readGlobal, requireCdp, toTitle, waitSettled } from './helpers';
 
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
+
+/**
+ * 관람 전에 보이는 총 장수: 계약(3·4절)상 일반 CG 11장. CG_ORDER.length(히든 포함 17)는 쓰지 않는다.
+ * 히든 CG 를 하나 볼 때마다 총 장수에 한 장씩 더해진다.
+ */
+const BASE_TOTAL = 11;
+const HIDDEN_CGS = ['kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date'];
 const overlap = (a: Box, b: Box) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
 /** 전역 기록에 본 CG 를 넣고(처음 한 번만) 게임을 연다 */
@@ -102,7 +110,7 @@ test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠
   await expectTitleMenu(page, '타이틀');
   const btn = page.locator('.title-menu [data-action=album]');
   await expect(btn).toHaveAttribute('aria-describedby', 'vn-album-count');
-  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 0 / ${CG_ORDER.length}`);
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 0 / ${BASE_TOTAL}`);
   await openAlbum(page);
 
   const album = page.locator('[data-panel=album]');
@@ -110,10 +118,11 @@ test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠
   await expect(album).toHaveAttribute('aria-label', '추억 앨범');
   // 타이틀 시트 탭: 불러오기·추억 앨범·설정
   await expect(album.locator('.sys-tabs [role=tab]')).toHaveText(['불러오기', '추억 앨범', '설정']);
-  await expect(album.locator('.album-total')).toHaveText(`0 / ${CG_ORDER.length}`);
+  await expect(album.locator('.album-total')).toHaveText(`0 / ${BASE_TOTAL}`);
   await expect(album.locator('.album-bar')).toHaveAttribute('aria-valuenow', '0');
-  // 루트별 묶음(아카네 → 히나), 각 묶음 안은 CG_ORDER 순서, 모두 잠김
+  // 루트별 묶음(아카네 → 히나), 각 묶음 안은 CG_ORDER 순서, 모두 잠김. 히든 CG(코하루·공통 kh_*)는 빈칸도 없다
   await expect(album.locator('.album-group')).toHaveCount(2);
+  await expect(album.locator('.cg-card[data-cg^="kh_"]')).toHaveCount(0);
   expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko']);
   for (const route of ['osana', 'tenko'] as const) {
     const ids = CG_ORDER.filter((id) => CGS[id].route === route);
@@ -122,9 +131,9 @@ test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠
     await expect(album.locator(`.album-group[data-route=${route}] .album-count`)).toHaveText(`0 / ${ids.length}`);
   }
   const cards = album.locator('.cg-card');
-  await expect(cards).toHaveCount(CG_ORDER.length);
+  await expect(cards).toHaveCount(BASE_TOTAL);
   await expect(album.locator('.cg-card[data-seen="1"]')).toHaveCount(0);
-  await expect(album.locator('.cg-card[aria-disabled=true]')).toHaveCount(CG_ORDER.length);
+  await expect(album.locator('.cg-card[aria-disabled=true]')).toHaveCount(BASE_TOTAL);
   await expect(album.locator('.cg-card .cg-photo img')).toHaveCount(0);
   for (const t of await album.locator('.cg-cap').allTextContents()) expect(t).toBe('???');
   await expectAlbumLayout(page, '빈 앨범');
@@ -146,10 +155,10 @@ test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠
 test('추억 앨범: 전역 기록에 본 CG 만 열리고(모르는 id 는 무시), 새 게임을 해도 그대로다', async ({ page }, ti) => {
   test.skip(ti.project.name !== 'desktop', '전역 기록 확인은 데스크톱에서(배치는 다른 테스트가 세 크기 모두 본다)');
   await bootWithCgs(page, ['rain_tenko', 'fireworks_osana', 'renamed_cg_xyz', 'rain_tenko']);
-  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 2 / ${CG_ORDER.length}`);
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 2 / ${BASE_TOTAL}`);
   await openAlbum(page);
   const album = page.locator('[data-panel=album]');
-  await expect(album.locator('.album-total')).toHaveText(`2 / ${CG_ORDER.length}`);
+  await expect(album.locator('.album-total')).toHaveText(`2 / ${BASE_TOTAL}`);
   await expect(album.locator('.cg-card[data-seen="1"]')).toHaveCount(2);
   for (const id of ['rain_tenko', 'fireworks_osana']) {
     const card = album.locator(`.cg-card[data-cg=${id}]`);
@@ -168,7 +177,7 @@ test('추억 앨범: 전역 기록에 본 CG 만 열리고(모르는 id 는 무�
   // 새 게임 → 타이틀: 앨범 기록은 남는다
   await newGame(page);
   await toTitle(page);
-  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 2 / ${CG_ORDER.length}`);
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 2 / ${BASE_TOTAL}`);
   // 플레이 중 메뉴·시트에는 앨범이 없다
   await page.locator('[data-action=continue]').click();
   await waitSettled(page);
@@ -196,7 +205,7 @@ test('추억 앨범: 진행 중 본 CG 는 보통 진행·건너뛰기 중·불�
     await page.reload();
     await expect(page.locator('#vn')).toHaveAttribute('data-mode', 'title');
     expect((await readGlobal(page)).cgs ?? []).not.toContain(id);
-    await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 0 / ${CG_ORDER.length}`);
+    await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 0 / ${BASE_TOTAL}`);
   };
   const cgShown = () => page.locator('.stage .cg-layer.on').getAttribute('data-cg');
 
@@ -232,7 +241,7 @@ test('추억 앨범: 진행 중 본 CG 는 보통 진행·건너뛰기 중·불�
 
   await page.locator('.title-menu [data-action=album]').click();
   await expect(page.locator('[data-panel=album] .cg-card[data-cg=rain_tenko]')).toHaveAttribute('data-seen', '1');
-  await expect(page.locator('[data-panel=album] .album-total')).toHaveText(`1 / ${CG_ORDER.length}`);
+  await expect(page.locator('[data-panel=album] .album-total')).toHaveText(`1 / ${BASE_TOTAL}`);
   await page.keyboard.press('Escape');
 
   // 2) 건너뛰기 중: 기록에서 지우고 다시 연 뒤, 퀵저장(선택지)에서 b → 읽은 대사를 건너뛰며 CG 장면을 지난다
@@ -247,7 +256,8 @@ test('추억 앨범: 진행 중 본 CG 는 보통 진행·건너뛰기 중·불�
   expect((await info(page)).step).toBe('c6.ch');
   await pick(page, 'b');
   await page.keyboard.press('s');
-  // 처음 보는 대사(c6.j25)에서 멈춘다. 그 사이 CG 장면(c6.b30)을 지나며 기록됐어야 한다
+  // 처음 보는 대사(c6.j10: 앞에서 화면에 띄우기만 하고 넘기지 않아 읽음 기록이 없다)에서 멈춘다.
+  // 그 사이 CG 장면(c6.b30)을 지나며 기록됐어야 한다. (b 의 다음 줄은 c6.j25 — c6.j20 은 a 전용이라 b·c 로는 가지 않는다)
   await expect.poll(async () => (await info(page)).skip, { timeout: 15_000 }).toBe(false);
   await waitSettled(page);
   expect((await info(page)).step).toBe('c6.j10');
@@ -266,7 +276,7 @@ test('추억 앨범: 진행 중 본 CG 는 보통 진행·건너뛰기 중·불�
   await expect.poll(cgShown).toBe('rain_tenko');
   expect((await readGlobal(page)).cgs).toContain('rain_tenko');
   await toTitle(page);
-  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 1 / ${CG_ORDER.length}`);
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 1 / ${BASE_TOTAL}`);
 });
 
 test('감상: 키보드로 열어 →/← 로 본 그림 사이를 돌고, Esc 로 닫으면 포커스가 칸 → [추억 앨범]으로 돌아오며 입력이 뒤로 새지 않는다', async ({ page }, ti) => {
@@ -520,8 +530,39 @@ test('추억 앨범: 앞 묶음(아카네)은 하나도 못 보고 히나 묶음
   expect(await page.locator('[data-panel=album] .panel-body').evaluate((e) => e.scrollTop)).toBe(0);
 });
 
-test('대본의 이벤트 CG 는 모두 추억 앨범 목록(CG_ORDER)에 있다', async () => {
+test('대본의 이벤트 CG 는 모두 추억 앨범 목록(CG_ORDER)에 있고, 히든은 코하루 6장뿐이다', async () => {
   const used = new Set<string>();
   for (const s of Object.values(STORY.scenes)) for (const st of s.steps) if (st.t === 'cg' && st.cg) used.add(st.cg);
   expect([...used].sort()).toEqual([...CG_ORDER].sort());
+  expect(CG_ORDER.filter((id) => CGS[id].hidden)).toEqual(HIDDEN_CGS);
+  expect(CG_ORDER.filter((id) => !CGS[id].hidden).length).toBe(BASE_TOTAL);
+});
+
+test('추억 앨범: 히든 CG 는 본 것만 칸·총 장수·제목에 나타나고, 코하루 묶음은 보일 칸이 있을 때만 생긴다', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop', '전역 기록 확인은 데스크톱에서');
+  // 공통 kh_meet(route null) + 코하루 kh_relay + 일반 rain_osana 를 봤다 → 총 11 + 2 = 13
+  await bootWithCgs(page, ['kh_meet', 'kh_relay', 'rain_osana']);
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 3 / ${BASE_TOTAL + 2}`);
+  await openAlbum(page);
+  const album = page.locator('[data-panel=album]');
+  await expect(album.locator('.album-total')).toHaveText(`3 / ${BASE_TOTAL + 2}`);
+  // 본 히든 두 장만 칸이 있고(제목·썸네일), 보지 않은 kh_* 는 빈칸도 없다
+  expect(await album.locator('.cg-card[data-cg^="kh_"]').evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.cg).sort())).toEqual(['kh_meet', 'kh_relay']);
+  for (const id of ['kh_meet', 'kh_relay'] as const) {
+    const card = album.locator(`.cg-card[data-cg=${id}]`);
+    await expect(card).toHaveAttribute('data-seen', '1');
+    await expect(card.locator('.cg-cap')).toHaveText(CGS[id].title);
+    await expect(card.locator('.cg-photo img')).toHaveCount(1);
+  }
+  // 코하루 묶음: 본 kh_relay 한 장뿐(1 / 1). kh_meet 은 공통 묶음
+  await expect(album.locator('.album-group[data-route=koharu] .cg-card')).toHaveCount(1);
+  await expect(album.locator('.album-group[data-route=koharu] .album-count')).toHaveText('1 / 1');
+  await expect(album.locator('.album-group[data-route=common] .cg-card[data-cg=kh_meet]')).toHaveCount(1);
+  // 일반 묶음의 칸 수는 그대로(아카네 5·히나 6)
+  await expect(album.locator('.album-group[data-route=osana] .album-count')).toHaveText('1 / 5');
+  await expect(album.locator('.album-group[data-route=tenko] .album-count')).toHaveText('0 / 6');
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  // 코하루 엔딩 배지는 엔딩에 도달하기 전에는 없다(CG 를 봤어도)
+  await expect(page.locator('.title-screen .badge[data-ending=koharu]')).toHaveCount(0);
 });

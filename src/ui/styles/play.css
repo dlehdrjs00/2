@@ -317,6 +317,12 @@
   transform: scale(1.15);
   transform-origin: 50% 100%;
 }
+/*  - kh_relay(k5.110~k5.130): 함께 잡은 안내판(원본 위끝 세로 0.63)이 탭 띠(0.58~) 뒤에 통째로 깔리고, 소우타의 손(0.57~0.70)이
+ *    이름표에 가림 → 판 위끝·두 손을 탭 띠 위로(아호게 끝이 조금 잘림) */
+.vn[data-cgfit='low'] .cg-layer[data-cg='kh_relay'] > .cg-img {
+  transform: scale(1.15);
+  transform-origin: 50% 100%;
+}
 
 /* 선택지 중 무대 베일: 가운데는 밝게, 가장자리는 하늘 남색으로 살짝 눌러 선택지 리본이 떠 보이게 */
 .choice-veil {
@@ -398,8 +404,10 @@
 .vn[data-layout='below'][data-tone='night'] > .place-chip .sep {
   background: rgba(170, 205, 255, 0.45);
 }
-/* 무대가 작은 화면(세로 대체 배치·낮은 가로)에서는 선택지 첫 줄과 겹치지 않게 선택지 동안 감춘다 */
+/* 무대가 작은 화면(세로 대체 배치·낮은 가로·휴대폰 가로 cgfit=low)에서는 선택지 첫 줄과 겹치지 않게 선택지 동안 감춘다
+ * (장소 표시 직후 몇 줄 만에 선택지가 뜨면 아직 떠 있는 장소 표시를 첫 버튼이 덮던 것: 667×375·844×390 의 c8.ch) */
 .vn[data-layout='below'][data-frame='choice'] .place-chip.on,
+.vn[data-cgfit='low'][data-frame='choice'] .place-chip.on,
 .vn[data-dense='1'][data-frame='choice'] .place-chip.on,
 .vn[data-dense='2'][data-frame='choice'] .place-chip.on,
 .vn[data-dense='3'][data-frame='choice'] .place-chip.on {
@@ -1228,17 +1236,21 @@
   translate: 0 0;
 }
 
-/* 높이가 낮은 가로 화면(dense 1~3, layout.ts): 버튼·간격을 줄이고 폭을 넓혀 줄바꿈을 줄인다 */
+/* 높이가 낮은 가로 화면(dense 1~3, layout.ts): 버튼·간격을 줄이고 폭을 넓혀 줄바꿈을 줄인다.
+ * dense 는 한 줄짜리 버튼 기준이라, 두 줄 문구 여러 개가 목록 높이를 넘치면 game.ts fitChoices 가 목록에
+ * data-fit='tight'(이 촘촘한 모양) → 그래도 넘치면 'row'(아래 가로 나란히 모양)를 붙인다(스크롤 없이 다 보이게) */
 .vn[data-dense='1'] .choices,
 .vn[data-dense='2'] .choices,
-.vn[data-dense='3'] .choices {
+.vn[data-dense='3'] .choices,
+.choices[data-fit] {
   gap: calc(var(--fs) * 0.4);
   padding-left: 4%;
   padding-right: 4%;
 }
 .vn[data-dense='1'] .choice,
 .vn[data-dense='2'] .choice,
-.vn[data-dense='3'] .choice {
+.vn[data-dense='3'] .choice,
+.choices[data-fit] > .choice {
   width: min(100%, calc(var(--fs) * 36));
   min-height: 44px;
   padding: 0.35em 2.4em 0.35em 2.7em;
@@ -1246,7 +1258,8 @@
 }
 .vn[data-dense='1'] .choice::after,
 .vn[data-dense='2'] .choice::after,
-.vn[data-dense='3'] .choice::after {
+.vn[data-dense='3'] .choice::after,
+.choices[data-fit] > .choice::after {
   right: 1em;
 }
 .vn[data-dense='1'] .choice .num,
@@ -1257,10 +1270,17 @@
 .vn[data-dense='3'] .choice:not(:has(> .num))::before {
   left: 0.7em;
 }
+.choices[data-fit] > .choice .num {
+  left: 0.7em;
+}
+.choices[data-fit] > .choice:not(:has(> .num))::before {
+  left: 0.7em;
+}
 /* 아주 낮은 화면(dense 3), 또는 세로로 3개가 안 들어가는 화면(dense 2)의 선택지 3개: 가로로 나란히.
  * 좁은 칸에서는 마름모를 빼고 번호 배지 자리만 남긴다.
  * :has() 를 모르는 브라우저가 규칙 전체를 버리지 않게 dense 3 과 따로 쓴다(모르면 세로 + 스크롤). */
-.vn[data-dense='3'] .choices {
+.vn[data-dense='3'] .choices,
+.choices[data-fit='row'] {
   flex-direction: row;
   flex-wrap: wrap;
   justify-content: center;
@@ -1268,14 +1288,16 @@
   align-content: center;
   align-content: safe center;
 }
-.vn[data-dense='3'] .choices > .choice {
+.vn[data-dense='3'] .choices > .choice,
+.choices[data-fit='row'] > .choice {
   margin: 0;
   flex: 1 1 0;
   min-width: min(100%, 11em);
   max-width: calc(var(--fs) * 24);
   padding-right: 0.8em;
 }
-.vn[data-dense='3'] .choices > .choice::after {
+.vn[data-dense='3'] .choices > .choice::after,
+.choices[data-fit='row'] > .choice::after {
   display: none;
 }
 .vn[data-dense='2'] .choices:has(> .choice:nth-child(3)) {

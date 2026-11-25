@@ -74,10 +74,10 @@ test('대사창 숨기기: 선택지 화면에서 숨긴 동안 선택지를 눌
   await page.waitForTimeout(500);
   const now = await info(page);
   expect(now.step).toBe(c.step);
-  expect(now.points).toEqual({ osana: 0, tenko: 0 });
-  // 복귀 뒤에는 정상적으로 고를 수 있다
+  expect(now.points).toEqual({ osana: 0, tenko: 0, koharu: 0 });
+  // 복귀 뒤에는 정상적으로 고를 수 있다(c3 개인 선택 +2)
   await pick(page, 'a');
-  expect((await info(page)).points).toEqual({ osana: 1, tenko: 0 });
+  expect((await info(page)).points).toEqual({ osana: 2, tenko: 0, koharu: 0 });
 });
 
 test('퀵저장 → 진행 → 퀵로드로 왕복하고, 비었을 때는 안내한다', async ({ page }) => {
@@ -210,12 +210,12 @@ test('대화 기록: 날짜 카드·선택 항목이 무대 카드·선택지와
   await pick(page, 'a');
   const c2 = await advanceToStop(page);
   expect(c2.frame).toBe('choice');
-  await expect(page.locator('.choice')).toHaveCount(2);
+  await expect(page.locator('.choice')).toHaveCount(3);
   await page.keyboard.press('l');
   await expect(page.locator('[data-panel=log]')).toBeVisible();
   // 기록의 선택 항목은 .log-item.is-choice 이고 .choice 가 아니다
   await expect(page.locator('[data-panel=log] .log-item.is-choice')).not.toHaveCount(0);
-  await expect(page.locator('.choice')).toHaveCount(2);
+  await expect(page.locator('.choice')).toHaveCount(3);
   await expect(page.locator('[data-panel=log] .card')).toHaveCount(0);
   // '▶ ' 접두는 표시하지 않는다
   const choiceText = await page.locator('[data-panel=log] .log-item.is-choice .log-text').first().textContent();

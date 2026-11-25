@@ -289,6 +289,28 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
     expect(reach(['a', 'a', 'a', 'a']).next.sort()).toEqual(['o1_shop', 't1_cats']);
   });
 
+  it('선택지가 떠 있을 때(c6.ch): 갈래 CG 는 branch, 어느 옵션을 골라도 쓰는 빗길 배경은 allBranches — 미리 해독은 allBranches·갈래 밖 그림만', () => {
+    const st = newGameState(STORY);
+    let res: StepResult | null = settle(STORY, st);
+    const picks: Record<string, string> = { 'c3.ch': 'a', 'c4.ch': 'b' };
+    while (res && !(res.step.t === 'choice' && res.step.id === 'c6.ch')) {
+      res = res.step.t === 'choice' ? choose(STORY, st, picks[res.step.id]) : advance(STORY, st);
+    }
+    const items = nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver);
+    const of = (u: string) => items.find((i) => i.url === u);
+    // 우산 CG 는 a·b 갈래에만(c 는 CG 없음) → 갈래 그림, 모든 갈래는 아님
+    for (const u of ['assets/cg/rain_osana.webp', 'assets/cg/rain_tenko.webp']) {
+      expect(of(u)?.branch, u).toBe(true);
+      expect(of(u)?.allBranches, u).toBeFalsy();
+    }
+    // 세 갈래(a·b·c) 모두 빗길(road_rain)로 바꾼다
+    expect(of(resolver.bgUrl('road_rain')!)).toMatchObject({ branch: true, allBranches: true });
+    // game.ts preloadFrom 과 같은 규칙으로 고른 미리 해독(3스텝 안) 대상에 우산 CG 는 없고 빗길 배경은 있다
+    const decode = items.filter((i) => (!i.branch || i.allBranches) && i.at <= 3).map((i) => i.url);
+    expect(decode).toContain(resolver.bgUrl('road_rain'));
+    expect(decode.filter((u) => /\/cg\//.test(u))).toEqual([]);
+  });
+
   it('해금 플래그 찾기: 이야기의 unlock 스텝(koharu → kh.met)', () => {
     const flags = unlockFlags(STORY);
     expect(flags.get('koharu')).toBe('kh.met');

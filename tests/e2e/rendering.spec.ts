@@ -3,7 +3,8 @@
  *
  * - Apple 터치 기기(apple-touch): 흐림·큰 그림자를 빼도 입력·회전·저장이 그대로이고, 타이틀 주 버튼이 읽힌다
  * - 인물 filter: 표준은 톤 보정 + drop-shadow, apple-touch 는 같은 톤 보정에서 drop-shadow 만 없다
- *   (실제 장면: 노을 교실 c7_friday 의 대사·비화자·선택지, 밤 축제 o5_festival·t5_festival 의 유카타)
+ *   (실제 장면: 노을 교실 c7_friday 의 대사·비화자·선택지, 밤 축제 o5_festival·t5_festival·k6 의 유카타 —
+ *    data-look yukata_* 밝기 규칙은 히든 히로인 코하루에게도 같다)
  * - iPadOS 데스크톱 모드(맥 UA + 터치)도 apple-touch, 맥 Safari(터치 없음)는 standard (WebKit 에서만)
  * 실제 iPad 의 GPU·메모리·발열 성능 검증은 아니다(Linux WebKit 흉내).
  */
@@ -22,8 +23,10 @@ function splitFilter(filter: string): { color: string; shadow: boolean } {
   return { color: color || 'none', shadow };
 }
 
-/** 무대 인물(.stage img.char)의 data-look·dim·계산 filter. char: osana / tenko */
-async function charFilter(page: Page, char: 'osana' | 'tenko') {
+type Char = 'osana' | 'tenko' | 'koharu';
+
+/** 무대 인물(.stage img.char)의 data-look·dim·계산 filter. char: osana / tenko / koharu */
+async function charFilter(page: Page, char: Char) {
   const el = page.locator(`.stage img.char[src*="/char/${char}/"]:not(.leaving)`);
   await expect(el).toHaveCount(1);
   await expect(el).not.toHaveClass(/entering/);
@@ -36,7 +39,7 @@ async function charFilter(page: Page, char: 'osana' | 'tenko') {
 }
 
 /** 표준이면 그림자 있음, apple-touch 면 없음. 색 보정은 둘 다 expected */
-async function expectTone(page: Page, char: 'osana' | 'tenko', expected: string, state: { dim: boolean; look?: string; tone: string }) {
+async function expectTone(page: Page, char: Char, expected: string, state: { dim: boolean; look?: string; tone: string }) {
   const f = await charFilter(page, char);
   const label = `${char} ${JSON.stringify(f)}`;
   expect(f.tone, label).toBe(state.tone);
@@ -131,6 +134,8 @@ test('노을 교실(c7_friday): 대사 중·비화자·선택지 모두 표준�
 for (const [char, scene, from, steps, look] of [
   ['osana', 'o5_festival', 'o5.020', ['o5.030', 'o5.036'], 'yukata_default'],
   ['tenko', 't5_festival', 't5.020', ['t5.030', 't5.040'], 'yukata_ponytail'],
+  // 코하루: 축제 거리 끝 마지막 등롱길(kh_lantern_lane, 밤)로 옮겨 유카타로 다시 등장(k6.070 → k6.080), 주인공 대사 중(k6.090)
+  ['koharu', 'k6', 'k6.070', ['k6.080', 'k6.090'], 'yukata_default'],
 ] as const) {
   test(`밤 축제(${scene}): 유카타 ${char} 은 대사 중·혼자 있는 비화자 모두 밝기 1.04`, async ({ page }) => {
     await boot(page);

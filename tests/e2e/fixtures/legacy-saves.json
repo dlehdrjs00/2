@@ -1,0 +1,282 @@
+{
+  "note": "기준 커밋 11612b4 엔진·대본으로 만든 진짜 구판 저장(스키마 2) 원문 3개. 출처: 통합 작업의 gen-old-saves.mts 출력(old-saves.json)에서 골랐다. picks 는 그 플레이의 c3·c4·c6·c7 선택(구판 a/b), save 는 localStorage ashita.save.<칸> 에 그대로 넣는 값.",
+  "saves": [
+    {
+      "name": "common-mid",
+      "picks": "aaaa",
+      "sceneId": "c6_rain",
+      "stepId": "c6.ch",
+      "route": null,
+      "oldFinalRoute": "osana",
+      "save": {
+        "schema": 2,
+        "game": "ashita-mo-issho",
+        "storyVersion": "0.1.0",
+        "savedAt": "2026-11-25T16:56:49.891Z",
+        "summary": {
+          "sceneTitle": "소나기와 우산",
+          "text": "",
+          "route": null
+        },
+        "state": {
+          "sceneId": "c6_rain",
+          "stepId": "c6.ch",
+          "points": {
+            "osana": 2,
+            "tenko": 0
+          },
+          "lastHeroine": "osana",
+          "route": null,
+          "choices": {
+            "c3.ch": "a",
+            "c4.ch": "a"
+          },
+          "flags": {},
+          "stage": {
+            "bg": "shoe_lockers_rain",
+            "chars": {
+              "osana": {
+                "pos": "left",
+                "expr": "shy",
+                "outfit": "uniform",
+                "hair": "default"
+              },
+              "tenko": {
+                "pos": "right",
+                "expr": "fluster",
+                "outfit": "uniform",
+                "hair": "ponytail"
+              }
+            },
+            "order": [
+              "osana",
+              "tenko"
+            ],
+            "bgm": null,
+            "cg": null
+          },
+          "log": [],
+          "endedWith": null,
+          "sceneEntry": {
+            "sceneId": "c6_rain",
+            "points": {
+              "osana": 2,
+              "tenko": 0
+            },
+            "lastHeroine": "osana",
+            "route": null,
+            "choices": {
+              "c3.ch": "a",
+              "c4.ch": "a"
+            },
+            "flags": {},
+            "stage": {
+              "bg": "hallway",
+              "chars": {
+                "osana": {
+                  "pos": "left",
+                  "expr": "pout",
+                  "outfit": "uniform",
+                  "hair": "default"
+                },
+                "tenko": {
+                  "pos": "right",
+                  "expr": "smile",
+                  "outfit": "uniform",
+                  "hair": "ponytail"
+                }
+              },
+              "order": [
+                "osana",
+                "tenko"
+              ],
+              "bgm": "daily",
+              "cg": null
+            },
+            "logLength": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "post-gate-tie",
+      "picks": "abba",
+      "sceneId": "c7_friday",
+      "stepId": "c7.j20",
+      "route": null,
+      "oldFinalRoute": "osana",
+      "save": {
+        "schema": 2,
+        "game": "ashita-mo-issho",
+        "storyVersion": "0.1.0",
+        "savedAt": "2026-11-25T16:56:49.938Z",
+        "summary": {
+          "sceneTitle": "금요일 노을",
+          "text": "",
+          "route": null
+        },
+        "state": {
+          "sceneId": "c7_friday",
+          "stepId": "c7.j20",
+          "points": {
+            "osana": 2,
+            "tenko": 2
+          },
+          "lastHeroine": "osana",
+          "route": null,
+          "choices": {
+            "c3.ch": "a",
+            "c4.ch": "b",
+            "c6.ch": "b",
+            "c7.ch": "a"
+          },
+          "flags": {},
+          "stage": {
+            "bg": "road_evening",
+            "chars": {
+              "osana": {
+                "pos": "left",
+                "expr": "neutral",
+                "outfit": "uniform",
+                "hair": "default"
+              },
+              "tenko": {
+                "pos": "right",
+                "expr": "smile",
+                "outfit": "uniform",
+                "hair": "default"
+              }
+            },
+            "order": [
+              "osana",
+              "tenko"
+            ],
+            "bgm": "evening",
+            "cg": null
+          },
+          "log": [],
+          "endedWith": null,
+          "sceneEntry": {
+            "sceneId": "c7_friday",
+            "points": {
+              "osana": 1,
+              "tenko": 2
+            },
+            "lastHeroine": "tenko",
+            "route": null,
+            "choices": {
+              "c3.ch": "a",
+              "c4.ch": "b",
+              "c6.ch": "b"
+            },
+            "flags": {},
+            "stage": {
+              "bg": "road_rain",
+              "chars": {
+                "osana": {
+                  "pos": "left",
+                  "expr": "pout",
+                  "outfit": "uniform",
+                  "hair": "default"
+                }
+              },
+              "order": [
+                "osana"
+              ],
+              "bgm": "heart",
+              "cg": null
+            },
+            "logLength": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "route-tenko",
+      "picks": "bbbb",
+      "sceneId": "t2_notebook",
+      "stepId": "t2.180",
+      "route": "tenko",
+      "oldFinalRoute": "tenko",
+      "save": {
+        "schema": 2,
+        "game": "ashita-mo-issho",
+        "storyVersion": "0.1.0",
+        "savedAt": "2026-11-25T16:56:50.000Z",
+        "summary": {
+          "sceneTitle": "이름 외우기 수첩",
+          "text": "",
+          "route": "tenko"
+        },
+        "state": {
+          "sceneId": "t2_notebook",
+          "stepId": "t2.180",
+          "points": {
+            "osana": 0,
+            "tenko": 4
+          },
+          "lastHeroine": "tenko",
+          "route": "tenko",
+          "choices": {
+            "c3.ch": "b",
+            "c4.ch": "b",
+            "c6.ch": "b",
+            "c7.ch": "b"
+          },
+          "flags": {},
+          "stage": {
+            "bg": "hallway",
+            "chars": {
+              "osana": {
+                "pos": "center",
+                "expr": "neutral",
+                "outfit": "uniform",
+                "hair": "default"
+              }
+            },
+            "order": [
+              "osana"
+            ],
+            "bgm": "daily",
+            "cg": null
+          },
+          "log": [],
+          "endedWith": null,
+          "sceneEntry": {
+            "sceneId": "t2_notebook",
+            "points": {
+              "osana": 0,
+              "tenko": 4
+            },
+            "lastHeroine": "tenko",
+            "route": "tenko",
+            "choices": {
+              "c3.ch": "b",
+              "c4.ch": "b",
+              "c6.ch": "b",
+              "c7.ch": "b"
+            },
+            "flags": {},
+            "stage": {
+              "bg": "shrine_steps",
+              "chars": {
+                "tenko": {
+                  "pos": "center",
+                  "expr": "shy",
+                  "outfit": "uniform",
+                  "hair": "default"
+                }
+              },
+              "order": [
+                "tenko"
+              ],
+              "bgm": "heart",
+              "cg": null
+            },
+            "logLength": 0
+          }
+        }
+      }
+    }
+  ]
+}
