@@ -87,7 +87,7 @@ export const TENKO_DAILY_SCENES: Scene[] = [
     hide('all'),
     bg('classroom_day'),
     place('{n3} · 점심시간, 교실'),
-    mono('td2.110', '수요일 아침엔 처음으로 커튼 양쪽 길이를 맞춰 묶었다. 들키고 나니 괜히 신경이 쓰였다.'),
+    mono('td2.110', '수요일 아침엔 커튼을 세 번 풀었다 묶어 기어이 양쪽 길이를 맞췄다. 들키고 나니 괜히 신경이 쓰였다.'),
     show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     show('tenko', { pos: 'right', expr: 'neutral', outfit: 'uniform', hair: 'ponytail' }),
     mono('td2.120', '체육 뒤 머리를 묶고 돌아온 {tenko:는} 문을 열자마자 창가부터 봤다.'),
@@ -145,7 +145,8 @@ export const TENKO_DAILY_SCENES: Scene[] = [
     hide('all'),
     bg('road_morning'),
     bgm('heart'),
-    place('학교 뒷길'),
+    // 엔딩 폴라로이드(end_hina_walk)가 뜨는 곳이라 날짜를 붙인다. 캡션은 '7월 24일, 학교 뒷길'(옛·새 splitDate 모두)
+    place('{n5} · 학교 뒷길'),
     show('tenko', { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' }),
     mono('td3.110', '뒷문을 나와 돌담을 따라 내려가는 좁은 길. 비 그친 날이면 혼자 이리로 돌아가곤 했다.'),
     say('td3.130', 'tenko', '여기 처음 와 봐. 학교 바로 뒤인데.', 'smile'),

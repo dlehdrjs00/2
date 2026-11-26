@@ -52,7 +52,8 @@ import {
   type AutoSaveChange,
   type AutoSaveStatus,
 } from './savestatus';
-import { isFullscreen, prefersReducedMotion, routeName, showFullscreenControl, splitDate, toggleFullscreen } from './screens/common';
+import { isFullscreen, prefersReducedMotion, routeName, showFullscreenControl, toggleFullscreen } from './screens/common';
+import { captionText, dateAt, endingDate, scenePreds, type StoryDate } from './dates';
 import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
@@ -1675,7 +1676,8 @@ export class Game {
     const autoTabOnly = hasAuto && !this.saves.slotPersisted('auto');
     const album = this.hasAlbum() ? this.albumCount() : null;
     // 엔딩 배지(reveal.ts): 아카네·히나의 축제·일상 결말은 늘(못 본 것은 '???'), 코하루·네 사람의 두 결말은 그 루트의 엔딩에
-    // 하나라도 도달한 뒤에만. 본 배지는 '아카네 · 축제'처럼 루트 이름과 갈래로 같은 루트의 두 결말을 구별한다
+    // 하나라도 도달한 뒤에만(네 사람 엔딩을 봤으면 코하루 두 결말도). 본 배지는 '아카네 · 축제'처럼 루트 이름과 갈래로 같은
+    // 루트의 두 결말을 구별한다
     const endings = titleEndings(Object.values(this.story.endings), reached).map((e) => ({
       id: e.id,
       route: e.route,
@@ -1784,75 +1786,16 @@ export class Game {
 
   /**
    * 상태가 가리키는 위치의 작중 날짜. 지금 장면에서 그 위치 앞의 장소 표시·날짜 카드 →
-   * 앞 장면들(같은 루트·공통) → 대화 기록의 날짜 카드 순서로 찾는다.
+   * 앞 장면들(들어오는 장면·같은 루트·공통) → 대화 기록의 날짜 카드 순서로 찾는다(dates.ts dateAt).
    */
-  private dateOf(state: GameState): { md: string; place: string } | null {
-    const textOf = (st: { t: string; text?: string; sub?: string }) =>
-      st.t === 'card' ? `${this.t(st.text ?? '')}${st.sub ? ` · ${this.t(st.sub)}` : ''}` : this.t(st.text ?? '');
-    const scan = (steps: readonly { t: string; text?: string; sub?: string }[], from: number) => {
-      for (let i = from; i >= 0; i--) {
-        const st = steps[i];
-        if (st.t !== 'place' && st.t !== 'card') continue;
-        const d = splitDate(textOf(st));
-        if (d) return d;
-      }
-      return null;
-    };
-    const loc = findStep(this.story, state.sceneId, state.stepId);
-    const scene = this.story.scenes[state.sceneId];
-    if (scene) {
-      const hit = scan(scene.steps, loc ? loc.index : scene.steps.length - 1);
-      if (hit) return hit;
-      // 이 장면으로 들어오는 장면(jump·routeBranch)을 가까운 것부터. 대본 순서만 보면 같은 루트의 다른 결말 갈래
-      // (일상 쪽 od* 앞의 축제 쪽 o5~o7)나 다른 판(넷·셋)의 날짜를 잘못 집을 수 있다
-      const preds = this.scenePreds();
-      const seen = new Set([scene.id]);
-      const queue = [scene.id];
-      while (queue.length) {
-        for (const p of preds.get(queue.shift()!) ?? []) {
-          if (seen.has(p)) continue;
-          seen.add(p);
-          const s = this.story.scenes[p];
-          const h = s ? scan(s.steps, s.steps.length - 1) : null;
-          if (h) return h;
-          queue.push(p);
-        }
-      }
-      // 대본 순서상 앞 장면(공통 + 같은 루트)
-      const ids = Object.keys(this.story.scenes);
-      for (let k = ids.indexOf(scene.id) - 1; k >= 0; k--) {
-        const s = this.story.scenes[ids[k]];
-        if (s.route !== 'common' && s.route !== scene.route) continue;
-        const h = scan(s.steps, s.steps.length - 1);
-        if (h) return h;
-      }
-    }
-    for (let i = state.log.length - 1; i >= 0; i--) {
-      const e = state.log[i];
-      if (e.kind !== 'card') continue;
-      const d = splitDate(e.text);
-      if (d) return d;
-    }
-    return null;
+  private dateOf(state: GameState): StoryDate | null {
+    return dateAt(this.story, state, (s) => this.t(s), this.scenePreds());
   }
 
-  /** 장면 id → 그 장면으로 jump·routeBranch 하는 장면 id(대본 순서). 한 번 만들어 둔다 */
+  /** 장면 id → 그 장면으로 jump·routeBranch 하는 장면 id(dates.ts scenePreds). 한 번 만들어 둔다 */
   private scenePreds(): Map<string, string[]> {
-    if (this.predsCache) return this.predsCache;
-    const m = new Map<string, string[]>();
-    const add = (to: string, from: string) => {
-      const list = m.get(to) ?? [];
-      if (!list.includes(from)) list.push(from);
-      m.set(to, list);
-    };
-    for (const sc of Object.values(this.story.scenes)) {
-      for (const st of sc.steps) {
-        if (st.t === 'jump') add(st.scene, sc.id);
-        else if (st.t === 'routeBranch') for (const to of Object.values(st.scenes)) if (to) add(to, sc.id);
-      }
-    }
-    this.predsCache = m;
-    return m;
+    this.predsCache ??= scenePreds(this.story);
+    return this.predsCache;
   }
 
   private onNewGame() {
@@ -1873,11 +1816,13 @@ export class Game {
     const reached = new Set(this.saves.endingsReached());
     const stage = state?.stage;
     const bg = stage?.bg ?? 'black';
-    const date = state ? this.dateOf(state) : null;
+    // 캡션 날짜·장소: 폴라로이드 그림(ENDING_CG)이 뜬 cg 스텝 기준(그 장면의 가장 가까운 장소 표시·날짜). 그 장면에 그 그림이
+    // 없거나 날짜가 없으면(아카네·히나 축제 결말) 엔딩 위치 기준 dateOf 로 되돌아간다(dates.ts endingDate)
+    const date = state ? endingDate(this.story, this.c.endingCg?.(id) ?? null, state, (s) => this.t(s), this.scenePreds()) : null;
     const nameOf = (r: RouteId) => routeName(r, (h) => this.c.heroineNames[h]);
     // 루트 이름(히든 루트는 '네 사람'). 날짜를 못 찾으면 '아카네와 함께' · '네 사람과 함께'
     const name = nameOf(def.route);
-    const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${withJosa(name, '와')} 함께`;
+    const caption = captionText(date, name);
     // 메달·분모: 보이는 루트·엔딩만(reveal.ts endingMedals). 지금 엔딩은 기록 전이어도 도달로 센다
     const progress = endingMedals(endings, reached, id);
     const scr = buildEnding({

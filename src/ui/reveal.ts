@@ -8,10 +8,12 @@
  * - 엔딩(타이틀 배지·엔딩 화면 메달·'엔딩 n / 전체'의 분모)은 루트 단위로 공개한다:
  *   아카네·히나 루트의 축제·일상 결말 4개는 처음부터 잠긴 배지로 보이고, 히든 루트(코하루·네 사람)의 두 결말은
  *   그 루트의 엔딩을 하나라도 도달했거나 지금 그 루트의 엔딩 화면일 때만 두 개가 함께 보인다.
+ *   네 사람 엔딩을 하나라도 본(또는 지금 보고 있는) 플레이어는 이미 코하루를 알므로 코하루 두 결말도 잠긴 배지로 보인다
+ *   (팀장 결정. 분모: 아무것도 못 봄 4 / 코하루 엔딩을 본 뒤 6 / 네 사람 엔딩을 본 뒤 8 — 코하루 엔딩을 못 봤어도).
  *   모르는 루트의 엔딩은 숨긴다(기본값으로 드러나지 않게).
  */
 import type { EndingId, EndingKind, HeroineId, RouteId } from '../engine/types';
-import { HEROINES, HIDDEN_HEROINES, ROUTES, isRouteId } from '../engine/types';
+import { GROUP_ROUTE, HEROINES, HIDDEN_HEROINES, ROUTES, isHeroineId, isRouteId } from '../engine/types';
 
 /** 추억 앨범 목록 한 칸의 공개 판정에 필요한 값 */
 export interface CatalogEntry {
@@ -68,23 +70,27 @@ export function revealedHeroines(catalog: readonly CatalogEntry[], seen: Iterabl
 
 /**
  * 엔딩 목록에 보일 루트(ROUTES 순서). 기본 히로인 루트는 늘, 히든 루트(코하루·네 사람)는 그 루트의 엔딩에 하나라도 도달했거나
- * current(지금 보고 있는 엔딩)가 그 루트일 때만. 엔딩이 하나도 없는 루트와 모르는 루트는 넣지 않는다.
+ * current(지금 보고 있는 엔딩)가 그 루트일 때만. 히든 히로인 루트(코하루)는 네 사람 엔딩에 도달했거나 지금 네 사람 엔딩일
+ * 때도 보인다(네 사람 루트를 본 플레이어는 그 히로인을 이미 안다). 엔딩이 하나도 없는 루트와 모르는 루트는 넣지 않는다.
  */
 export function visibleRoutes(endings: readonly EndingLike[], reached: Iterable<EndingId>, current: EndingId | null = null): RouteId[] {
   const got = new Set(reached);
-  const cur = current !== null ? endings.find((e) => e.id === current)?.route ?? null : null;
+  // 지금 보고 있는 엔딩은 기록 전이어도 도달로 본다
+  if (current !== null) got.add(current);
+  const groupSeen = endings.some((e) => e.route === GROUP_ROUTE && got.has(e.id));
   return ROUTES.filter((r) => {
     const mine = endings.filter((e) => e.route === r);
     if (!mine.length) return false;
     if (!isHiddenRoute(r)) return true;
-    return r === cur || mine.some((e) => got.has(e.id));
+    if (mine.some((e) => got.has(e.id))) return true;
+    return groupSeen && isHeroineId(r) && isHiddenHeroine(r);
   });
 }
 
 /**
  * 보이는 엔딩(타이틀 배지·엔딩 화면 메달과 분모). 순서는 루트(ROUTES: 아카네 → 히나 → 코하루 → 네 사람) → 축제 → 일상,
  * 같은 자리면 목록 순서. route 가 RouteId 가 아닌 엔딩은 넣지 않는다.
- * 분모 예: 아무것도 안 봄 4, 코하루 엔딩을 본 뒤 6, 코하루·네 사람 엔딩을 모두 본 뒤 8(네 사람만 봤으면 6).
+ * 분모 예: 아무것도 안 봄 4, 코하루 엔딩을 본 뒤 6, 네 사람 엔딩을 본 뒤 8(코하루 엔딩을 못 봤어도 코하루 두 결말이 잠긴 배지로).
  */
 export function visibleEndings<T extends EndingLike>(endings: readonly T[], reached: Iterable<EndingId>, current: EndingId | null = null): T[] {
   const routes = visibleRoutes(endings, reached, current);

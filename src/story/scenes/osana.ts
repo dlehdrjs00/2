@@ -29,7 +29,7 @@ export const OSANA_SCENES: Scene[] = [
     when(not(isFlag('ep3.done')), 'o1.e3j'),
     when(not(isFlag('kh.met')), 'o1.e3m'),
     // 넷 판: e3_rain4 끝에서 {osana:가} 회의로 먼저 일어나 다들 흩어졌다(e3f.390~410). 남은 건 {koharuFamily}가 떠나는 줄뿐
-    mono('o1.e20', '{koharuFamily:는} 1학년 신발장 쪽으로 손을 크게 흔들며 뛰어갔다.'),
+    mono('o1.e20', '처마를 나서자 {koharuFamily:는} 1학년 신발장 쪽으로 손을 크게 흔들며 뛰어갔다.'),
     goto('o1.e3j'),
     label('o1.e3m'),
     // 셋 판: e3_rain3 은 셋 다 앉은 채 끝난다(e3t.650~670). 먼저 일어선 사람을 여기서 정한다
@@ -49,7 +49,11 @@ export const OSANA_SCENES: Scene[] = [
     label('o1.ice'),
     // 셋 판 복선 회수: 토요일 e1_ice3 에서 상점가 끝을 등지고 걸었고(e1t.570), 처마 끝말잇기 '막과자'에 한 박자 늦었다(e3t.510~520)
     when(not({ all: [not(isFlag('kh.met')), isFlag('ep3.done')] }), 'o1.ice3'),
-    mono('o1.066', '토요일엔 상점가 끝을 등지고 걸었고, 아까 처마에선 ‘막과자’ 한마디에 대답이 한 박자 늦었다.'),
+    // 토요일 절은 e1_ice3 를 본 흐름(ep1.three)만. 897ae1f 미발견 저장이 c8_bakery~c10_window 에 있었으면 e1_ice3 를 건너뛴다
+    when(not(isFlag('ep1.three')), 'o1.ice3s'),
+    mono('o1.066', '{osana:는} 토요일엔 상점가 끝을 등지고 역 쪽으로 먼저 걸었다.'),
+    label('o1.ice3s'),
+    mono('o1.067', '아까 처마에선 ‘막과자’ 한마디에 대답이 한 박자 늦었다.'),
     label('o1.ice3'),
     sfx('message'),
     mono('o1.070', '『지금 {shop} 앞인데, 올래?』 메시지를 보내자 10초도 안 돼서 답장이 왔다. 『5분.』'),

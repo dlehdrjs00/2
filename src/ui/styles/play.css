@@ -173,6 +173,12 @@
 .stage[data-tone='night'] .sunwash {
   opacity: 0;
 }
+/* 그림 없는 암전(bg black)이 맨 앞 배경일 때도 끈다: 검은 화면은 앞 톤을 유지하므로(stage.ts shown) 낮 톤이면 소나기 암전
+ * (e3f.010~·e3t.070~) 동안 오른쪽 위에 햇살이 비쳐 보였다. 맨 앞 배경은 .chars 바로 앞 .bg-layer 다(stage.ts raiseBg).
+ * :has() 를 모르는 브라우저는 이 규칙 하나만 버리고 예전처럼 햇살을 둔다(선택자 목록에 다른 선택자를 섞지 않는다) */
+.stage:has(> .bg-layer.on[data-bg='black'] + .chars) .sunwash {
+  opacity: 0;
+}
 
 /* 빛망울: transform·opacity 만 움직인다(개수 상한은 stage.ts) */
 .motes {
@@ -325,6 +331,31 @@
  *    이름표에 가림 → 판 위끝·두 손을 탭 띠 위로(아호게 끝이 조금 잘림) */
 .vn[data-cgfit='low'] .cg-layer[data-cg='kh_relay'] > .cg-img {
   transform: scale(1.15);
+  transform-origin: 50% 100%;
+}
+/*  여덟 엔딩 확장 그림(844×390·667×375 에서 잰 값):
+ *  - group_ice_three(e1t.160~e1t.270): 히나 손가락이 짚은 딸기 그림·메뉴판 아래 끝(원본 세로 0.57~0.62)이 탭 띠(0.595~) 뒤
+ *    → 메뉴판과 손가락을 탭 위로(히나 정수리·머리핀 조금 잘림, 두 얼굴 유지)
+ *  - end_koharu_coin(kd4.110~kd4.150): 의자 등받이를 쥔 손과 등받이 위끝(원본 0.54~0.62)이 이름표·빠른 메뉴 뒤
+ *    → 등받이 윗부분까지 탭 위로(아호게 끝 잘림, 필통·동전·얼굴 유지)
+ *  - group_frog(e2f.340~e2f.390): 빨간 뚜껑 아래 테두리와 뚜껑을 든 소우타 손(원본 0.54~0.67)이 '기록·자동·스킵' 탭 뒤
+ *    → 뚜껑을 탭 위로(1.10 은 뚜껑이 더 잘 보이지만 심판 히나가 든 두 손끝이 잘림)
+ *  - group_ice_four(e1f.590~): 그릇 받침과 받친 히나 손바닥이 탭 위끝에 닿음 → 1.06 으로 그릇 받침까지 탭 위로
+ *    (숟가락 넷은 규칙 없이도 보이고, 코하루 아호게 끝이 조금 잘림) */
+.vn[data-cgfit='low'] .cg-layer[data-cg='group_ice_three'] > .cg-img {
+  transform: scale(1.15);
+  transform-origin: 48% 100%;
+}
+.vn[data-cgfit='low'] .cg-layer[data-cg='end_koharu_coin'] > .cg-img {
+  transform: scale(1.18);
+  transform-origin: 45% 100%;
+}
+.vn[data-cgfit='low'] .cg-layer[data-cg='group_frog'] > .cg-img {
+  transform: scale(1.06);
+  transform-origin: 50% 100%;
+}
+.vn[data-cgfit='low'] .cg-layer[data-cg='group_ice_four'] > .cg-img {
+  transform: scale(1.06);
   transform-origin: 50% 100%;
 }
 

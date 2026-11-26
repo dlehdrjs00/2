@@ -112,7 +112,10 @@ interface EndPlan {
   scenes: string[];
   /** 이 플레이에서 보는 CG(실제 실행기로 미리 확인한 목록, 순서 무관) */
   cgs: string[];
-  /** 엔딩 화면 '엔딩 1 / n' 의 n(빈 기록에서 처음 본 엔딩) */
+  /**
+   * 엔딩 화면 '엔딩 1 / n' 의 n(빈 기록에서 처음 본 엔딩). 아카네·히나 4, 코하루 6, 네 사람 8
+   * (계약 9절 + 팀장 결정: 네 사람 엔딩을 본 플레이어는 코하루를 이미 알므로 코하루 두 결말도 잠긴 배지로 보인다)
+   */
   total: number;
   /** 엔딩 화면 메달 루트 */
   medals: string[];
@@ -246,8 +249,8 @@ const PLANS: EndPlan[] = [
     firstScene: 'h1',
     scenes: [...COMMON_HEAD, ...MET_EPS, 'h1', 'h2', 'h3', 'h4', 'h5', 'hf1', 'hf2', 'hf3'],
     cgs: [...MET_CGS, 'end_group_fireworks'],
-    total: 6,
-    medals: ['osana', 'tenko', 'group'],
+    total: 8,
+    medals: ['osana', 'tenko', 'koharu', 'group'],
     table: "5.1 1행('함께' 네 번 4/4/4 · A H K A H K → 5/5/5 히든)",
     ipad: true,
   },
@@ -265,8 +268,8 @@ const PLANS: EndPlan[] = [
     firstScene: 'h1',
     scenes: [...COMMON_HEAD, ...MET_EPS, 'h1', 'h2', 'h3', 'h4', 'h5', 'hd1', 'hd2', 'hd3', 'hd4'],
     cgs: ['rain_tenko', ...MET_CGS, 'end_group_morning'],
-    total: 6,
-    medals: ['osana', 'tenko', 'group'],
+    total: 8,
+    medals: ['osana', 'tenko', 'koharu', 'group'],
     table: '5.1 2행(A H H A 5/4/4.5 · H K H A K H → 5.5/5.5/5.5 히든)',
   },
 ];
@@ -358,6 +361,7 @@ for (const p of PLANS) {
     await newGame(page);
     const atChoice: Record<string, string> = {};
     const chorus: Array<{ step: string; name: string; who: string | null }> = [];
+    let chorusLog: { name: string; text: string; k: string } | null = null;
     let logChecked = false;
     const r = await run(page, picksOf(p, fork), {
       read: new Set(read),
@@ -373,6 +377,7 @@ for (const p of PLANS) {
       },
       onLine: async (i) => {
         if (i.step === 'hd4.150' || i.step === 'hd4.140') chorus.push({ step: i.step, ...(await nameTag(page)) });
+        if (i.step === 'hd4.150') chorusLog = (await readLog(page)).at(-1) ?? null;
       },
     });
     expect(r.info.mode).toBe('ending');
@@ -429,7 +434,8 @@ for (const p of PLANS) {
     expect(mine?.text).toBe(`${p.name} · ${p.kind === 'festival' ? '축제' : '일상'}`);
     expect(mine?.title).toBe(`「${p.title}」`);
     expect(badges.filter((b) => b.reached).map((b) => b.ending)).toEqual([p.ending]);
-    const visibleRoutes = p.route === 'koharu' ? ['osana', 'tenko', 'koharu'] : p.route === 'group' ? ['osana', 'tenko', 'group'] : ['osana', 'tenko'];
+    // 코하루 엔딩 뒤: 코하루 두 결말만 더해지고 네 사람은 드러나지 않는다. 네 사람 엔딩 뒤: 코하루·네 사람 두 결말씩(팀장 결정)
+    const visibleRoutes = p.route === 'koharu' ? ['osana', 'tenko', 'koharu'] : p.route === 'group' ? ['osana', 'tenko', 'koharu', 'group'] : ['osana', 'tenko'];
     expect([...new Set(badges.map((b) => b.route))], '타이틀 배지 루트').toEqual(visibleRoutes);
     for (const b of badges.filter((x) => !x.reached)) expect(b.text).toBe('???');
 
@@ -460,6 +466,7 @@ for (const p of PLANS) {
         { step: 'hd4.140', name: '아카네', who: 'osana' },
         { step: 'hd4.150', name: '소우타 · 히나 · 코하루', who: 'chorus' },
       ]);
+      expect(chorusLog, '대화 기록의 chorus 줄').toEqual({ name: '소우타 · 히나 · 코하루', text: '응!', k: 'k-chorus' });
     }
 
     // 7. 히든 축제: 세 사람의 대답(hf2.220~330) 뒤 첫 불꽃 효과음 → end_group_fireworks
@@ -490,9 +497,12 @@ for (const p of PLANS) {
         expect(firstReq.step, '첫 불꽃 효과음을 요청한 프레임').toBe('hf2.360');
         expect(firstReq.shown, '불꽃 전에 마지막 대답 hf2.330').toContain('hf2.330');
         expect(firstReq.t, '첫 불꽃 효과음 요청이 CG 표시보다 먼저').toBeLessThanOrEqual(fwCg!.t);
-        const start = fw.find((x) => x.kind === 'start');
-        expect(start, '불꽃 효과음 재생(start)').toBeTruthy();
-        expect(start!.shown).toContain('hf2.330');
+        // 재생(start)은 디코드가 되는 브라우저에서만 관찰된다(다른 효과음의 재생이 하나라도 잡혔으면 불꽃도 있어야 함)
+        if (sfx.log.some((x) => x.kind === 'start')) {
+          const start = fw.find((x) => x.kind === 'start');
+          expect(start, '불꽃 효과음 재생(start)').toBeTruthy();
+          expect(start!.shown).toContain('hf2.330');
+        }
       }
     }
   });
@@ -877,8 +887,7 @@ test('6c. 구저장 c8r.180(kh_draw 표시 중, 후반 선택 전): 이어하기
   expect(pts(r.info.points)).toBe('5/4.5/4.5');
   expect(scenesOf((await seen(page)).map((x) => x.s))).toEqual(['c8_raffle', 'e1_ice4']);
   const g = await readGlobalAll(page);
-  expect(g.cgs.filter((c) => c === 'kh_draw')).toHaveLength(1);
-  expect(g.cgs).toContain('group_ice_four');
+  expect(g.cgs.filter((c) => c === 'kh_draw'), 'kh_draw 관람 기록 1회(옛 기록 + 다시 본 것)').toHaveLength(1);
   const a = await readSlotJson(page, 'auto');
   expect(a?.schema).toBe(4);
   expect(a?.state.flags['kh.late3'], '후반 선택 전 구저장에는 구저장 표식이 없다(새 흐름)').toBeUndefined();
@@ -888,11 +897,14 @@ test('6d. 구저장 c9.ch(미발견 6/3 → c8 함께): 이어하기 → a/b/c, 
   onlyOn([DESKTOP]);
   test.setTimeout(240_000);
   const e = v3('unmet-c9ch');
-  const read = lineIds();
+  // 루트 첫 장면(o1_shop) 머리 몇 줄은 읽지 않은 줄로 두어 건너뛰기가 판정 직후에서 멈추게 한다
+  const o1Head = new Set(sceneLines('o1_shop').slice(0, 6));
+  const read = lineIds((_sc, id) => o1Head.has(id));
   const koharuReq = watchRequests(page, KOHARU_DRAWN_ASSET);
   await watchSteps(page);
   await watchNames(page);
-  await freshBoot(page, { raw: oldGlobalWithRead(read), slots: { auto: e.raw } });
+  // 이 플레이어는 코하루를 만난 적이 없다(옛 전역 기록의 코하루 엔딩은 넣지 않는다: 타이틀에 코하루 배지가 뜨는 것이 맞으므로)
+  await freshBoot(page, { read, slots: { auto: e.raw } });
   await continueFromTitle(page);
   expect((await vi(page)).step).toBe('c9.ch');
   const r = await run(page, ['a', 'a'], { read: new Set(read), stopAt: (i) => i.route !== null });

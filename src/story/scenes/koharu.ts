@@ -19,7 +19,7 @@
  * 원고의 [연출]·CG 지시는 장면 동작으로만 옮기고 대사창에는 보이지 않는다.
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, cg, choice, ending, flash, goto, hide, isFlag, jump, label, me, mono, not, opt, place, say, sayAs, scene, sfx, show, when } from '../../engine/dsl';
+import { bg, bgm, cg, choice, ending, flag, flash, goto, hide, isFlag, jump, label, me, mono, not, opt, place, say, sayAs, scene, set, sfx, show, when } from '../../engine/dsl';
 import { EP3_DONE } from './common';
 import { KOHARU_DAILY_SCENES } from './koharu-daily';
 
@@ -143,6 +143,8 @@ export const KOHARU_SCENES: Scene[] = [
     hide('koharu'),
     mono('k3.220', '되돌아가 공책값을 내니, 거스름돈을 세던 {koharuFamily:가} 동전 하나를 손등 위로 굴려 보다 떨어뜨렸다.'),
     mono('k3.230', '동전은 내 운동화 앞까지 굴러왔다. 주워 건네자 {koharuFamily:는} 아직 연습 중이라며 못 본 걸로 해 달라고 했다.'),
+    // 동전 씨앗을 본 흐름 표시. 897ae1f 저장이 k3 뒷부분·k4 에 있었으면 위 두 줄을 건너뛰므로 kd1.140·150 은 이 플래그가 있을 때만
+    set(flag('kh.coin')),
     jump('k4'),
   ]),
 

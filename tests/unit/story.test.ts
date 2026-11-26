@@ -550,3 +550,116 @@ describe('실제 대본: 검증기 속도', () => {
     expect(report.paths.length + report.legacyPaths.length).toBe(39474 + 1350);
   });
 });
+
+/** 이 상태에서 picks 를 순서대로 고르며 엔딩까지 진행(모자라면 첫 보이는 옵션). 지나간 블로킹 id 를 모은다 */
+function playFrom(state: GameState, picks: readonly string[]) {
+  let r = settle(STORY, state);
+  let i = 0;
+  const seen: string[] = [];
+  for (let guard = 0; r.step.t !== 'ending'; guard++) {
+    if (guard > 5000) throw new Error('진행이 끝나지 않음');
+    seen.push(r.step.id);
+    if (r.step.t === 'choice') {
+      const pick = picks[i++] ?? visibleOptions(state, r.step)[0].id;
+      const next = choose(STORY, state, pick);
+      if (!next) throw new Error(`${r.step.id} 에서 ${pick} 불가`);
+      r = next;
+    } else r = advance(STORY, state)!;
+  }
+  return { state, seen, ending: (r.step as { ending?: EndingId }).ending };
+}
+
+/**
+ * 897ae1f 저장 위치 흉내: 새 흐름이 stopAt(장면 첫 블로킹 스텝)에 선 순간의 장면 진입 스냅샷을 장면 to 처음에 놓는다.
+ * drop 의 플래그는 지운다(897ae1f 에 없던 줄이 세우는 플래그)
+ */
+function savedAt(picks: readonly string[], stopAt: string, to: string, drop: readonly string[] = []): GameState {
+  const { state } = play(picks, stopAt);
+  const e = state.sceneEntry!;
+  const flags = { ...e.flags };
+  for (const f of drop) delete flags[f];
+  const st: GameState = {
+    sceneId: to,
+    stepId: STORY.scenes[to].steps[0].id,
+    points: { ...e.points },
+    lastHeroine: e.lastHeroine,
+    route: e.route,
+    choices: { ...e.choices },
+    flags,
+    stage: JSON.parse(JSON.stringify(e.stage)) as GameState['stage'],
+    log: [],
+    endedWith: null,
+  };
+  st.sceneEntry = snapshotSceneEntry(st);
+  return st;
+}
+
+describe('실제 대본: 구저장 흐름은 본 적 없는 장면을 되부르지 않는다(새 플래그 ep1.three · kh.coin)', () => {
+  it('미발견 새 흐름은 e1_ice3 끝에서 ep1.three 를 세우고 o1.066(토요일)·o1.067(막과자)을 모두 본다', () => {
+    const { state, seen } = play([...'aaaaaaa']);
+    expect(state.route).toBe('osana');
+    expect(state.flags['ep1.three']).toBe(true);
+    expect(seen).toEqual(expect.arrayContaining(['e1t.010', 'o1.066', 'o1.067']));
+  });
+
+  it('897ae1f 미발견 저장이 c8_bakery 에 있었으면 e1_ice3 를 건너뛰므로 o1.066 은 안 보이고 o1.067 만 보인다', () => {
+    const st = savedAt([...'aaaa'], 'e1t.010', 'c8_bakery');
+    expect(st.flags['kh.met']).not.toBe(true);
+    const { state, seen } = playFrom(st, [...'aaa']);
+    expect(state.route).toBe('osana');
+    expect(state.flags['ep1.three']).toBeUndefined();
+    expect(seen.some((id) => id.startsWith('e1t.'))).toBe(false);
+    expect(seen).toEqual(expect.arrayContaining(['e2t.010', 'e3t.010', 'o1.067']));
+    expect(seen).not.toContain('o1.066');
+  });
+
+  it('코하루 일상 갈래: 새 흐름은 k3 동전 씨앗 뒤 kh.coin 이 서고 kd1.140·150 을 본다. k4 의 897ae1f 저장(kh.coin 없음)은 kd1.155 만', () => {
+    const fresh = play([...'cccc', ...'kkkkkk', 'd']);
+    expect(fresh.state.route).toBe('koharu');
+    expect(fresh.state.flags['kh.coin']).toBe(true);
+    expect(fresh.seen).toEqual(expect.arrayContaining(['k3.230', 'kd1.140', 'kd1.150', 'kd1.155']));
+
+    const st = savedAt([...'cccc', ...'kkkkkk'], 'k4.010', 'k4', ['kh.coin']);
+    const old = playFrom(st, ['d']);
+    expect(old.ending).toBe('koharu_daily');
+    expect(old.state.flags['kh.coin']).toBeUndefined();
+    expect(old.seen).toContain('kd1.155');
+    expect(old.seen).not.toContain('kd1.140');
+    expect(old.seen).not.toContain('kd1.150');
+  });
+});
+
+describe('실제 대본: 그림·서술 정합(새 장면)', () => {
+  const ORDER: Record<string, number> = { left: 0, center: 1, right: 2 };
+
+  it('hf2: 첫 불꽃 직전 화면 배치가 CG(end_group_fireworks: 히나 L · 코하루 C · 아카네 R)와 같고, 자리를 옮기며 다른 인물을 가로지르지 않는다', () => {
+    const st = STORY.scenes.hf2.steps;
+    const fw = st.findIndex((s) => s.t === 'sfx' && s.sound === 'firework');
+    expect(fw).toBeGreaterThan(st.findIndex((s) => s.id === 'hf2.350'));
+    const pos = new Map<string, string>();
+    for (const s of st.slice(0, fw)) {
+      if (s.t === 'hide') {
+        if (s.char === 'all') pos.clear();
+        else pos.delete(s.char);
+      } else if (s.t === 'show' && s.pos) {
+        const from = pos.get(s.char);
+        if (from !== undefined && from !== s.pos) {
+          const [lo, hi] = [Math.min(ORDER[from], ORDER[s.pos]), Math.max(ORDER[from], ORDER[s.pos])];
+          for (const [other, p] of pos) {
+            if (other !== s.char) expect(ORDER[p] < lo || ORDER[p] > hi, `${s.char} ${from}→${s.pos} 가 ${other}(${p}) 를 지난다`).toBe(true);
+          }
+        }
+        pos.set(s.char, s.pos);
+      }
+    }
+    expect(Object.fromEntries(pos)).toEqual({ tenko: 'left', koharu: 'center', osana: 'right' });
+  });
+
+  it('e3_rain4: 장소 표시는 비 갠 처마 배경과 함께 뜨고(암전 중 해 아이콘 없음), 암전 구간 대사는 10줄 이하다', () => {
+    const st = STORY.scenes.e3_rain4.steps;
+    const bgAt = st.findIndex((s) => s.t === 'bg' && s.bg === 'bg_after_rain');
+    const placeAt = st.findIndex((s) => s.t === 'place');
+    expect(placeAt).toBe(bgAt + 1);
+    expect(st.slice(0, bgAt).filter((s) => s.t === 'say').length).toBeLessThanOrEqual(10);
+  });
+});

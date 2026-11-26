@@ -81,6 +81,40 @@ class FakeImage extends EventTarget {
   decode() { return Promise.resolve(); }
 }
 
+describe('낮은 가로 화면 CG 구도(play.css #vn[data-cgfit=low])·암전 햇살', () => {
+  const css = readFileSync(new URL('../../src/ui/styles/play.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const blocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: m[1].split(',').map((x) => x.replace(/\s+/g, ' ').trim()), body: m[2] }));
+  const prop = (body: string, name: string) => new RegExp(`(?:^|;)\\s*${name}:\\s*([^;]+)`).exec(body)?.[1].replace(/\s+/g, ' ').trim();
+
+  it('CG 별 확대 규칙은 아는 CG 에만 걸리고, 여덟 엔딩 확장 그림 넷(빙수집 셋·넷, 종이개구리, 코하루 일상)의 값이 화면 검토에서 고른 값이다', () => {
+    const fit: Record<string, string> = {};
+    for (const b of blocks) {
+      for (const sel of b.selectors) {
+        const m = /^\.vn\[data-cgfit='low'\] \.cg-layer\[data-cg='([^']+)'\] > \.cg-img$/.exec(sel);
+        if (m) fit[m[1]] = `${prop(b.body, 'transform')} @ ${prop(b.body, 'transform-origin')}`;
+      }
+    }
+    expect(fit).toEqual({
+      shutter_tenko: 'scale(1.3) @ 30% 100%',
+      cats_tenko: 'scale(1.15) @ 50% 100%',
+      kh_relay: 'scale(1.15) @ 50% 100%',
+      group_ice_three: 'scale(1.15) @ 48% 100%',
+      end_koharu_coin: 'scale(1.18) @ 45% 100%',
+      group_frog: 'scale(1.06) @ 50% 100%',
+      group_ice_four: 'scale(1.06) @ 50% 100%',
+    });
+    for (const id of Object.keys(fit)) expect(CG_ORDER, id).toContain(id);
+  });
+
+  it('그림 없는 암전(맨 앞 배경 black)에서 햇살을 끄는 :has() 규칙은 홀로 선 선택자다(모르는 브라우저는 그 규칙만 버린다)', () => {
+    const hit = blocks.filter((b) => b.selectors.some((x) => x.includes(':has(') && x.includes('.sunwash')));
+    expect(hit.map((b) => b.selectors)).toEqual([[".stage:has(> .bg-layer.on[data-bg='black'] + .chars) .sunwash"]]);
+    expect(prop(hit[0].body, 'opacity')).toBe('0');
+    // 'black' 은 그림 없는 배경이다(그림 있는 배경이 이 규칙에 걸리지 않게)
+    expect((BACKGROUNDS as Record<string, { src?: string }>).black.src).toBeUndefined();
+  });
+});
+
 describe('decoded image retention', () => {
   it('caps repeated playthrough retention and reloads evicted images', async () => {
     vi.stubGlobal('Image', FakeImage);
@@ -268,7 +302,9 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
       }
     }
     expect(metCount).toBe(25);
-  });
+    // 243 판(81조합 × 3)을 끝까지 돌며 스텝마다 미리 불러오기를 계산한다. 여덟 엔딩 확장으로 길어져 부하가 있는 기계에서는
+    // 기본 5초를 넘는다(E2E 와 함께 돌 때 약 7.5초): 넉넉히 잡는다
+  }, 60_000);
 
   it('c7 선택지가 떠 있을 때는 해금 판정 전이라 복도 첫 만남(kh_meet)을 받지 않고, 해금되는 선택을 고른 뒤에는 받는다', () => {
     const st = newGameState(STORY);

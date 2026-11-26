@@ -1,11 +1,18 @@
-/** 추억 앨범 목록 모델: 루트별 묶음·순서·모은 수·감상 순서(끝에서 처음으로) + 히든 히로인·히든 루트 공개 규칙(reveal.ts) */
+/**
+ * 추억 앨범 목록 모델: 루트별 묶음·순서·모은 수·감상 순서(끝에서 처음으로) + 히든 히로인·히든 루트 공개 규칙(reveal.ts)
+ * + 엔딩 화면 폴라로이드 캡션(dates.ts: 그 그림이 뜬 장면의 날짜·장소)
+ */
 import { describe, expect, it } from 'vitest';
 import { albumModel, groupLabel, wrapIndex, type AlbumEntry } from '../../src/ui/screens/album';
 import { endingMedals, reachedHeroines, revealedHeroines, titleEndings, visibleCatalog, visibleEndings, visibleRoutes } from '../../src/ui/reveal';
-import { ENDING_KIND_NAMES, GROUP_ROUTE_NAME, ROUTE_COLORS, endingLabel, routeColors, routeName } from '../../src/ui/screens/common';
+import { ENDING_KIND_NAMES, GROUP_ROUTE_NAME, ROUTE_COLORS, endingLabel, routeColors, routeName, splitDate } from '../../src/ui/screens/common';
+import { captionText, cgSceneDate, dateAt, endingDate, placePart, scenePreds } from '../../src/ui/dates';
+import { cg as cgStep, ending, jump, mono, place, scene as sceneDef } from '../../src/engine/dsl';
+import { resolveText } from '../../src/engine/text';
+import { TEXT_VARS } from '../../src/story/config';
 import { CG_ORDER, CGS, ENDING_CG, KOHARU_DRAWN_CGS } from '../../src/story/cg';
 import { STORY } from '../../src/story';
-import type { EndingDef, EndingId, HeroineId, RouteId } from '../../src/engine/types';
+import type { EndingDef, EndingId, HeroineId, RouteId, Story } from '../../src/engine/types';
 
 // main.ts 의 cgCatalog 와 같은 모양(hidden 포함)
 const catalog: AlbumEntry[] = CG_ORDER.map((id) => ({ id, title: CGS[id].title, route: CGS[id].route, hidden: CGS[id].hidden === true }));
@@ -195,15 +202,18 @@ describe('히든 히로인(코하루)·히든 루트(네 사람): 관람 전에�
     expect(reachedHeroines(endings, ['group_festival', 'group_daily'])).toEqual([]);
   });
 
-  it('타이틀 엔딩 배지: 아카네·히나의 두 갈래는 늘, 코하루·네 사람은 그 루트의 엔딩에 하나라도 도달한 뒤에만', () => {
+  it('타이틀 엔딩 배지: 아카네·히나의 두 갈래는 늘, 코하루·네 사람은 그 루트의 엔딩에 하나라도 도달한 뒤에만(네 사람을 봤으면 코하루도)', () => {
     expect(titleEndings(endings, []).map((e) => e.id)).toEqual(['osana', 'osana_daily', 'tenko', 'tenko_daily']);
     expect(titleEndings(endings, ['osana', 'tenko']).map((e) => e.id)).toEqual(['osana', 'osana_daily', 'tenko', 'tenko_daily']);
     expect(titleEndings(endings, ['koharu']).map((e) => e.id)).toEqual(['osana', 'osana_daily', 'tenko', 'tenko_daily', 'koharu', 'koharu_daily']);
+    // 네 사람 엔딩만 본 플레이어는 코하루를 이미 안다: 코하루 두 결말도 잠긴 배지로(팀장 결정)
     expect(titleEndings(endings, ['group_daily']).map((e) => e.id)).toEqual([
       'osana',
       'osana_daily',
       'tenko',
       'tenko_daily',
+      'koharu',
+      'koharu_daily',
       'group_festival',
       'group_daily',
     ]);
@@ -231,8 +241,8 @@ describe('히든 히로인(코하루)·히든 루트(네 사람): 관람 전에�
     // 한 번 도달한 뒤에는 다른 엔딩 화면에서도(일상 쪽 결말도 같은 루트)
     expect(routes(endingMedals(endings, ['koharu'], 'osana'))).toEqual(['osana', 'tenko', 'koharu']);
     expect(routes(endingMedals(endings, ['koharu_daily'], 'osana'))).toEqual(['osana', 'tenko', 'koharu']);
-    // 네 사람 엔딩을 처음 보는 순간: 네 사람 메달만 더해진다(코하루 엔딩을 본 적 없으면 코하루 메달은 없다)
-    expect(routes(endingMedals(endings, [], 'group_daily'))).toEqual(['osana', 'tenko', 'group']);
+    // 네 사람 엔딩을 처음 보는 순간: 코하루 엔딩을 본 적 없어도 코하루 메달(잠김)과 네 사람 메달이 함께 더해진다
+    expect(routes(endingMedals(endings, [], 'group_daily'))).toEqual(['osana', 'tenko', 'koharu', 'group']);
     expect(routes(endingMedals(endings, ['koharu'], 'group_festival'))).toEqual(['osana', 'tenko', 'koharu', 'group']);
   });
 });
@@ -282,11 +292,25 @@ describe('엔딩 8개: 공개 정책·분모·배지 문구(설계 계약 7·9�
     expect(endingMedals(endings, ['koharu', 'tenko'], 'tenko').total).toBe(6);
   });
 
-  it('네 사람 엔딩도 같은 규칙: 코하루·네 사람을 다 본 뒤 8, 네 사람만 봤으면 6(코하루 결말은 그 루트 엔딩을 본 뒤에만)', () => {
+  it('네 사람 엔딩을 하나라도 본 뒤(또는 지금 그 엔딩 화면): 코하루 엔딩을 못 봤어도 코하루 두 결말까지 보여 분모 8', () => {
     expect(ids(titleEndings(endings, ['koharu', 'group_festival']))).toEqual([...BASE4, ...KOHARU2, ...GROUP2]);
     expect(endingMedals(endings, ['koharu', 'group_festival'], 'group_festival').total).toBe(8);
-    expect(ids(titleEndings(endings, ['group_daily']))).toEqual([...BASE4, ...GROUP2]);
-    expect(endingMedals(endings, [], 'group_daily').total).toBe(6);
+    // 네 사람만 본 플레이어(팀장 결정: 이미 코하루를 아는 플레이어)
+    expect(ids(titleEndings(endings, ['group_daily']))).toEqual([...BASE4, ...KOHARU2, ...GROUP2]);
+    expect(visibleRoutes(endings, ['group_festival'])).toEqual(['osana', 'tenko', 'koharu', 'group']);
+    expect(visibleRoutes(endings, [], 'group_daily')).toEqual(['osana', 'tenko', 'koharu', 'group']);
+    const first = endingMedals(endings, [], 'group_daily');
+    expect([first.got, first.total]).toEqual([1, 8]);
+    expect(first.medals.map((m) => [m.route, m.reached, m.endings.map((x) => x.reached)])).toEqual([
+      ['osana', false, [false, false]],
+      ['tenko', false, [false, false]],
+      ['koharu', false, [false, false]],
+      ['group', true, [false, true]],
+    ]);
+    // 아카네 엔딩 화면이어도 기록에 네 사람 엔딩이 있으면 8
+    expect(endingMedals(endings, ['group_festival'], 'osana').total).toBe(8);
+    // 코하루 엔딩만 본 플레이어에게는 네 사람이 드러나지 않는다(6)
+    expect(hiddenTrace(titleEndings(endings, ['koharu'])).filter((e) => e.route === 'group')).toEqual([]);
     const all = endingMedals(endings, Object.keys(STORY.endings) as EndingId[], 'group_daily');
     expect([all.got, all.total]).toEqual([8, 8]);
     expect(all.medals.map((m) => [m.route, m.endings.length, m.reached])).toEqual([
@@ -338,5 +362,115 @@ describe('엔딩 8개: 공개 정책·분모·배지 문구(설계 계약 7·9�
     // 897ae1f 의 기존 기록(엔딩 osana·tenko·koharu, 옛 CG id)은 이름이 그대로라 그대로 열린다
     const old = ['rain_osana', 'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date', 'polaroid_tenko'];
     expect(albumModel(catalog, old, reachedHeroines(endings, ['osana', 'tenko', 'koharu'])).seen).toBe(old.length);
+  });
+});
+
+describe('엔딩 화면 캡션: 폴라로이드 그림이 뜬 장면의 날짜·장소(dates.ts)', () => {
+  const t = (x: string) => resolveText(x, TEXT_VARS);
+  const preds = scenePreds(STORY);
+  const name = (h: HeroineId) => ({ osana: '아카네', tenko: '히나', koharu: '코하루' })[h];
+  /** 엔딩 화면이 뜨는 위치(엔딩 스텝) */
+  const endAt = (id: EndingId) => {
+    for (const sc of Object.values(STORY.scenes)) for (const st of sc.steps) if (st.t === 'ending' && st.ending === id) return { sceneId: sc.id, stepId: st.id, log: [] };
+    throw new Error(`엔딩 스텝 없음: ${id}`);
+  };
+  const caption = (id: EndingId) => captionText(endingDate(STORY, ENDING_CG[id], endAt(id), t, preds), routeName(STORY.endings[id].route, name));
+
+  it('엔딩 8개 캡션(실제 대본으로 계산): 폴라로이드 그림과 같은 날·같은 곳, 모두 「날짜, 장소」 형식', () => {
+    expect(Object.fromEntries(endings.map((e) => [e.id, caption(e.id)]))).toEqual({
+      osana: '8월 8일, 아사히 강 여름 축제',
+      osana_daily: '7월 20일, 언덕 아래 자판기 앞',
+      tenko: '8월 8일, 아사히 강 여름 축제',
+      tenko_daily: '7월 24일, 학교 뒷길',
+      koharu: '8월 9일, 문구점 앞',
+      koharu_daily: '7월 23일, 1학년 교실',
+      group_festival: '8월 8일, 강변 둑',
+      group_daily: '9월 1일, 집 앞 담장 모퉁이',
+    });
+    for (const e of endings) expect(caption(e.id), e.id).not.toMatch(/undefined|NaN|null|\{/);
+  });
+
+  it('그림이 뜬 장면에 날짜가 없으면(아카네·히나 축제 결말: 같은 밤 귀갓길) 엔딩 위치 기준(dateAt)으로 되돌아간다', () => {
+    for (const id of ['osana', 'tenko'] as EndingId[]) {
+      expect(cgSceneDate(STORY, ENDING_CG[id], endAt(id), t, preds), id).toBeNull();
+      expect(endingDate(STORY, ENDING_CG[id], endAt(id), t, preds), id).toEqual(dateAt(STORY, endAt(id), t, preds));
+    }
+    for (const id of ['osana_daily', 'tenko_daily', 'koharu', 'koharu_daily', 'group_festival', 'group_daily'] as EndingId[]) {
+      expect(cgSceneDate(STORY, ENDING_CG[id], endAt(id), t, preds), id).not.toBeNull();
+    }
+  });
+
+  it('규칙(작은 대본): 그림 장면에서 거꾸로 — 장소는 가장 가까운 장소 표시(날짜 없어도), 날짜는 가장 가까운 날짜. 그림이 다른 장면이면 들어오는 장면까지', () => {
+    const story: Story = {
+      version: 't',
+      start: 'a',
+      scenes: {
+        a: sceneDef({ id: 'a', title: 'a', route: 'osana', part: 'epilogue' }, [
+          place('7월 20일 월요일 점심 · 교실'),
+          mono('a.1', '1'),
+          place('하굣길 · 언덕 아래 자판기 앞'),
+          cgStep('end_akane_walk'),
+          mono('a.2', '2'),
+          jump('b'),
+        ]),
+        b: sceneDef({ id: 'b', title: 'b', route: 'osana', part: 'epilogue' }, [
+          place('7월 21일 화요일 · 방과 후, 신발장'),
+          mono('b.1', '1'),
+          place('강변 둑'),
+          mono('b.2', '2'),
+          ending('b.end', 'osana_daily'),
+        ]),
+      },
+      endings: STORY.endings,
+    };
+    const at = { sceneId: 'b', stepId: 'b.end', log: [] };
+    const p = scenePreds(story);
+    const id = (x: string) => x;
+    // 엔딩 위치 기준이면 날짜 있는 b 의 첫 장소 표시(그림과 다른 날·다른 곳)
+    expect(dateAt(story, at, id, p)).toEqual({ md: '7월 21일', place: '방과 후, 신발장' });
+    // 그림 기준: a 의 자판기 앞(날짜 없는 장소 표시의 장소 부분) + a 의 7월 20일
+    expect(cgSceneDate(story, 'end_akane_walk', at, id, p)).toEqual({ md: '7월 20일', place: '언덕 아래 자판기 앞' });
+    expect(captionText(endingDate(story, 'end_akane_walk', at, id, p), '아카네')).toBe('7월 20일, 언덕 아래 자판기 앞');
+    // 그 그림이 이 길에 없으면 엔딩 위치 기준
+    expect(endingDate(story, 'end_hina_walk', at, id, p)).toEqual({ md: '7월 21일', place: '방과 후, 신발장' });
+    expect(endingDate(story, null, at, id, p)).toEqual({ md: '7월 21일', place: '방과 후, 신발장' });
+    // 날짜를 끝내 못 찾으면 '루트와 함께'
+    expect(captionText(null, '네 사람')).toBe('네 사람과 함께');
+    expect(captionText(null, '아카네')).toBe('아카네와 함께');
+    expect(captionText({ md: '8월 8일', place: '' }, '히나')).toBe('8월 8일');
+    // 장소 부분
+    expect(placePart('하굣길 · 언덕 아래 자판기 앞')).toBe('언덕 아래 자판기 앞');
+    expect(placePart('학교 뒷길')).toBe('학교 뒷길');
+    expect(placePart('7월 23일 목요일 점심 · 1학년 교실')).toBe('1학년 교실');
+  });
+
+  it('splitDate: 요일 뒤에 때(점심·밤·아침·오전)가 붙어도 장소를 잡고, 예전 규칙이 장소를 잡던 문구는 결과가 같다', () => {
+    expect(splitDate('7월 23일 목요일 점심 · 1학년 교실')).toEqual({ md: '7월 23일', place: '1학년 교실' });
+    expect(splitDate('8월 8일 토요일 밤 · 강변 둑')).toEqual({ md: '8월 8일', place: '강변 둑' });
+    expect(splitDate('9월 1일 화요일 아침 · 집 앞 담장 모퉁이')).toEqual({ md: '9월 1일', place: '집 앞 담장 모퉁이' });
+    expect(splitDate('7월 24일 금요일 · 종업식 날, 교실')).toEqual({ md: '7월 24일', place: '종업식 날, 교실' });
+    expect(splitDate('몇 주 뒤, 여름방학 · 8월 8일 토요일 · 아사히 강 여름 축제')).toEqual({ md: '8월 8일', place: '아사히 강 여름 축제' });
+    expect(splitDate('7월 10일')).toEqual({ md: '7월 10일', place: '' });
+    expect(splitDate('같은 밤 · 역 앞으로 가는 길')).toBeNull();
+    // 대본의 모든 장소 표시·날짜 카드: 날짜는 늘 같고, 예전 규칙이 잡던 장소는 그대로(예전엔 비던 장소만 새로 잡힌다)
+    const OLD = /(\d{1,2}월 \d{1,2}일)(?: [월화수목금토일]요일)?(?:\s*·\s*([^·]+))?/;
+    let kept = 0;
+    let filled = 0;
+    for (const sc of Object.values(STORY.scenes)) {
+      for (const st of sc.steps) {
+        if (st.t !== 'place' && st.t !== 'card') continue;
+        const text = st.t === 'card' ? `${t(st.text)}${st.sub ? ` · ${t(st.sub)}` : ''}` : t(st.text);
+        const o = OLD.exec(text);
+        const n = splitDate(text);
+        expect(n?.md ?? null, text).toBe(o?.[1] ?? null);
+        const oldPlace = (o?.[2] ?? '').trim();
+        if (oldPlace) {
+          expect(n?.place, text).toBe(oldPlace);
+          kept++;
+        } else if (n?.place) filled++;
+      }
+    }
+    expect(kept).toBeGreaterThanOrEqual(10);
+    expect(filled).toBeGreaterThanOrEqual(10);
   });
 });

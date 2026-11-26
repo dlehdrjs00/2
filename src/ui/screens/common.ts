@@ -57,11 +57,13 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
- * 날짜가 든 문구에서 '7월 10일'과 그 뒤 장소를 뽑는다.
+ * 날짜가 든 문구에서 '7월 10일'과 그 뒤 장소를 뽑는다. 요일 뒤에 때(점심·밤·아침·오전 등, 숫자·'·' 없는 말)가 붙어도
+ * 그 뒤 ' · ' 다음을 장소로 본다(예전 규칙이 장소를 잡던 문구는 결과가 같다: tests/unit/album.test.ts).
  * 예) '몇 주 뒤, 여름방학 · 8월 8일 토요일 · 아사히 강 여름 축제' → { md: '8월 8일', place: '아사히 강 여름 축제' }
+ *     '7월 23일 목요일 점심 · 1학년 교실' → { md: '7월 23일', place: '1학년 교실' }
  */
 export function splitDate(text: string): { md: string; place: string } | null {
-  const m = /(\d{1,2}월 \d{1,2}일)(?: [월화수목금토일]요일)?(?:\s*·\s*([^·]+))?/.exec(text);
+  const m = /(\d{1,2}월 \d{1,2}일)(?: [월화수목금토일]요일)?(?:[^·\d]*·\s*([^·]+))?/.exec(text);
   if (!m) return null;
   return { md: m[1], place: (m[2] ?? '').trim() };
 }

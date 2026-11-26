@@ -7,7 +7,9 @@
  * - 'END' 영문 대신 '아카네 · 축제 엔딩' 배지를 쓴다(같은 루트의 두 결말을 갈래 이름으로 구별. 히든 루트는 '네 사람').
  * - 색은 루트 색(ROUTE_COLORS), 제목·그림은 엔딩 id 로 고른다(game.ts).
  * - 진행 메달: 보이는 루트마다 하나(reveal.ts endingMedals), 메달 안 별 두 개가 축제·일상 결말의 도달 표시
- *   (.pip[data-ending][data-reached]). '엔딩 n / 보이는 엔딩 수'(처음 4, 코하루 엔딩을 본 뒤 6, 네 사람까지 8).
+ *   (.pip[data-ending][data-reached]). '엔딩 n / 보이는 엔딩 수'(처음 4, 코하루 엔딩을 본 뒤 6, 네 사람 엔딩을 본 뒤 8 —
+ *   네 사람 엔딩을 본 플레이어에게는 코하루 메달도 보인다).
+ * - 폴라로이드 캡션은 game.ts 가 dates.ts endingDate·captionText 로 만든다(그 그림이 뜬 장면의 날짜·장소).
  */
 import type { EndingId, EndingKind, RouteId } from '../../engine/types';
 import { button, cssUrl, el } from '../dom';

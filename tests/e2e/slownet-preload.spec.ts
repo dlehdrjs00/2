@@ -53,9 +53,19 @@ const textNow = (page: Page) => page.locator('.textbox .text').evaluate((e) => (
 /** 대사가 stepId 로 바뀔 때까지 무대를 누른다(그림 대기 중의 누름은 기다림만 끝낸다) */
 async function tapUntilStep(page: Page, stepId: string) {
   for (let i = 0; i < 60; i++) {
+    const before = (await info(page)).step;
     await tapStage(page);
-    await page.waitForTimeout(40);
+    // 탭이 처리될 때까지(프레임이 바뀔 때까지) 기다린 뒤에야 다시 누른다. 부하가 큰 병렬 실행에서 처리가 늦은 사이
+    // 탭을 몇 번 더 보내면, 남은 탭이 그림 대기 중·대기 직후에 처리되어 이 파일이 보려는 '대기 중 탭' 판정을 흐린다
+    const moved = await expect
+      .poll(async () => (await info(page)).step, { timeout: i < 3 ? 900 : 1500, intervals: [40] })
+      .not.toBe(before)
+      .then(
+        () => true,
+        () => false,
+      );
     if ((await info(page)).step === stepId) return;
+    if (!moved) continue;
   }
   throw new Error(`${stepId} 로 넘어가지 않음`);
 }

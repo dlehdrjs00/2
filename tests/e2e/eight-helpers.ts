@@ -372,7 +372,14 @@ export async function continueFromTitle(page: Page) {
 export async function saveTo(page: Page, slot: string) {
   await openMenu(page);
   await page.locator('[data-panel=menu] [data-action=save]').click();
-  await page.locator(`[data-panel=save] .slot[data-slot="${slot}"]`).click();
+  const card = page.locator(`[data-panel=save] .slot[data-slot="${slot}"]`);
+  // 저장 시트는 마지막으로 본 쪽(예: 퀵 칸을 불러온 뒤면 '자동·퀵')으로 열리므로 칸이 있는 쪽으로 옮긴다
+  await expect(page.locator('[data-panel=save] .slot').first()).toBeVisible();
+  if (!(await card.isVisible().catch(() => false))) {
+    const pageNo = slot === 'auto' || slot === 'quick' ? 'q' : String(Math.ceil(Number(slot) / 6));
+    await page.locator(`[data-panel=save] .rail [data-page="${pageNo}"]`).click();
+  }
+  await card.click();
   const ok = page.locator('[data-panel=confirm] [data-action=ok]');
   if (await ok.isVisible().catch(() => false)) await ok.click();
   await expect(page.locator(`[data-panel=save] .slot[data-slot="${slot}"] .slot-meta`)).toBeVisible();
