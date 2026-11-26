@@ -52,7 +52,7 @@ import {
   type AutoSaveChange,
   type AutoSaveStatus,
 } from './savestatus';
-import { isFullscreen, prefersReducedMotion, showFullscreenControl, splitDate, toggleFullscreen } from './screens/common';
+import { isFullscreen, prefersReducedMotion, routeName, showFullscreenControl, splitDate, toggleFullscreen } from './screens/common';
 import { buildEnding } from './screens/ending';
 import { miniStage, type MiniResolver } from './screens/fx';
 import { buildLog } from './screens/log';
@@ -109,8 +109,8 @@ export interface GameContent {
   /** 이벤트 CG 원본·작은 그림(저장 썸네일) 주소 */
   cgUrl?(id: string): string | null;
   cgThumbUrl?(id: string): string | null;
-  /** 엔딩 폴라로이드에 넣을 대표 CG */
-  endingCg?(heroine: HeroineId): string | null;
+  /** 엔딩 폴라로이드에 넣을 대표 CG(엔딩 id 기준: 같은 루트라도 축제 쪽·일상 쪽 그림이 다르다) */
+  endingCg?(ending: EndingId): string | null;
   /** 타이틀 키 비주얼(두 히로인이 함께 그려진 한 장 그림). 있으면 배경 + 개별 스프라이트 대신 쓴다 */
   titleVisual?: string | null;
   /** 키 비주얼의 작은 그림. 원본을 받는 동안 흐리게 깔아 둔다 */
@@ -1666,8 +1666,8 @@ export class Game {
     // 엔딩 배지: 기본 히로인 엔딩은 늘, 히든 히로인 엔딩은 도달한 뒤에만(reveal.ts)
     const endings = titleEndings(Object.values(this.story.endings), reached).map((e) => ({
       id: e.id,
-      heroine: e.heroine,
-      name: this.c.heroineNames[e.heroine],
+      route: e.route,
+      name: routeName(e.route, (h) => this.c.heroineNames[h]),
       reached: reached.has(e.id),
       title: this.t(e.title),
     }));
@@ -1825,21 +1825,23 @@ export class Game {
     const stage = state?.stage;
     const bg = stage?.bg ?? 'black';
     const date = state ? this.dateOf(state) : null;
-    const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${withJosa(this.c.heroineNames[def.heroine], '와')} 함께`;
+    // 루트 이름(히든 루트는 '네 사람'). 정식 엔딩 화면(일상 쪽·네 사람 표시)은 화면 담당이 정한다
+    const name = routeName(def.route, (h) => this.c.heroineNames[h]);
+    const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${withJosa(name, '와')} 함께`;
     const scr = buildEnding({
       id,
-      heroine: def.heroine,
-      heroineName: this.c.heroineNames[def.heroine],
+      route: def.route,
+      heroineName: name,
       title: this.t(def.title),
       bgUrl: this.c.bgUrl(bg),
       bgColor: this.c.bgColor(bg),
-      photo: this.endingPhoto(def.heroine, stage),
+      photo: this.endingPhoto(id, stage),
       caption,
       // 메달: 기본 히로인 + 도달했거나 지금 엔딩인 히든 히로인(reveal.ts)
-      medals: medalHeroines(Object.values(this.story.endings), reached, def.heroine).map((h) => ({
+      medals: medalHeroines(Object.values(this.story.endings), reached, def.route).map((h) => ({
         heroine: h,
         name: this.c.heroineNames[h],
-        reached: h === def.heroine || Object.values(this.story.endings).some((e) => e.heroine === h && reached.has(e.id)),
+        reached: h === def.route || Object.values(this.story.endings).some((e) => e.route === h && reached.has(e.id)),
       })),
       onTitle: () => this.showTitle(),
     });
@@ -1848,8 +1850,8 @@ export class Game {
   }
 
   /** 엔딩 폴라로이드 사진: 대표 이벤트 CG 가 있으면 그 그림, 없으면 엔딩 직전 무대로 그린 미니 무대 */
-  private endingPhoto(heroine: HeroineId, stage: StageState | undefined): HTMLElement {
-    const cg = this.c.endingCg?.(heroine) ?? null;
+  private endingPhoto(ending: EndingId, stage: StageState | undefined): HTMLElement {
+    const cg = this.c.endingCg?.(ending) ?? null;
     const url = cg ? this.c.cgUrl?.(cg) ?? null : null;
     if (!url) return miniStage('mini', stage, this.mini);
     const photo = miniStage('mini', undefined, this.mini);

@@ -3,7 +3,11 @@
  *
  * 흐름: c1 → c2 → c3 → c4 → c45(수) → c5(목) → c6(목) → c7(금)
  *        → [해금 시] 복도 첫 만남(c7 안) → 노을길 → c8_raffle(토 오전, 해금 전용)
- *        → c8_bakery(토 오후) → c9_puzzle(일 낮) → c10_window(월 점심) → 루트 결정
+ *        → (여덟 엔딩 확장, docs/EIGHT_ENDINGS_DESIGN.md 3절)
+ *          발견: c8_raffle → e1_ice4 → e1s_sunday4 → e2_frog4 → e3_rain4(후반 선택 6회 +0.5) → 루트 결정(완전 동점이면 히든)
+ *          미발견: c7 → e1_ice3 → c8_bakery → c9_puzzle → e2_frog3 → c10_window → e3_rain3 → 루트 결정(옛 규칙)
+ *          구저장(해금 후 c8·c9·c10 진행 중): c8_bakery → c9_puzzle → c10_window → c10.join 옛 판정(+3, 히든 없음)
+ *        에피소드 장면은 scenes/episodes4.ts(넷)·episodes3.ts(셋)에 있다.
  *
  * 초반 선택 4회(c3.ch, c4.ch, c6.ch, c7.ch): a = 소꿉친구, b = 전학생(+2, +2, +2, c7 만 +3),
  *   c = 셋이 함께(osana +1, tenko +1, 최근 히로인 갱신 없음). 기존 a·b 문구·반응·id 는 그대로 둔다.
@@ -47,10 +51,17 @@ import {
   when,
 } from '../../engine/dsl';
 
-/** 루트 결정에 쓰는 선택 순서(시간순). decideRoute 가 동점 처리 때 뒤에서부터 훑는다 */
-const ROUTE_CHOICES = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch', 'c8.ch', 'c9.ch', 'c10.ch'];
+/**
+ * 루트 결정에 쓰는 선택 순서(시간순). decideRoute 가 동점 처리 때 뒤에서부터 훑는다.
+ * 미발견 경로(e3_rain3)와 구저장 발견 경로(c10.join)의 옛 규칙에 쓴다
+ */
+export const ROUTE_CHOICES = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch', 'c8.ch', 'c9.ch', 'c10.ch'];
+/** 발견 경로(새 흐름) 루트 결정 순서: 초반 4회 + 에피소드 후반 6회(e3_rain4 끝에서 한 번 판정) */
+export const ROUTE_CHOICES6 = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch', 'e1f.ch1', 'e1f.ch2', 'e2f.ch1', 'e2f.ch2', 'e3f.ch1', 'e3f.ch2'];
 /** 금요일 복도 첫 만남을 실제로 본 플레이인지(해금 판정 결과) */
-const MET = 'kh.met';
+export const MET = 'kh.met';
+/** 처마 장면(e3_rain4·e3_rain3)을 지난 새 흐름인지. 루트 첫 장면의 연결 줄이 본다 */
+export const EP3_DONE = 'ep3.done';
 
 export const COMMON_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -422,7 +433,7 @@ export const COMMON_SCENES: Scene[] = [
     say('c7.j30', 'osana', '새삼스럽게.', 'smile'),
     mono('c7.j40', '낯설던 일주일이 어느새 익숙해져 있었다. 다음 주도 이렇게 흘러갈 거라고, 그때는 의심하지 않았다.'),
     when(isFlag(MET), 'c7.met'),
-    jump('c8_bakery'),
+    jump('e1_ice3'),
     label('c7.met'),
     jump('c8_raffle'),
   ]),
@@ -472,7 +483,8 @@ export const COMMON_SCENES: Scene[] = [
     say('c8r.270', 'koharu', '‘{meFamily} 선배’. 저장했어요.', 'smile'),
     me('c8r.280', '난 ‘{koharuFamily}’. 이제 복도에서 만나면 이름 부를 수 있겠다.'),
     say('c8r.290', 'koharu', '네. 뒤돌아봐도 되는지는 먼저 확인할게요.', 'smile'),
-    jump('c8_bakery'),
+    // 새 흐름: 추첨 뒤 빙수집 넷(후반 선택을 아직 하지 않은 구저장도 이쪽으로 온다)
+    jump('e1_ice4'),
   ]),
 
   // ---------------------------------------------------------------------------
@@ -583,6 +595,10 @@ export const COMMON_SCENES: Scene[] = [
 
     label('c9.join'),
     mono('c9.j10', '선풍기를 한 칸 약하게 했다. 신문이 그제야 가만있었다.'),
+    // 해금(MET)인 채로 c9 에 오는 것은 구저장뿐이다 → 옛 c10. 미발견 새 흐름은 종이개구리 셋을 거쳐 c10 으로
+    when(isFlag(MET), 'c9.old'),
+    jump('e2_frog3'),
+    label('c9.old'),
     jump('c10_window'),
   ]),
 
@@ -648,8 +664,13 @@ export const COMMON_SCENES: Scene[] = [
     bg('classroom_day'),
     sfx('bell'),
     mono('c10.j10', '오후 수업이 끝나고 의자 끄는 소리가 교실을 채웠다.'),
-    // 최고점 → 동점이면 공동 최고점 중 가장 최근 개인 선택. 결과 안내 없이 해당 루트 첫 장면으로 컷
+    // 미발견 새 흐름은 처마 셋(e3_rain3) 끝에서 판정한다
+    when(not(isFlag(MET)), 'c10.ep3'),
+    // 구저장 발견 경로 전용(옛 규칙, tieRoute 없음): 최고점 → 동점이면 공동 최고점 중 가장 최근 개인 선택.
+    // 결과 안내 없이 해당 루트 첫 장면으로 컷
     decideRoute(ROUTE_CHOICES, { koharu: MET }),
     routeBranch({ osana: 'o1_shop', tenko: 't1_cats', koharu: 'k1' }),
+    label('c10.ep3'),
+    jump('e3_rain3'),
   ]),
 ];

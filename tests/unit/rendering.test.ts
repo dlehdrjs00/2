@@ -7,7 +7,7 @@ import { STORY } from '../../src/story';
 import { advance, choose, newGameState, settle, visibleOptions, type StepResult } from '../../src/engine/runner';
 import { heroineUnlocked, nearbyImages, sceneImages, unlockFlags, type PreloadResolver } from '../../src/ui/screens/preload';
 import { BACKGROUNDS, SPRITE_SETS, spritePath } from '../../src/story/assets';
-import { CGS } from '../../src/story/cg';
+import { CGS, KOHARU_DRAWN_CGS } from '../../src/story/cg';
 import { bg as bgStep, cg as cgStep, choice, decideRoute, ending, isFlag, jump, mono, not, opt, routeBranch, scene as sceneDef, show, unlock, when } from '../../src/engine/dsl';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -175,7 +175,7 @@ describe('decoded image retention', () => {
 
 // ---------------------------------------------------------------------------
 // 근접 장면 미리 불러오기(screens/preload.ts nearbyImages·sceneImages)와 선택지의 '보이는 옵션'
-// 히든 히로인(코하루)이 해금되지 않은 플레이에서는 코하루 전용 그림(스프라이트·kh_* CG·kh_* 배경)을 미리 받지 않고,
+// 히든 히로인(코하루)이 해금되지 않은 플레이에서는 코하루 그림(스프라이트·kh_* 배경·코하루가 그려진 CG 12장)을 미리 받지 않고,
 // 해금된 플레이에서는 쓰기 전에 미리 받는다.
 // ---------------------------------------------------------------------------
 
@@ -184,8 +184,12 @@ const resolver: PreloadResolver = {
   spriteUrl: (c, s) => spritePath(c, s.outfit, s.hair, s.expr),
   cgUrl: (id) => (CGS as Record<string, { src: string } | undefined>)[id]?.src ?? null,
 };
-const KOHARU_ART = /assets\/char\/koharu\/|assets\/(?:cg|bg)\/kh_/;
+/** 코하루가 그려진 CG(kh_* 와 여덟 엔딩 확장 6장)의 주소 */
+const KOHARU_CG_URLS = new Set(KOHARU_DRAWN_CGS.map((id) => CGS[id].src));
+const isKoharuArt = (u: string) => /assets\/char\/koharu\/|assets\/bg\/kh_/.test(u) || KOHARU_CG_URLS.has(u);
 const EARLY = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch'];
+/** 코하루가 나오는 엔딩(미해금 플레이에서는 닿으면 안 된다) */
+const KOHARU_ENDINGS = ['koharu', 'koharu_daily', 'group_festival', 'group_daily'];
 
 /** 지금 무대가 쓰는 그림 */
 function stageUrls(st: GameState): string[] {
@@ -199,13 +203,14 @@ function stageUrls(st: GameState): string[] {
 }
 
 /**
- * picks(초반 4 + 후반 3) 대로 끝까지 플레이하며 블로킹 스텝마다 nearbyImages 를 부른다(game.ts present 와 같은 때).
+ * 초반 4(early) + 그 뒤 선택(late 를 돌려 가며, 보이지 않으면 마지막 보이는 옵션) + 결말 갈래(fork) 대로 끝까지 플레이하며
+ * 블로킹 스텝마다 nearbyImages 를 부른다(game.ts present 와 같은 때).
  * 돌려주는 값: 미리 받으려 한 코하루 그림, 무대에 처음 나왔는데 그 전에 계획에 없던 그림(첫 화면 제외), 해금 여부, 엔딩
  */
-function playAndPlan(picks: string[]) {
+function playAndPlan(early: string[], late: string[], fork: 'f' | 'd') {
   const st = newGameState(STORY);
   let res: StepResult | null = settle(STORY, st);
-  let pi = 0;
+  let li = 0;
   let n = 0;
   const planned = new Set<string>();
   const koharu = new Set<string>();
@@ -215,12 +220,16 @@ function playAndPlan(picks: string[]) {
     for (const u of stageUrls(st)) planned.add(u);
     for (const it of nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver)) {
       planned.add(it.url);
-      if (KOHARU_ART.test(it.url)) koharu.add(it.url);
+      if (isKoharuArt(it.url)) koharu.add(it.url);
     }
     if (res.step.t === 'choice') {
-      const shown = visibleOptions(st, res.step as ChoiceStep).map((o) => o.id);
-      expect(shown, `${res.step.id} 보이는 옵션 수`).toHaveLength(3);
-      const want = picks[pi++];
+      const step = res.step as ChoiceStep;
+      const shown = visibleOptions(st, step).map((o) => o.id);
+      // 결말 갈래(*.fork)는 f·d 두 개, 그 밖의 선택은 세 개(초반 a·b·c, 후반 a·b·k 또는 a·b·c)
+      const isFork = /\.fork$/.test(step.id);
+      expect(shown, `${step.id} 보이는 옵션 수`).toHaveLength(isFork ? 2 : 3);
+      const ei = EARLY.indexOf(step.id);
+      const want = isFork ? fork : ei >= 0 ? early[ei] : late[li++ % late.length];
       res = choose(STORY, st, shown.includes(want) ? want : shown[shown.length - 1]);
     } else res = advance(STORY, st);
   }
@@ -232,21 +241,30 @@ const combos = (n: number, opts: string[]): string[][] =>
   n === 0 ? [[]] : combos(n - 1, opts).flatMap((c) => opts.map((o) => [...c, o]));
 
 describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 지금 상태로 판정', () => {
-  it('초반 81조합 전부(후반 a,b,c 와 c,c,c): 해금되지 않은 플레이는 코하루 그림을 한 장도 미리 받지 않고, 해금된 플레이는 쓰기 전에 받는다', () => {
+  it('초반 81조합 전부(후반 a,b,k 반복·c 반복·k 반복, 결말 갈래 축제/일상): 해금되지 않은 플레이는 코하루 그림을 한 장도 미리 받지 않고, 해금된 플레이는 쓰기 전에 받는다', () => {
     let metCount = 0;
+    const cases: Array<[string[], 'f' | 'd']> = [
+      [['a', 'b', 'k'], 'd'],
+      [['c', 'c', 'c'], 'f'],
+      [['k', 'k', 'k'], 'f'],
+    ];
     for (const early of combos(4, ['a', 'b', 'c'])) {
-      for (const late of [['a', 'b', 'k'], ['c', 'c', 'c'], ['k', 'k', 'k']]) {
-        const r = playAndPlan([...early, ...late]);
+      for (const [late, fork] of cases) {
+        const r = playAndPlan(early, late, fork);
+        const tag = `${early.join('')} 후반 ${late.join('')} 갈래 ${fork}`;
         if (!r.met) {
-          expect([...r.koharu], `미해금 ${early.join('')} 후반 ${late.join('')}`).toEqual([]);
-          expect(r.end).not.toBe('koharu');
+          expect([...r.koharu], `미해금 ${tag}`).toEqual([]);
+          expect(KOHARU_ENDINGS, tag).not.toContain(r.end);
         } else {
           if (late[0] === 'a') metCount++;
-          expect(r.koharu.size, `해금 ${early.join('')}`).toBeGreaterThan(0);
+          expect(r.koharu.size, `해금 ${tag}`).toBeGreaterThan(0);
         }
-        // 무대에 나온 그림은 모두 그 전에 미리 받기 계획에 있었다(해금·미해금 모두)
-        expect(r.unplanned, `${early.join('')}${late.join('')}`).toEqual([]);
-        if (late.join('') === 'kkk' && r.met) expect(r.end).toBe('koharu');
+        // 무대에 나온 그림은 모두 그 전에 미리 받기 계획에 있었다(해금·미해금, 축제·일상 갈래, 히든 루트 모두)
+        expect(r.unplanned, tag).toEqual([]);
+        if (late.join('') === 'kkk' && r.met) expect(r.end, tag).toBe('koharu');
+        // '함께' 네 번(4/4/4) 뒤 A H K A H K → 5/5/5 세 명 동점 → 히든 루트(설계 계약 5.1 첫 줄), 일상 쪽 갈래
+        if (early.join('') === 'cccc' && late[0] === 'a') expect(r.end, tag).toBe('group_daily');
+        if (r.end === null) throw new Error(`엔딩에 닿지 못함: ${tag}`);
       }
     }
     expect(metCount).toBe(25);
@@ -260,7 +278,7 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
       res = res.step.t === 'choice' ? choose(STORY, st, picks[res.step.id]) : advance(STORY, st);
     }
     const atChoice = nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver).map((i) => i.url);
-    expect(atChoice.filter((u) => KOHARU_ART.test(u))).toEqual([]);
+    expect(atChoice.filter((u) => isKoharuArt(u))).toEqual([]);
     res = choose(STORY, st, 'c');
     const after = nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver);
     const meet = after.find((i) => i.url === 'assets/cg/kh_meet.webp');
@@ -270,12 +288,12 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
     expect(st.flags['kh.met']).toBeUndefined();
   });
 
-  it('루트 분기: c10 선택지에서 해금 플레이는 세 갈래(o1·t1·k1), 미해금 플레이는 두 갈래만 다음 장면으로 본다', () => {
-    const reach = (early: string[]) => {
+  it('루트 분기: 해금 플레이는 여섯째 선택(e3f.ch2)에서 히로인 세 갈래(o1·t1·k1, 히든 루트는 확정 전이라 보지 않음), 미해금 플레이의 c10 선택 뒤는 처마 셋(e3_rain3)', () => {
+    const reach = (early: string[], stopAt: string) => {
       const st = newGameState(STORY);
       let res: StepResult | null = settle(STORY, st);
       const picks: Record<string, string> = Object.fromEntries(EARLY.map((id, i) => [id, early[i]]));
-      while (res && !(res.step.t === 'choice' && res.step.id === 'c10.ch')) {
+      while (res && !(res.step.t === 'choice' && res.step.id === stopAt)) {
         if (res.step.t === 'choice') {
           const shown = visibleOptions(st, res.step).map((o) => o.id);
           res = choose(STORY, st, picks[res.step.id] ?? shown[0]);
@@ -285,8 +303,8 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
       const idx = scene.steps.findIndex((s) => s.id === st.stepId);
       return sceneImages(STORY, st.sceneId, st.stage, resolver, null, idx + 1, true, st);
     };
-    expect(reach(['c', 'c', 'c', 'c']).next.sort()).toEqual(['k1', 'o1_shop', 't1_cats']);
-    expect(reach(['a', 'a', 'a', 'a']).next.sort()).toEqual(['o1_shop', 't1_cats']);
+    expect(reach(['c', 'c', 'c', 'c'], 'e3f.ch2').next.sort()).toEqual(['k1', 'o1_shop', 't1_cats']);
+    expect(reach(['a', 'a', 'a', 'a'], 'c10.ch').next).toEqual(['e3_rain3']);
   });
 
   it('선택지가 떠 있을 때(c6.ch): 갈래 CG 는 branch, 어느 옵션을 골라도 쓰는 빗길 배경은 allBranches — 미리 해독은 allBranches·갈래 밖 그림만', () => {
@@ -364,9 +382,14 @@ describe('sceneImages: 갈래 판정(작은 대본)', () => {
       start: 's1',
       scenes: { s1, s2, ro: end('ro', 'osana', 'road_morning'), rt: end('rt', 'tenko', 'shrine_steps'), rk: end('rk', 'koharu', 'kh_stationery') },
       endings: {
-        osana: { id: 'osana', heroine: 'osana', title: 'o' },
-        tenko: { id: 'tenko', heroine: 'tenko', title: 't' },
-        koharu: { id: 'koharu', heroine: 'koharu', title: 'k' },
+        osana: { id: 'osana', route: 'osana', kind: 'festival', title: 'o' },
+        osana_daily: { id: 'osana_daily', route: 'osana', kind: 'daily', title: 'od' },
+        tenko: { id: 'tenko', route: 'tenko', kind: 'festival', title: 't' },
+        tenko_daily: { id: 'tenko_daily', route: 'tenko', kind: 'daily', title: 'td' },
+        koharu: { id: 'koharu', route: 'koharu', kind: 'festival', title: 'k' },
+        koharu_daily: { id: 'koharu_daily', route: 'koharu', kind: 'daily', title: 'kd' },
+        group_festival: { id: 'group_festival', route: 'group', kind: 'festival', title: 'g' },
+        group_daily: { id: 'group_daily', route: 'group', kind: 'daily', title: 'gd' },
       },
     };
   }
@@ -381,7 +404,7 @@ describe('sceneImages: 갈래 판정(작은 대본)', () => {
     expect(met.urls.some((u) => u.includes('char/koharu/uniform_default_smile'))).toBe(true);
     expect(met.next.sort()).toEqual(['rk', 'ro', 'rt']);
     const unmet = sceneImages(story, 's2', null, resolver, null, 0, false, known({ points: { osana: 4, tenko: 0, koharu: 0 } }));
-    expect(unmet.urls.filter((u) => KOHARU_ART.test(u))).toEqual([]);
+    expect(unmet.urls.filter((u) => isKoharuArt(u))).toEqual([]);
     expect(unmet.next.sort()).toEqual(['ro', 'rt']);
   });
 
@@ -389,7 +412,7 @@ describe('sceneImages: 갈래 판정(작은 대본)', () => {
     const story = tiny();
     // q1 이 떠 있는 상태(0:0). 어느 쪽을 골라도 2:0 이라 실제로도 미해금이지만, 판정 자체를 하지 않는다
     const items = nearbyImages(story, 's1', 'q1', null, known(), resolver);
-    expect(items.map((i) => i.url).filter((u) => KOHARU_ART.test(u))).toEqual([]);
+    expect(items.map((i) => i.url).filter((u) => isKoharuArt(u))).toEqual([]);
     // 이미 해금된 플래그가 있으면 그대로 따른다
     const metAlready = nearbyImages(story, 's1', 'q1', null, known({ flags: { 'kh.met': true } }), resolver);
     expect(metAlready.map((i) => i.url)).toContain('assets/cg/kh_meet.webp');

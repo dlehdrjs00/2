@@ -24,19 +24,19 @@
  *
  * 입력 안전: 클릭은 모두 여기서 전파를 멈추고(오버레이도 [data-noadvance]), 키는 game.ts 가 맨 위 오버레이의 onKey 로만 넘긴다.
  */
-import type { HeroineId } from '../../engine/types';
-import { HEROINES } from '../../engine/types';
+import type { HeroineId, RouteId } from '../../engine/types';
+import { ROUTES } from '../../engine/types';
 import { cssUrl, el } from '../dom';
 import { ico } from '../icons';
-import { isHiddenHeroine, revealedHeroines, visibleCatalog } from '../reveal';
-import { HEROINE_COLORS, prefersReducedMotion } from './common';
+import { isHiddenRoute, revealedHeroines, visibleCatalog } from '../reveal';
+import { ROUTE_COLORS, prefersReducedMotion, routeName } from './common';
 import type { SheetView } from './sheet';
 
 export interface AlbumEntry {
   id: string;
   title: string;
-  /** 어느 히로인 루트의 장면인지(공통이면 null) */
-  route: HeroineId | null;
+  /** 어느 루트의 장면인지(공통이면 null, 히든 루트는 'group') */
+  route: RouteId | null;
   /** 관람 전에는 앨범 어디에도(빈칸·총 장수 포함) 보이지 않는 CG */
   hidden?: boolean;
 }
@@ -46,7 +46,7 @@ export interface AlbumItem extends AlbumEntry {
 }
 
 export interface AlbumGroup {
-  route: HeroineId | null;
+  route: RouteId | null;
   items: AlbumItem[];
   seen: number;
 }
@@ -69,15 +69,16 @@ export function albumModel(
   catalog: readonly AlbumEntry[],
   seen: Iterable<string>,
   reached: Iterable<HeroineId> = [],
-  routes: readonly HeroineId[] = HEROINES,
+  routes: readonly RouteId[] = ROUTES,
 ): AlbumModel {
   const have = new Set(seen);
-  const shown = new Set(revealedHeroines(catalog, have, reached));
+  const shown = new Set<RouteId>(revealedHeroines(catalog, have, reached));
+  // 히든 루트('group')는 공개 판정 대상이 아니다: 그 그림은 모두 hidden 이라 본 것만 남는다
   const visible = visibleCatalog(catalog, have).filter(
-    (c) => c.route === null || !isHiddenHeroine(c.route) || shown.has(c.route) || have.has(c.id),
+    (c) => c.route === null || !isHiddenRoute(c.route) || shown.has(c.route) || have.has(c.id),
   );
-  const keyOf = (r: HeroineId | null) => (r !== null && routes.includes(r) ? r : null);
-  const keys: Array<HeroineId | null> = [...routes, null];
+  const keyOf = (r: RouteId | null) => (r !== null && routes.includes(r) ? r : null);
+  const keys: Array<RouteId | null> = [...routes, null];
   const groups = keys
     .map((route) => {
       const items = visible.filter((c) => keyOf(c.route) === route).map((c) => ({ ...c, seen: have.has(c.id) }));
@@ -120,8 +121,8 @@ const NOTE_ALL = '모든 추억을 모았어요. 함께해 줘서 고마워요!'
 /** 앨범을 열 때 첫 '본 칸이 있는 묶음'으로 옮기면 그 묶음 머리줄 위에 남길 여백(px) */
 const ALBUM_SCROLL_MARGIN = 8;
 
-export function groupLabel(route: HeroineId | null, name: (h: HeroineId) => string): string {
-  return route ? name(route) : '공통';
+export function groupLabel(route: RouteId | null, name: (h: HeroineId) => string): string {
+  return route ? routeName(route, name) : '공통';
 }
 
 export function buildAlbum(o: AlbumOptions): AlbumView {
@@ -156,7 +157,7 @@ export function buildAlbum(o: AlbumOptions): AlbumView {
     const sec = el('section', 'album-group');
     sections.push(sec);
     sec.dataset.route = g.route ?? 'common';
-    const colors = g.route ? HEROINE_COLORS[g.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
+    const colors = g.route ? ROUTE_COLORS[g.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
     sec.style.setProperty('--c1', colors.c1);
     sec.style.setProperty('--c2', colors.c2);
     const name = groupLabel(g.route, o.heroineName);
@@ -389,8 +390,8 @@ export function buildViewer(o: ViewerOptions): ViewerPanel {
     const item = o.items[i];
     const my = ++token;
     p.dataset.cg = item.id;
-    who.textContent = item.route ? o.heroineName(item.route) : '공통';
-    const colors = item.route ? HEROINE_COLORS[item.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
+    who.textContent = item.route ? routeName(item.route, o.heroineName) : '공통';
+    const colors = item.route ? ROUTE_COLORS[item.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
     who.style.setProperty('--c1', colors.c1);
     who.style.setProperty('--c2', colors.c2);
     title.textContent = item.title;

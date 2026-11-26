@@ -7,13 +7,15 @@
  *  - k4 핑계(안내판)를 빼고 방학 약속을 둘이 정한다(본편 끝, 아직 사귀지 않음)
  *  - k5 둘이 쓴 안내판 → k6 축제, 이름을 처음 부르고 고백 → 분명한 승낙 → 그 뒤에 첫 불꽃
  *  - k7 손을 잡은 귀갓길, 소우타가 먼저 "내일도 같이 갈래?" → k8 첫 데이트 → 엔딩
+ * 결말 갈래(k4.fork, k4.200 뒤): f 축제 쪽 = k5~k8 → 엔딩 koharu
+ *                               d 일상 쪽 = k4.d → kd1 … → 엔딩 koharu_daily(뼈대, 작가 초안이 대체)
  * 호칭: 소우타의 말·독백은 8월 8일(k6) 전까지 성({koharuFamily}), 그 뒤로 이름({koharu}).
  * 의상: k1~k4 교복, k5·k8 사복(연민트 블라우스·크림색 스커트), k6·k7 유카타. 헤어는 늘 기본(한쪽 가는 땋기 포함).
  * 표정: 원고 끝 '장면별 표정 큐' 표의 전환 지점에서만 바꾼다. CG 가 떠 있는 동안은 CG 가 표정을 대신한다.
  * 원고의 [연출]·CG 지시는 장면 동작으로만 옮기고 대사창에는 보이지 않는다.
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, cg, ending, flash, hide, jump, me, mono, place, say, scene, sfx, show } from '../../engine/dsl';
+import { bg, bgm, cg, choice, ending, flash, hide, jump, label, me, mono, opt, place, say, scene, sfx, show } from '../../engine/dsl';
 
 export const KOHARU_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -166,7 +168,18 @@ export const KOHARU_SCENES: Scene[] = [
     mono('k4.190', '{koharuFamily:가} 저쪽에서 기다려 준 친구한테 뛰어갔다. 손을 흔드는 내 쪽으로도 한 번 돌아봤다.'),
     hide('koharu'),
     mono('k4.200', '방학이 되면 학교에 안 와도 된다는 것만 좋았는데, 올해는 8월 4일이 조금 빨리 왔으면 했다.'),
+    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로(k5), d 는 일상 쪽(k4.d → kd1)
+    choice('k4.fork', '(초안) 방학 전 남은 한 주…', [
+      opt('f', '(초안) 8월 4일 문구점 약속을 기다린다', { goto: 'k4.f' }),
+      opt('d', '(초안) 다음 주 점심, 1학년 교실에 가 본다', { goto: 'k4.d' }),
+    ]),
+    label('k4.f'),
     jump('k5'),
+
+    // ---- 일상 쪽 결말 갈래(k4.fork d) ----
+    label('k4.d'),
+    mono('k4.d10', '(초안) 8월까지 기다리기엔 한 주가 길었다.'),
+    jump('kd1'),
   ]),
 
   // ---------------------------------------------------------------------------
@@ -376,5 +389,21 @@ export const KOHARU_SCENES: Scene[] = [
     say('k8.240', 'koharu', '그날은 그냥 세워 놔요.', 'smile'),
     mono('k8.250', '그것도 그렇네. 먼저 일어난 건 {koharu:였}다. 내가 일어날 때까지 손은 잡은 채였다. 점심까지 아직 한참 남아 있었다.'),
     ending('k8.end', 'koharu'),
+  ]),
+
+  // ---------------------------------------------------------------------------
+  // kd1 — 일상 쪽 결말 「옆자리는 비워 둘게요」. {n1}~{n4} 점심 빈 교실 → end_koharu_coin → 엔딩(뼈대)
+  // ---------------------------------------------------------------------------
+  scene({ id: 'kd1', title: '옆자리는 비워 둘게요', route: 'koharu', part: 'epilogue' }, [
+    hide('all'),
+    bg('classroom_day', 'black'),
+    bgm('daily'),
+    place('{n1} 점심 · 빈 교실'),
+    mono('kd1.010', '(초안) 동전 마술이 실패할 때마다 떨어진 동전을 몰래 받아 줬다.'),
+    mono('kd1.020', '(초안) 다음 날부터 {koharuFamily}의 옆 의자는 늘 비어 있었다.'),
+    me('kd1.030', '(초안) 조수가 필요 없어졌는데도 그 자리를 비워 두는 이유를 물었다.'),
+    cg('end_koharu_coin'),
+    say('kd1.040', 'koharu', '(초안) 옆자리는 비워 둘게요.'),
+    ending('kd1.end', 'koharu_daily'),
   ]),
 ];

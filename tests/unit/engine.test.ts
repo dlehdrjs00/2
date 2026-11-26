@@ -113,15 +113,24 @@ describe('스토리 검증기', () => {
     // 해금(첫 선택 c): 2×2×3 = 12개 조합 중 소꿉 5개(×2) + 전학 5개 + 후배 2개 = 17
     expect(rep.paths.length).toBe(8 * 2 + 8 + (5 * 2 + 5 + 2));
     for (const p of rep.paths) expect(p.route).toBe(p.expectedRoute);
+    // 동점 처리·히든은 판정 단위(루트 안 선택지 o1.ch 전까지의 조합)로 센다: 소꿉 판정 13개(×2 경로) + 전학 13 + 후배 2 = 28
     expect(rep.branching).toMatchObject({
       paths: 41,
       earlyCombos: 3,
       unlockedEarlyCombos: 1,
       endings: { osana: 26, tenko: 13, koharu: 2 },
-      ties: 11,
+      decisions: 28,
+      unlockedDecisions: 12,
+      lockedDecisions: 16,
+      routes: { osana: 13, tenko: 13, koharu: 2 },
+      ties: 8,
       tiesUnlocked: 2,
-      tiesLocked: 9,
+      tiesLocked: 6,
+      // tieRoute 가 없는 판정이라 세 명 동점(c·a·b·k 등 2/2/2)도 히든이 아니라 최근 선택으로
+      allTied: 2,
+      hidden: 0,
       earlyCombosReachingAll: 3,
+      legacy: null,
     });
     // 해금된 경로만 met, 해금 판정은 첫 선택 직후
     for (const p of rep.paths) {
@@ -137,6 +146,14 @@ describe('스토리 검증기', () => {
     const rep = validateStory(s, permissiveAssets, {});
     expect(rep.errors.join('\n')).toMatch(/nope/);
     expect(rep.errors.join('\n')).toMatch(/missing-label/);
+  });
+
+  it('routeBranch 대상이 루트와 맞지 않거나 루트 id 가 아니면 잡아낸다', () => {
+    const s = miniStory();
+    const br = s.scenes.c1.steps.find((x) => x.t === 'routeBranch')!;
+    if (br.t === 'routeBranch') (br.scenes as Record<string, string>).nobody = 'o1';
+    const rep = validateStory(s, permissiveAssets, {});
+    expect(rep.errors.join('\n')).toMatch(/'nobody' 은\(는\) 루트 id 가 아닙니다/);
   });
 
   it('도달할 수 없는 엔딩을 잡아낸다', () => {

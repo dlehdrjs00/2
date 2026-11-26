@@ -20,13 +20,21 @@ import { STORY, SCENE_ORDER } from '../src/story';
 import { resolveText } from '../src/engine/text';
 import { computeLayout } from '../src/ui/layout';
 import { TEXT_SCALES } from '../src/engine/settings';
-import type { CgId, HeroineId, Step } from '../src/engine/types';
+import type { CgId, EndingId, HeroineId, RouteId, Step } from '../src/engine/types';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out: string[] = [];
 const w = (s = '') => out.push(s);
 const t = (s: string) => resolveText(s, TEXT_VARS);
 const H: Record<HeroineId, string> = { osana: NAMES.osana.given, tenko: NAMES.tenko.given, koharu: NAMES.koharu.given };
+/** 루트 이름(히든 루트 'group' 은 세 사람과 함께하는 '네 사람') */
+const R: Record<RouteId, string> = { ...H, group: '네 사람' };
+/** 결말 갈래 */
+const KIND_KO: Record<string, string> = { festival: '축제 쪽', daily: '일상 쪽' };
+/** 날씨 아이콘(매니페스트 weather) */
+const WX_KO: Record<string, string> = { sun: '해', rain: '비', moon: '달' };
+/** 받은 그대로 넣은 배경 썸네일(scripts/bg-thumbs.py PROVIDED 와 같은 목록, 덮어쓰지 않음) */
+const PROVIDED_BG_THUMBS = '`kh_*`·`bg_ice_shop`·`bg_after_rain`';
 /** 히로인 역할(문서 표기용) */
 const ROLE: Record<HeroineId, string> = { osana: '소꿉친구', tenko: '전학생', koharu: '히든 후배, 해금된 플레이에서만 등장' };
 const EXPR_KO: Record<string, string> = { neutral: '기본', smile: '웃음', fluster: '당황', shy: '부끄러움', pout: '삐짐', sad: '쓸쓸' };
@@ -348,7 +356,7 @@ const rows = [
     kind: '이벤트 CG',
     count: `${cgList.length}장 + 썸네일 ${cgList.length}장${hiddenCgs.length ? ` (그중 관람 전 숨김 ${hiddenCgs.length}장)` : ''}`,
     st: status(cgList.map((c) => c.placeholder)),
-    what: '사용자가 준 최종 일러스트 → WebP 변환',
+    what: '사용자가 준 최종 일러스트 → WebP 변환(코하루 6장·여덟 엔딩 9장은 받은 WebP 그대로)',
     where: '`public/assets/cg/`, `public/assets/cg/thumb/`',
     total: sum(cgList.flatMap((c) => [c.src, c.thumb])),
   },
@@ -416,6 +424,7 @@ w();
 const allImages = [...spriteFiles, ...cgList.flatMap((c) => [c.src]), KEY_VISUAL.src, ...bgEntries.map(([, a]) => a.src!)];
 w(`- 인물·CG·키 비주얼은 **사용자가 준 최종 일러스트**를 \`scripts/import-art.py\` 로 변환해 넣은 것이다(원본은 \`art-inbox/\`, 저장소에 넣지 않음).`);
 w(`- ${H.koharu}(히든 히로인)의 스프라이트·이벤트 CG·배경 2장·썸네일은 **코하루 루트 인계 패키지의 WebP 를 그대로** 넣었다(다시 인코딩·리사이즈하지 않음, sha256 대조). 편집 원본을 고쳐 다시 넣을 때만 import-art 를 쓴다.`);
+w('- 여덟 엔딩 확장의 이벤트 CG 9장(`group_*`·`end_*`)·배경 2장(`bg_ice_shop`·`bg_after_rain`)과 썸네일은 **코덱스가 제작한 묶음의 WebP 를 그대로** 넣었다(다시 인코딩·리사이즈하지 않음, 묶음의 `ART_MANIFEST.json` sha256 대조). import-art 로 변환하지 않는다.');
 {
   const temp = [
     ...(bgFinal ? [] : [['배경', '#배경--임시-svg']]),
@@ -441,7 +450,7 @@ w('   - 배경·음악·효과음: `src/story/assets.ts` 의 `BACKGROUNDS` / `BG
 w('     예: `classroom_day: { src: \'assets/bg/classroom_day.webp\', placeholder: false, desc: \'2학년 3반 교실(낮, 창가)\' },`');
 w('   - 캐릭터: `SPRITE_SETS.<캐릭터>.dir` 과 `ext`(파일명 규칙 `${outfit}_${hair}_${expr}.${ext}` 유지). 그림 자체를 바꿀 때는 아래 [그림 교체 파이프라인](#그림-교체-파이프라인-scriptsimport-artpy)을 쓴다.');
 w('   - 이벤트 CG·키 비주얼: `src/story/cg.ts`(경로는 `assets/cg/{id}.webp`, 썸네일 `assets/cg/thumb/{id}.webp` 고정).');
-w('   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 빠졌거나 원본보다 오래된 것만 새로 만들고(`--force` 는 전부), 인계 패키지가 원본과 함께 준 썸네일(`kh_*`)은 원본이 그대로인 동안 덮어쓰지 않는다. 매니페스트의 `thumb` 경로와 맞출 것.');
+w('   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 빠졌거나 원본보다 오래된 것만 새로 만들고(`--force` 는 전부), 인계 패키지가 원본과 함께 준 썸네일(' + PROVIDED_BG_THUMBS + ')은 원본이 그대로인 동안 덮어쓰지 않는다. 매니페스트의 `thumb` 경로와 맞출 것.');
 w('3. `npm run validate` — 매니페스트가 가리키는 파일(배경 썸네일 포함)이 없으면 오류로 알려 준다.');
 w('4. `npm run docs` — 이 문서와 대본 문서를 다시 만든다.');
 w('5. `npm run dev` 로 띄워 데스크톱·휴대폰 가로 화면에서 확인한다(주소 끝에 `?debug` 를 붙이면 콘솔에서 `window.__vn.info()` 로 상태 조회).');
@@ -534,7 +543,7 @@ CG_ORDER.forEach((id, i) => {
         .map((u) => `\`${u.scene}\` ${!u.first ? '대사 없음' : u.first === u.last ? `\`${u.first}\` 1문장` : `\`${u.first}\`~\`${u.last}\` ${u.lines}문장`} → ${u.until}`)
         .join('<br>')
     : '⚠ 대본에서 쓰지 않음';
-  const route = c.route ? `${H[c.route]}${uses.some((u) => STORY.scenes[u.scene].route === 'common') ? '(공통 선택)' : ''}` : '공통';
+  const route = c.route ? `${R[c.route]}${uses.some((u) => STORY.scenes[u.scene].route === 'common') ? '(공통 선택)' : ''}` : '공통';
   w(`| ${i + 1} | \`${id}\` | ${c.title}${c.hidden ? ' 🔒 관람 전 숨김' : ''} | ${route} | ${c.desc} | ${span} | \`${c.src.split('/').pop()}\` ${f.mark} | ${f.dim} | ${f.size} | ${th.mark} ${th.dim} ${th.size} |`);
 });
 w();
@@ -550,10 +559,12 @@ w();
 w();
 w('### 엔딩 폴라로이드(`ENDING_CG`)');
 w();
-w('엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG.');
+w('엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG(엔딩 id 기준, 엔딩 8개).');
 w();
-for (const [heroine, id] of Object.entries(ENDING_CG)) {
-  w(`- ${H[heroine as HeroineId]} 엔딩 → \`${id}\` 「${CGS[id].title}」 (${CGS[id].desc})${CGS[id].hidden ? ' · 🔒 관람 전 숨김' : ''}`);
+for (const [ending, id] of Object.entries(ENDING_CG) as Array<[EndingId, CgId]>) {
+  const def = STORY.endings[ending];
+  const name = def ? `${R[def.route]} ${KIND_KO[def.kind]} 엔딩 「${t(def.title)}」` : ending;
+  w(`- ${name} (\`${ending}\`) → \`${id}\` 「${CGS[id].title}」 (${CGS[id].desc})${CGS[id].hidden ? ' · 🔒 관람 전 숨김' : ''}`);
 }
 w();
 
@@ -576,9 +587,9 @@ w('|---|---|');
 w('| 형식 | **WebP**(권장, 품질 80~85) 또는 JPEG. 투명 불필요 |');
 w('| 해상도 | **1920×1080(16:9)** 권장. 무대가 늘 16:9 라 그대로면 잘리지 않는다. 비율이 다르면 가운데 기준으로 잘린다(`background-size: cover`) |');
 w('| 용량 | 파일당 800KB 이하(표준 렌더링은 게임 전체 그림을 백그라운드로 미리 받으므로 휴대폰 데이터 고려) |');
-w('| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(빠졌거나 오래된 것만 새로 만듦. 인계 패키지가 준 `kh_*` 썸네일은 원본이 그대로인 동안 덮어쓰지 않음. `--check` 는 쓰지 않고 빠짐·오래됨·크기만 알림) |');
+w('| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(빠졌거나 오래된 것만 새로 만듦. 인계 패키지가 준 ' + PROVIDED_BG_THUMBS + ' 썸네일은 원본이 그대로인 동안 덮어쓰지 않음. `--check` 는 쓰지 않고 빠짐·오래됨·크기만 알림) |');
 w(`| 구도 | 인물이 무대 폭 ${posLeft.left}·${posLeft.center}·${posLeft.right} 자리에 서고, 아래쪽 약 ${fx(Math.floor(Math.min(...VIEWPORTS.map(([, vw, vh]) => cover(vw, vh, 1).band))))}~${fx(Math.ceil(worstDefault))}%는 대사창·탭이 반투명하게 덮는다. 사람·글자 없는 빈 장소 그림 |`);
-w('| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별 |');
+w('| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별하되, 매니페스트에 `weather` 가 있으면 그것이 먼저다(`bg_after_rain` 은 비가 그친 그림이라 해) |');
 w('| 레터박스 | 무대 밖 여백은 표준 렌더링에서는 같은 배경을 흐려 채운다(`.backdrop`). Apple 터치 기기는 흐림 대신 톤별(낮·노을·밤) 그라데이션, 암전은 그 색(`src/ui/styles/performance.css`). 따로 만들 그림 없음 |');
 w('| 화풍 | 캐릭터·CG 와 어울리는 밝은 애니메이션 배경 화풍(초여름, 맑은 하늘빛) |');
 w();
@@ -587,7 +598,9 @@ w('|---|---|---|---|---|---|---|---|---|');
 for (const [id, a] of Object.entries(BACKGROUNDS)) {
   const f = fileInfo(a.src);
   const th = a.thumb ? fileInfo(a.thumb) : null;
-  const tone = a.src ? TONE_KO[a.tone ?? 'day'] + (id.includes('_rain') ? '·비' : '') : '-';
+  // 날씨: 매니페스트 weather 가 먼저(stage.ts weatherOf), 없으면 id 의 _rain
+  const wx = a.weather ? `·${WX_KO[a.weather]}(날씨 명시)` : /_rain$/.test(id) ? '·비' : '';
+  const tone = a.src ? TONE_KO[a.tone ?? 'day'] + wx : '-';
   const use = id === 'title' ? `타이틀 대체${KEY_VISUAL.src ? '(키 비주얼이 없을 때만)' : ''}` : used.bg.has(id) ? '○' : '-';
   w(`| \`${id}\` | ${a.desc} | ${tone} | ${use} | ${a.src ? `\`${a.src}\`` : `단색 ${a.color}`} | ${a.src ? (a.placeholder ? TEMP : FINAL) : '-'} | ${f.dim} | ${f.size} | ${th ? `${th.mark} ${th.dim} ${th.size}` : '-'} |`);
 }
@@ -716,6 +729,9 @@ w('| 분류 | 출처 | 라이선스·조건 | 비고 |');
 w('|---|---|---|---|');
 w('| 캐릭터 스프라이트·이벤트 CG·키 비주얼 | 사용자 제공 최종 일러스트 | 사용자 제공(이 게임에 사용) | 제작 프롬프트 `docs/ART_PROMPTS.md`, 변환 `scripts/import-art.py` |');
 w(`| ${H.koharu} 스프라이트 18·이벤트 CG 6·배경 2(\`kh_*\`)·썸네일 8 | 사용자가 준 코하루 루트 인계 패키지(2026-11-25). 스프라이트는 1024×1536 생성 후 확대, CG·배경은 생성 후 1920×1080 리샘플(패키지 README). 생성 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건은 기록에 없어 **확인 필요** | 받은 WebP 그대로(sha256 대조), 그림 지침은 패키지의 \`docs/ART_PROMPTS_KOHARU.md\`, 배경 기록 \`docs/BACKGROUND_PROMPTS.md\` |`);
+w(
+  '| 여덟 엔딩 이벤트 CG 9(`group_*`·`end_*`)·배경 2(`bg_ice_shop`·`bg_after_rain`)·썸네일 11 | 사용자가 준 코덱스 제작 묶음(2026-11-26, `ART_MANIFEST.json`). 생성 원본 1672×941 을 1920×1080 으로(`end_akane_walk`·`end_hina_walk` 는 원본 1920×1080). 생성 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건은 기록에 없어 **확인 필요** | 받은 WebP 그대로(`ART_MANIFEST.json` sha256 대조, import-art 로 다시 인코딩하지 않음), 배경 썸네일은 `scripts/bg-thumbs.py` PROVIDED 에 sha 쌍 등록 |',
+);
 if (bgFinal) {
   w('| 배경 | 사용자가 준 묶음(이미지 생성 도구로 제작, 2026-11-24). 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건(상업 이용·웹 배포 허용)은 기록에 없어 **확인 필요** | 제작 프롬프트 `docs/BACKGROUND_PROMPTS.md`(앞 3장은 요약만 남음), 썸네일 `scripts/bg-thumbs.py` |');
 } else {

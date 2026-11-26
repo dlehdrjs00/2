@@ -228,6 +228,12 @@ describe('날짜 카드: 카드가 그릴 다음 배경(bgAfterCard)과 날씨',
     expect(bgAfterCard(steps('o5_festival'), 'o5.010')).toBe('festival_street');
     expect(bgAfterCard(steps('t5_festival'), 't5.010')).toBe('festival_street');
     expect(weatherOf('festival_street', 'night')).toBe('moon');
+    // 비 배경은 id 의 _rain, 매니페스트에 날씨가 있으면 그것이 먼저(비가 그친 처마 bg_after_rain 은 해)
+    expect(weatherOf('road_rain', 'day')).toBe('rain');
+    expect(weatherOf('shoe_lockers_rain', 'day')).toBe('rain');
+    expect(weatherOf('bg_after_rain', 'day')).toBe('sun');
+    expect(weatherOf('bg_ice_shop', 'day')).toBe('sun');
+    expect(weatherOf(undefined, 'night')).toBe('moon');
     // 카드 → hide → bg(hallway)
     expect(bgAfterCard(steps('c5_gym'), 'c5.010')).toBe('hallway');
   });

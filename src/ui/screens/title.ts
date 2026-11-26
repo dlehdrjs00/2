@@ -11,15 +11,16 @@
  *   원본은 내려받아 해독이 끝난 뒤에야 .art-hi 에 넣어 페이드로 띄운다(.kv-ready). 느린 망에서 원본이
  *   위에서부터 반쯤 그려진 채 오래 보이지 않게. 한 번 해독한 원본은 다시 그릴 때 연출 없이 바로 보인다.
  */
-import type { EndingId, HeroineId } from '../../engine/types';
+import type { EndingId, HeroineId, RouteId } from '../../engine/types';
 import { button, cssUrl, el } from '../dom';
-import { HEROINE_COLORS } from './common';
+import { ROUTE_COLORS } from './common';
 import { buildMotes } from './fx';
 import { prefersDataSaving } from './preload';
 
 export interface TitleEnding {
   id: EndingId;
-  heroine: HeroineId;
+  /** 엔딩이 속한 루트(배지 색). 히든 루트는 'group' */
+  route: RouteId;
   name: string;
   reached: boolean;
   /** 본 엔딩이면 엔딩 제목 */
@@ -260,7 +261,7 @@ export function buildTitle(o: TitleOptions): HTMLElement {
     b.dataset.ending = e.id;
     b.dataset.reached = e.reached ? '1' : '0';
     b.title = e.reached ? `「${e.title}」` : '아직 보지 못한 엔딩';
-    if (e.reached) b.style.setProperty('--c', HEROINE_COLORS[e.heroine].c1);
+    if (e.reached) b.style.setProperty('--c', (ROUTE_COLORS[e.route] ?? ROUTE_COLORS.group).c1);
     foot.append(b);
   }
 

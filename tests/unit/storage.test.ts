@@ -87,6 +87,24 @@ describe('탭 두 개에서 전역 기록', () => {
     eventsB.dispatchEvent(storageEvent('ashita.global', {}));
     expect(tabB.isRead('c1.020')).toBe(false);
   });
+
+  it("전역 기록 보조 키(ashita.global.ext·ashita.global.v2)만 바뀐 'storage' 이벤트도 합친다", () => {
+    const story = miniStory();
+    const ls = fakeLocalStorage();
+    const events = new EventTarget();
+    const tab = new SaveManager(new BrowserStore(ls as unknown as Storage, events), story, permissiveAssets);
+    expect(tab.endingsReached()).toEqual([]);
+    ls.setItem('ashita.global.v2', JSON.stringify({ schema: 1, endings: ['koharu'] }));
+    events.dispatchEvent(storageEvent('ashita.global.v2', ls));
+    expect(tab.endingsReached()).toEqual(['koharu']);
+    ls.setItem('ashita.global.ext', JSON.stringify({ endings: ['tenko'] }));
+    events.dispatchEvent(storageEvent('ashita.global.ext', ls));
+    expect(tab.endingsReached().sort()).toEqual(['koharu', 'tenko']);
+    // 저장 칸 이벤트로는 전역 기록을 다시 읽지 않는다
+    ls.setItem('ashita.global.v2', JSON.stringify({ schema: 1, endings: ['koharu', 'osana'] }));
+    events.dispatchEvent(storageEvent('ashita.save.1', ls));
+    expect(tab.endingsReached().sort()).toEqual(['koharu', 'tenko']);
+  });
 });
 
 describe('용량 초과 시 메모리 대체 저장', () => {

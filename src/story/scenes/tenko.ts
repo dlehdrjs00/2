@@ -7,11 +7,13 @@
  *  - t4 내가 먼저 같이 가자고 하고, 먼저 "내일도 같이 갈래?"(본편 끝, 아직 사귀지 않음)
  *  - t5 축제, 처음으로 찍히는 쪽이 된 {tenko} → t6 불꽃 전의 고백과 분명한 승낙, 둘이 함께 찍힌 첫 사진
  *  - t7 연인이 된 첫 귀갓길 → 엔딩
+ *  - 결말 갈래(t4.fork, t4.140 뒤): f 축제 쪽 = 기존 t4.150~ → t5~t7 → 엔딩 tenko
+ *                                  d 일상 쪽 = t4.d → td1 … → 엔딩 tenko_daily(뼈대, 작가 초안이 대체)
  * 헤어: 체육 있는 날(2주 차 수·목 = t2·t3)은 포니테일, 축제(t5~t7)는 유카타+포니테일, 그 외 기본(긴 웨이브).
  *   체육은 매주 수·목(1주 차 수요일 c45_journal·목요일 c5·c6, 2주 차 수요일 t2·o3). 히나는 '체육 있는 날만 묶거든'(c5.090).
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, card, cg, chose, ending, flash, goto, hide, jump, label, me, mono, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, jump, label, me, mono, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
 
 export const TENKO_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -176,6 +178,11 @@ export const TENKO_SCENES: Scene[] = [
     say('t4.120', 'tenko', '찍히면 떠날 때 아쉽다고 했잖아.', 'sad'),
     me('t4.130', '아쉬우면 아쉬워하면 돼. 그만큼 여기가 좋았다는 거니까.'),
     say('t4.140', 'tenko', '응, 약속. 축제 날, 여기서. 사진은 {me} 군이 찍어 줘.', 'smile'),
+    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로, d 는 일상 쪽(t4.d → td1)
+    choice('t4.fork', '(초안) 내려가기 전에…', [
+      opt('f', '(초안) 별표 쳐 둔 곳을 내일 같이 가자고 한다', { goto: 't4.150' }),
+      opt('d', '(초안) 다음엔 내가 먼저 길을 안내하겠다고 한다', { goto: 't4.d' }),
+    ]),
     me('t4.150', '별표 쳐 둔 데, 아직 많이 남았지? 마침 내일은 토요일이고.'),
     me('t4.160', '{tenko}. 내일도 같이 갈래?'),
     say('t4.170', 'tenko', '그거, 내 대사인데.', 'fluster'),
@@ -184,6 +191,11 @@ export const TENKO_SCENES: Scene[] = [
     say('t4.190', 'tenko', '갈래.', 'shy'),
     mono('t4.200', '{tenko:는} 두 손으로 얼굴을 가렸지만 빨개진 귀는 다 보였다. 내려가는 길, 한 번도 앞서 뛰지 않았다.'),
     jump('t5_festival'),
+
+    // ---- 일상 쪽 결말 갈래(t4.fork d) ----
+    label('t4.d'),
+    mono('t4.d10', '(초안) 이번엔 내가 먼저 보여 주고 싶은 길이 있다고 말했다.'),
+    jump('td1'),
   ]),
 
   // ---------------------------------------------------------------------------
@@ -292,5 +304,20 @@ export const TENKO_SCENES: Scene[] = [
     say('t7.120', 'tenko', '그것도 반칙.', 'shy'),
     mono('t7.130', '그렇게 말하면서도 {tenko:는} 손을 놓지 않았다. 그날 밤, 갈림길에서 헤어지는 데는 꽤 오래 걸렸다.'),
     ending('t7.end', 'tenko'),
+  ]),
+
+  // ---------------------------------------------------------------------------
+  // td1 — 일상 쪽 결말 「네가 먼저 보는 것」. {n2} 비 갠 낮 → end_hina_walk → 엔딩(뼈대)
+  // ---------------------------------------------------------------------------
+  scene({ id: 'td1', title: '네가 먼저 보는 것', route: 'tenko', part: 'epilogue' }, [
+    hide('all'),
+    bg('road_morning', 'black'),
+    bgm('heart'),
+    place('{n2} 방과 후 · 비 갠 동네 길'),
+    mono('td1.010', '(초안) 웅덩이에 학교가 비쳤다. {tenko:는} 한쪽만 짧은 커튼을 보고 우리 교실을 찾아냈다.'),
+    me('td1.020', '(초안) 다음 산책은 데이트로 하자.'),
+    cg('end_hina_walk'),
+    say('td1.030', 'tenko', '(초안) 그럼 다음엔 이쪽으로 갈래?'),
+    ending('td1.end', 'tenko_daily'),
   ]),
 ];

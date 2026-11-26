@@ -87,7 +87,7 @@ const content: GameContent = {
     const a = (CGS as Record<string, { thumb: string } | undefined>)[id];
     return a ? url(a.thumb) : null;
   },
-  endingCg: (heroine) => ENDING_CG[heroine] ?? null,
+  endingCg: (ending) => ENDING_CG[ending] ?? null,
   // 추억 앨범: CG_ORDER 순서, 제목·루트·hidden 은 매니페스트(CGS) 그대로(hidden 은 본 뒤에만 앨범에 보인다)
   cgCatalog: CG_ORDER.map((id) => ({ id, title: CGS[id].title, route: CGS[id].route, hidden: CGS[id].hidden === true })),
   // 타이틀: 두 히로인이 함께 그려진 키 비주얼(없으면 배경 + 스프라이트 두 장). 히든 히로인은 타이틀에 넣지 않는다

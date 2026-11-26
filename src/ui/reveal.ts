@@ -7,25 +7,31 @@
  * - hidden CG 는 관람한 것만 앨범 칸·총 장수·썸네일·제목·묶음에 들어간다(관람 전에는 빈칸도 없음).
  * - 타이틀 엔딩 배지·엔딩 화면 메달: 히든 히로인 것은 그 엔딩에 도달했거나(메달은) 지금 그 엔딩일 때만.
  */
-import type { EndingId, HeroineId } from '../engine/types';
+import type { EndingId, HeroineId, RouteId } from '../engine/types';
 import { BASE_HEROINES, HEROINES, HIDDEN_HEROINES } from '../engine/types';
 
 /** 추억 앨범 목록 한 칸의 공개 판정에 필요한 값 */
 export interface CatalogEntry {
   id: string;
-  /** 어느 히로인 루트의 장면인지(공통이면 null) */
-  route: HeroineId | null;
+  /** 어느 루트의 장면인지(공통이면 null, 히든 루트는 'group') */
+  route: RouteId | null;
   /** 관람 전에는 앨범·타이틀·총 장수 어디에도 보이지 않는 CG(히든 히로인 그림) */
   hidden?: boolean;
 }
 
 export interface EndingLike {
   id: EndingId;
-  heroine: HeroineId;
+  /** 엔딩이 속한 루트(EndingDef.route) */
+  route: RouteId;
 }
 
 export function isHiddenHeroine(h: HeroineId): boolean {
   return HIDDEN_HEROINES.includes(h);
+}
+
+/** 미리 드러내지 않는 루트: 히든 히로인 루트와 히든 루트('group', 네 사람) */
+export function isHiddenRoute(r: RouteId): boolean {
+  return r === 'group' || isHiddenHeroine(r);
 }
 
 /** hidden 이 아니거나 이미 본 CG 만(목록 순서 유지) */
@@ -37,7 +43,7 @@ export function visibleCatalog<T extends CatalogEntry>(catalog: readonly T[], se
 /** 도달한 엔딩의 히로인(story.endings 기준. 모르는 엔딩 id 는 건너뛴다) */
 export function reachedHeroines(endings: readonly EndingLike[], reached: Iterable<EndingId>): HeroineId[] {
   const got = new Set(reached);
-  return HEROINES.filter((h) => endings.some((e) => e.heroine === h && got.has(e.id)));
+  return HEROINES.filter((h) => endings.some((e) => e.route === h && got.has(e.id)));
 }
 
 /**
@@ -52,14 +58,18 @@ export function revealedHeroines(catalog: readonly CatalogEntry[], seen: Iterabl
   );
 }
 
-/** 타이틀 엔딩 배지: 기본 히로인 엔딩은 늘, 히든 히로인 엔딩은 도달한 것만(순서 유지) */
+/**
+ * 타이틀 엔딩 배지: 기본 히로인 루트의 엔딩은 늘, 히든 루트(코하루·네 사람)의 엔딩은 그 루트의 엔딩을 하나라도
+ * 도달한 뒤에만(순서 유지, 설계 계약 9절)
+ */
 export function titleEndings<T extends EndingLike>(endings: readonly T[], reached: Iterable<EndingId>): T[] {
   const got = new Set(reached);
-  return endings.filter((e) => !isHiddenHeroine(e.heroine) || got.has(e.id));
+  const routeDone = (r: RouteId) => endings.some((x) => x.route === r && got.has(x.id));
+  return endings.filter((e) => !isHiddenRoute(e.route) || routeDone(e.route));
 }
 
-/** 엔딩 화면 메달: 기본 히로인 + 엔딩에 도달했거나 지금 그 엔딩인 히든 히로인(HEROINES 순서) */
-export function medalHeroines(endings: readonly EndingLike[], reached: Iterable<EndingId>, current: HeroineId | null): HeroineId[] {
+/** 엔딩 화면 메달: 기본 히로인 + 엔딩에 도달했거나 지금 그 루트 엔딩인 히든 히로인(HEROINES 순서) */
+export function medalHeroines(endings: readonly EndingLike[], reached: Iterable<EndingId>, current: RouteId | null): HeroineId[] {
   const done = new Set(reachedHeroines(endings, reached));
   return HEROINES.filter((h) => BASE_HEROINES.includes(h) || done.has(h) || h === current);
 }

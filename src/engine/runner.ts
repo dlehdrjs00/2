@@ -14,8 +14,10 @@ import type {
   DecideRouteStep,
   Effect,
   GameState,
+  GroupRouteId,
   HeroineId,
   LogEntry,
+  RouteId,
   Scene,
   SceneEntry,
   StageState,
@@ -37,7 +39,7 @@ export type StageEvent =
   | { kind: 'fx'; fx: 'shake' | 'flash' }
   | { kind: 'cg'; cg: CgId | null }
   | { kind: 'place'; text: string }
-  | { kind: 'route'; route: HeroineId };
+  | { kind: 'route'; route: RouteId };
 
 export interface StepResult {
   step: BlockingStep;
@@ -199,9 +201,52 @@ export function choiceHistory(story: Story, state: GameState, step: DecideRouteS
   });
 }
 
-/** 지금 상태로 이 decideRoute 를 실행하면 정해질 루트 */
-export function routeFor(story: Story, state: GameState, step: DecideRouteStep): HeroineId {
-  return pickRoute(state.points, routeCandidates(state, step), choiceHistory(story, state, step));
+/**
+ * 구버전(스키마 3 이하) 저장 호환 표식. 후반 선택을 옛 규칙(+3, c8.ch·c9.ch·c10.ch)으로 이미 시작한 진행 중 저장에
+ * 저장 이전(save.ts, 3→4)이 붙인다. 이 플래그가 true 면 tieRoute(히든 루트)를 쓰지 않는다(옛 판정 유지).
+ * 대본은 이 플래그를 직접 쓰지 않는다.
+ */
+export const LEGACY_LATE_FLAG = 'kh.late3';
+
+/**
+ * 히든 루트 조건(계약 6.3). 셋 다 맞을 때만 true:
+ *  1) tieRoute 가 있음 2) 구저장 표식(LEGACY_LATE_FLAG)이 없음 3) 후보가 HEROINES 전원이고 후보 점수가 모두 같음.
+ * 미발견 플레이는 후보가 두 명이라 히든이 될 수 없다.
+ */
+export function isGroupTie(
+  points: Readonly<Partial<Record<HeroineId, number>>>,
+  candidates: readonly HeroineId[],
+  opts: { tieRoute?: GroupRouteId; legacyLate?: boolean },
+): boolean {
+  if (!opts.tieRoute || opts.legacyLate) return false;
+  if (candidates.length !== HEROINES.length || !HEROINES.every((h) => candidates.includes(h))) return false;
+  const first = points[candidates[0]] ?? 0;
+  return candidates.every((h) => (points[h] ?? 0) === first);
+}
+
+/**
+ * 루트 판정(순수 함수). 히든 루트 조건(isGroupTie)이면 tieRoute, 아니면 pickRoute(최고점 → 공동 최고점은 최근 선택).
+ * 실행기(decideRoute 스텝)·미리 불러오기 시뮬레이션은 routeFor 를 거쳐 이 함수를 쓴다.
+ */
+export function judgeRoute(
+  points: Readonly<Partial<Record<HeroineId, number>>>,
+  candidates: readonly HeroineId[],
+  history: ReadonlyArray<HeroineId | null>,
+  opts: { tieRoute?: GroupRouteId; legacyLate?: boolean } = {},
+): RouteId {
+  if (opts.tieRoute && isGroupTie(points, candidates, opts)) return opts.tieRoute;
+  return pickRoute(points, candidates, history);
+}
+
+/**
+ * 지금 상태로 이 decideRoute 를 실행하면 정해질 루트.
+ * 게임(실행기 settle)과 미리 불러오기 시뮬레이션(ui/screens/preload.ts)이 같은 이 함수를 쓴다.
+ */
+export function routeFor(story: Story, state: GameState, step: DecideRouteStep): RouteId {
+  return judgeRoute(state.points, routeCandidates(state, step), choiceHistory(story, state, step), {
+    tieRoute: step.tieRoute,
+    legacyLate: state.flags[LEGACY_LATE_FLAG] === true,
+  });
 }
 
 /**
@@ -395,7 +440,9 @@ export function settle(story: Story, state: GameState, observe?: StepObserver): 
         break;
       case 'routeBranch': {
         if (state.route === null) throw new StoryError(`루트가 확정되기 전에 routeBranch(${step.id}) 에 도달했습니다`);
-        enterScene(story, state, step.scenes[state.route]);
+        const target = step.scenes[state.route];
+        if (!target) throw new StoryError(`routeBranch(${step.id}) 에 '${state.route}' 루트로 갈 장면이 없습니다`);
+        enterScene(story, state, target);
         continue;
       }
       default: {

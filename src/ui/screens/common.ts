@@ -1,5 +1,5 @@
 /** 화면들이 함께 쓰는 값·도우미 */
-import type { HeroineId } from '../../engine/types';
+import type { HeroineId, RouteId } from '../../engine/types';
 
 /**
  * 히로인 → 인물 색 토큰(docs/UI_DESIGN.md 3장). -1 은 흰 글자를 올리는 바탕, -2 는 밝은 쪽.
@@ -11,6 +11,24 @@ export const HEROINE_COLORS: Record<HeroineId, { c1: string; c2: string }> = {
   tenko: { c1: 'var(--hina-1)', c2: 'var(--hina-2)' },
   koharu: { c1: 'var(--koharu-1)', c2: 'var(--koharu-2)' },
 };
+
+/**
+ * 루트 → 색 토큰. 히든 루트('group', 네 사람)는 고유 색 토큰 --group-1·--group-2 를 쓰고,
+ * 토큰이 아직 없으면 공통(NPC) 색으로 보인다(정식 색은 화면 담당이 정한다).
+ * route 가 'group' 일 수 있는 곳(저장 칸·엔딩 화면·앨범 묶음)은 HEROINE_COLORS 대신 이것을 쓴다.
+ */
+export const ROUTE_COLORS: Record<RouteId, { c1: string; c2: string }> = {
+  ...HEROINE_COLORS,
+  group: { c1: 'var(--group-1, var(--npc-1))', c2: 'var(--group-2, var(--npc-2))' },
+};
+
+/** 히든 루트(네 사람)의 표시 이름 */
+export const GROUP_ROUTE_NAME = '네 사람';
+
+/** 루트 표시 이름: 히로인 루트는 그 히로인 이름, 히든 루트는 '네 사람' */
+export function routeName(route: RouteId, heroineName: (h: HeroineId) => string): string {
+  return route === 'group' ? GROUP_ROUTE_NAME : heroineName(route);
+}
 
 export function prefersReducedMotion(): boolean {
   try {

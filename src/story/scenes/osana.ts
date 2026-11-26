@@ -5,9 +5,11 @@
  *  - o1 가게 폐점 소식과 작은 약속 → o2 감기, 25분의 길을 깨닫는다 → o3 역할 반전, 내가 데리러 간다
  *  - o4 먼저 기다리고 먼저 약속한다(본편 끝, 아직 사귀지 않음)
  *  - o5 축제 → o6 불꽃 전의 고백과 분명한 승낙 → o7 연인이 된 첫 귀갓길
+ *  - 결말 갈래(o4.fork, o4.100 뒤): f 축제 쪽 = 기존 o4.110~ → o5~o7 → 엔딩 osana
+ *                                  d 일상 쪽 = o4.d → od1 … → 엔딩 osana_daily(뼈대, 작가 초안이 대체)
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, card, cg, chose, ending, flash, goto, hide, jump, label, me, mono, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, jump, label, me, mono, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
 
 export const OSANA_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -188,6 +190,11 @@ export const OSANA_SCENES: Scene[] = [
     place('강변 둑'),
     show('osana', { pos: 'center', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     mono('o4.100', '월요일과 같은 자리, 덤으로 받은 라무네. 다른 건 내가 꺼내려는 말뿐이었다.'),
+    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로, d 는 일상 쪽(o4.d → od1)
+    choice('o4.fork', '(초안) 꺼내려는 말은…', [
+      opt('f', '(초안) 다음 달 축제, 둘이서 가자고 한다', { goto: 'o4.110' }),
+      opt('d', '(초안) 월요일 하굣길을 먼저 약속한다', { goto: 'o4.d' }),
+    ]),
     me('o4.110', '{osana}. 다음 달 축제, 같이 가자.'),
     say('o4.120', 'osana', '응? 당연히 가지. {tenko}도 불러야지.', 'smile'),
     me('o4.130', '아니. 셋이서가 아니라, 둘이서.'),
@@ -202,6 +209,11 @@ export const OSANA_SCENES: Scene[] = [
     say('o4.200', 'osana', '…응.', 'shy'),
     mono('o4.210', '노을에 묻힐 만큼 작은 대답이었지만, 분명히 들었다.'),
     jump('o5_festival'),
+
+    // ---- 일상 쪽 결말 갈래(o4.fork d) ----
+    label('o4.d'),
+    mono('o4.d10', '(초안) 축제 얘기보다 먼저, 월요일 하굣길을 약속했다.'),
+    jump('od1'),
   ]),
 
   // ---------------------------------------------------------------------------
@@ -307,5 +319,21 @@ export const OSANA_SCENES: Scene[] = [
     me('o7.150', '그래도.'),
     say('o7.160', 'osana', '응. 갈래. 내일도, 그다음 날도.', 'smile'),
     ending('o7.end', 'osana'),
+  ]),
+
+  // ---------------------------------------------------------------------------
+  // od1 — 일상 쪽 결말 「내일은 데이트하자」. {n1} 하굣길 자판기 → end_akane_walk → 엔딩(뼈대)
+  // ---------------------------------------------------------------------------
+  scene({ id: 'od1', title: '내일은 데이트하자', route: 'osana', part: 'epilogue' }, [
+    hide('all'),
+    bg('road_evening', 'black'),
+    bgm('evening'),
+    place('{n1} 방과 후 · 하굣길 자판기 앞'),
+    mono('od1.010', '(초안) {osana:가} 동전을 건네며 이번엔 자기 음료를 골라 보라고 했다. 복숭아 소다를 눌렀다.'),
+    me('od1.020', '(초안) 내일은 데이트하자.'),
+    say('od1.030', 'osana', '(초안) 내일도 어차피 같이 가잖아.'),
+    cg('end_akane_walk'),
+    mono('od1.040', '(초안) 세 걸음쯤 가다 멈춘 {osana:가} 돌아봤다.'),
+    ending('od1.end', 'osana_daily'),
   ]),
 ];

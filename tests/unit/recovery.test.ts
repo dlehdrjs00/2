@@ -202,7 +202,8 @@ describe("'장면 처음부터' 복구와 해금 판정", () => {
     expect(st.sceneId).toBe('c7_friday');
     expect(st.points).toEqual({ osana: 2, tenko: 4, koharu: 0 });
     expect('kh.met' in st.flags).toBe(false);
-    drive(story, st, { 'c7.ch': 'a' }, 'c8.ch');
+    // 발견 경로는 추첨 뒤 새 에피소드(빙수집 넷)의 첫 선택지로 간다
+    drive(story, st, { 'c7.ch': 'a' }, 'e1f.ch1');
     expect(st.flags['kh.met']).toBe(true);
     expect(st.points).toEqual({ osana: 5, tenko: 4, koharu: 4.5 });
   });
@@ -224,5 +225,84 @@ describe("'장면 처음부터' 복구와 해금 판정", () => {
     drive(story, st, { 'c7.ch': 'b' }, 'c8.ch');
     expect(st.flags['kh.met']).toBe(false);
     expect(st.points).toEqual({ osana: 2, tenko: 7, koharu: 0 });
+  });
+});
+
+describe("'장면 처음부터' 복구: 판정 장면(처마 넷)·히든 루트·구저장 옛 장면", () => {
+  const SIX = { 'e1f.ch1': 'a', 'e1f.ch2': 'b', 'e2f.ch1': 'k', 'e2f.ch2': 'a', 'e3f.ch1': 'b', 'e3f.ch2': 'k' };
+  const EARLY = { 'c3.ch': 'c', 'c4.ch': 'c', 'c6.ch': 'c', 'c7.ch': 'c' };
+
+  it('처마 넷(e3_rain4)의 여섯째 반응에서 위치를 잃으면 장면 진입 값(넷째 선택까지 5/4.5/4.5)으로 되돌리고, 다시 고르면 히든 루트로 한 번만 판정한다', () => {
+    const story = branchStory();
+    const state = newGameState(story);
+    drive(story, state, { ...EARLY, ...SIX }, 'e3f.ch2.k10');
+    expect(state.points).toEqual({ osana: 5, tenko: 5, koharu: 5 });
+    expect(state.route).toBeNull();
+    const sm = new SaveManager(new MemoryStore(true), story, permissiveAssets);
+    sm.write('1', { ...state, stepId: 'e3f.ch2.k10-removed' }, summary);
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    const st = r.data.state;
+    expect(st.sceneId).toBe('e3_rain4');
+    // 넷째까지: 4 + a·b·k·a → 5/4.5/4.5
+    expect(st.points).toEqual({ osana: 5, tenko: 4.5, koharu: 4.5 });
+    expect('e3f.ch1' in st.choices || 'e3f.ch2' in st.choices).toBe(false);
+    expect(st.route).toBeNull();
+    const end = drive(story, st, { 'e3f.ch1': 'b', 'e3f.ch2': 'k', 'h.fork': 'd' });
+    expect(st.route).toBe('group');
+    expect(st.points).toEqual({ osana: 5, tenko: 5, koharu: 5 });
+    expect(end.step.t === 'ending' && end.step.ending).toBe('group_daily');
+  });
+
+  it('스냅샷이 없어도(손상) 처마 넷의 0.5 선택 둘을 빼고 같은 결과로 다시 간다', () => {
+    const story = branchStory();
+    const state = newGameState(story);
+    drive(story, state, { ...EARLY, ...SIX }, 'e3f.ch2.k10');
+    const broken: Partial<GameState> = { ...state, stepId: 'e3f.ch2.k10-removed' };
+    delete broken.sceneEntry;
+    const sm = new SaveManager(new MemoryStore(true), story, permissiveAssets);
+    sm.write('1', broken as GameState, summary);
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    const st = r.data.state;
+    expect(st.points).toEqual({ osana: 5, tenko: 4.5, koharu: 4.5 });
+    expect(Object.keys(st.choices)).not.toContain('e3f.ch1');
+    drive(story, st, { 'e3f.ch1': 'b', 'e3f.ch2': 'k' }, 'h1.010');
+    expect(st.route).toBe('group');
+  });
+
+  it('히든 루트 장면에서 위치를 잃어도 루트(group)를 유지한 채 그 장면 처음부터', () => {
+    const story = branchStory();
+    const state = newGameState(story);
+    drive(story, state, { ...EARLY, ...SIX }, 'h1.010');
+    expect(state.route).toBe('group');
+    const sm = new SaveManager(new MemoryStore(true), story, permissiveAssets);
+    sm.write('1', { ...state, stepId: 'h1.gone' }, { ...summary, route: 'group' });
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    expect(r.data.state).toMatchObject({ sceneId: 'h1', route: 'group', points: { osana: 5, tenko: 5, koharu: 5 } });
+    expect(r.data.summary.route).toBe('group');
+    const end = drive(story, r.data.state, { 'h.fork': 'f' });
+    expect(end.step.t === 'ending' && end.step.ending).toBe('group_festival');
+  });
+
+  it('구저장(옛 c8 k +3 를 고른 뒤 c9 에서 위치를 잃음)도 옛 장면 처음부터 옛 배점으로', () => {
+    const story = branchStory();
+    // 옛 흐름 재현: 해금된 상태를 옛 장면 c8_bakery 에 넣는다(897ae1f 의 추첨 → 빵집)
+    const state = newGameState(story);
+    drive(story, state, EARLY, 'e1f.010');
+    const old = { ...JSON.parse(JSON.stringify(state)), sceneId: 'c8_bakery', stepId: 'c8.010' } as GameState;
+    old.sceneEntry = { ...old.sceneEntry!, sceneId: 'c8_bakery' };
+    drive(story, old, { 'c8.ch': 'k' }, 'c9.ch');
+    expect(old.points).toEqual({ osana: 4, tenko: 4, koharu: 7 });
+    const sm = new SaveManager(new MemoryStore(true), story, permissiveAssets);
+    sm.write('1', { ...old, stepId: 'c9.gone' }, summary);
+    const r = sm.load('1');
+    if (r.status !== 'recoverable') throw new Error(r.status);
+    expect(r.data.state).toMatchObject({ sceneId: 'c9_puzzle', points: { osana: 4, tenko: 4, koharu: 7 } });
+    const end = drive(story, r.data.state, { 'c9.ch': 'k', 'c10.ch': 'k', 'k4.fork': 'f' });
+    expect(r.data.state.route).toBe('koharu');
+    expect(r.data.state.points).toEqual({ osana: 4, tenko: 4, koharu: 13 });
+    expect(end.step.t === 'ending' && end.step.ending).toBe('koharu');
   });
 });

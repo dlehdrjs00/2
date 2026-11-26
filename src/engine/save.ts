@@ -15,9 +15,16 @@
  *      - 이미 루트가 있거나 금요일 노을길(c7.j20~j40, 즉 해금 판정 뒤)에 있는 저장은 해금 플래그를 false 로 둬
  *        첫 만남을 소급하지 않는다. 그보다 앞의 공통 저장은 플래그 없이 두어 새 규칙대로 판정한다.
  *      - 위치·루트는 그대로 둔다.
+ *   4: 여덟 엔딩 확장(루트 id 'group' = 히든 루트, 엔딩 8개, 후반 선택 6회 +0.5). 3 은 불러올 때 이전한다(markLegacyLate):
+ *      - 1·2 의 재계산(upgradeLegacy)을 타지 않는다. 점수·선택·위치·루트는 그대로 둔다.
+ *      - 해금(kh.met = true)·루트 미확정이고 옛 후반 선택(c8.ch·c9.ch·c10.ch)을 하나라도 했거나 옛 후반 장면
+ *        (c8_bakery·c9_puzzle·c10_window)에 있으면 구저장 표식 flags['kh.late3'] = true 를 붙인다(sceneEntry 도 같은 규칙).
+ *        이 표식이 있으면 실행기는 히든 루트(tieRoute)를 고르지 않는다. 대본도 옛 장면이 옛 판정으로 이어진다.
+ *      - 스키마 3 이하에는 루트 'group' 이 있을 수 없으므로 손상으로 본다.
+ *   옛 빌드(스키마 3)는 스키마 4 저장을 '더 새로운 버전'으로 안내한다(손상으로 지우지 않는다).
  */
-import type { CharId, EndingId, GameState, HeroineId, LogEntry, Scene, SceneEntry, StageState, Story } from './types';
-import { BASE_HEROINES, HEROINES } from './types';
+import type { CharId, EndingId, GameState, HeroineId, LogEntry, RouteId, Scene, SceneEntry, StageState, Story } from './types';
+import { BASE_HEROINES, HEROINES, isHeroineId, isRouteId } from './types';
 import {
   advance,
   choose,
@@ -25,6 +32,7 @@ import {
   findStep,
   initialStage,
   isBlocking,
+  LEGACY_LATE_FLAG,
   LOG_LIMIT,
   settle,
   snapshotSceneEntry,
@@ -34,13 +42,22 @@ import {
 } from './runner';
 import type { KeyValueStore } from './storage';
 
-export const SAVE_SCHEMA = 3;
+export const SAVE_SCHEMA = 4;
 /**
  * 구판(스키마 1·2) 이전 전용: 해금 판정 뒤에 오는 금요일 노을길 문장. 구판에서 이 위치나 루트 확정 뒤에 저장했으면
  * 첫 만남을 소급하지 않는다(해금 플래그 = false)
  */
 export const LEGACY_POST_GATE_SCENE = 'c7_friday';
 export const LEGACY_POST_GATE_STEPS: readonly string[] = ['c7.j20', 'c7.j30', 'c7.j40'];
+/**
+ * 스키마 3 → 4 이전 전용: 옛 후반 선택(+3)과 그 장면. 해금된 진행 중 저장이 이 선택을 하나라도 했거나 이 장면에 있으면
+ * 구저장 표식(LEGACY_LATE_FLAG)을 붙여 옛 배점·옛 판정으로 끝까지 가게 한다(대본도 이 장면을 고치지 않는다)
+ */
+export const LEGACY_LATE_CHOICES: readonly string[] = ['c8.ch', 'c9.ch', 'c10.ch'];
+export const LEGACY_LATE_SCENES: readonly string[] = ['c8_bakery', 'c9_puzzle', 'c10_window'];
+/** 히든 히로인(코하루) 해금 플래그. 구저장 표식은 해금된 저장에만 붙인다 */
+export const LEGACY_MET_FLAG = 'kh.met';
+export { LEGACY_LATE_FLAG };
 /** 전역 기록(읽은 대사·엔딩) 형식 버전. 슬롯 저장 스키마와 따로 간다 */
 export const GLOBAL_SCHEMA = 1;
 export const GAME_KEY = 'ashita-mo-issho';
@@ -59,7 +76,7 @@ export type SlotDurability = 'persisted' | 'tab-only';
 export interface SaveSummary {
   sceneTitle: string;
   text: string;
-  route: HeroineId | null;
+  route: RouteId | null;
 }
 
 export type SlotPeek =
@@ -107,8 +124,11 @@ export interface StageValidator {
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
-const isHeroineOrNull = (v: unknown): v is HeroineId | null => v === null || (typeof v === 'string' && (HEROINES as readonly string[]).includes(v));
+const isHeroineOrNull = (v: unknown): v is HeroineId | null => v === null || isHeroineId(v);
+/** 루트: 히로인 셋 + 히든 루트. allowGroup = false(스키마 3 이하)면 히로인만 */
+const isRouteOrNull = (v: unknown, allowGroup = true): v is RouteId | null => v === null || (allowGroup ? isRouteId(v) : isHeroineId(v));
 const uniq = (xs: string[]): string[] => [...new Set(xs)];
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
 
 const GLOBAL_KEY = `${KEY_PREFIX}global`;
 /**
@@ -117,6 +137,18 @@ const GLOBAL_KEY = `${KEY_PREFIX}global`;
  * 읽을 때 두 키의 엔딩을 합친다(GLOBAL_SCHEMA 는 그대로: 옛 빌드가 새 기록을 '알 수 없는 형식'으로 버리지 않게)
  */
 const GLOBAL_EXT_KEY = `${KEY_PREFIX}global.ext`;
+/**
+ * 전역 기록 두 번째 보조 키(여덟 엔딩 확장). 897ae1f 빌드는 GLOBAL_KEY 와 GLOBAL_EXT_KEY 를 둘 다 알고, 다시 쓸 때
+ * 자기가 아는 엔딩 3개만 남긴다. 그 빌드가 모르는 이 키가 새 엔딩(일상 쪽·히든 루트) 기록을 지킨다.
+ * 읽을 때는 세 키의 엔딩 합집합, 기록할 때는 세 키 모두 쓴다.
+ */
+const GLOBAL_V2_KEY = `${KEY_PREFIX}global.v2`;
+/** 전역 기록이 들어 있는 저장소 키 전부. 다른 탭의 storage 이벤트를 볼 때 이 목록(또는 isGlobalRecordKey)을 쓴다 */
+export const GLOBAL_RECORD_KEYS: readonly string[] = [GLOBAL_KEY, GLOBAL_EXT_KEY, GLOBAL_V2_KEY];
+/** 저장소 키가 전역 기록(읽은 대사·엔딩·CG)인가. null(전체 삭제)도 true */
+export function isGlobalRecordKey(key: string | null): boolean {
+  return key === null || GLOBAL_RECORD_KEYS.includes(key);
+}
 const NOTE_BG = '배경 정보를 복원하지 못했어요';
 const NOTE_CHARS = '캐릭터 그림 정보를 일부 복원하지 못했어요';
 /** 무대 재구성 때 장면을 다시 실행하는 최대 블로킹 스텝 수 */
@@ -187,7 +219,7 @@ export class SaveManager {
     this.cgsSeen = new Set(g.cgs ?? []);
     // 다른 탭이 읽은 대사·엔딩을 기록하면 바로 합쳐 둔다(건너뛰기 판정·엔딩 배지가 탭마다 어긋나지 않게)
     store.watch?.((key) => {
-      if (key === null || key === GLOBAL_KEY || key === GLOBAL_EXT_KEY) this.syncFromStore();
+      if (isGlobalRecordKey(key)) this.syncFromStore();
     });
   }
 
@@ -227,7 +259,7 @@ export class SaveManager {
   // ---- 전역 기록 ------------------------------------------------------------
 
   private readGlobal(): GlobalRecord {
-    const extra = this.readEndingsExt();
+    const extra = uniq([...this.readEndingsAt(GLOBAL_EXT_KEY), ...this.readEndingsAt(GLOBAL_V2_KEY)]) as EndingId[];
     const raw = this.store.get(GLOBAL_KEY);
     if (!raw) return { schema: GLOBAL_SCHEMA, read: [], endings: extra };
     try {
@@ -244,12 +276,12 @@ export class SaveManager {
   }
 
   private knownEndings(xs: unknown[]): EndingId[] {
-    return xs.filter((x): x is EndingId => typeof x === 'string' && x in this.story.endings);
+    return xs.filter((x): x is EndingId => typeof x === 'string' && hasOwn(this.story.endings, x));
   }
 
-  /** 보조 키(GLOBAL_EXT_KEY)의 엔딩. 없거나 손상되면 빈 목록 */
-  private readEndingsExt(): EndingId[] {
-    const raw = this.store.get(GLOBAL_EXT_KEY);
+  /** 보조 키(GLOBAL_EXT_KEY·GLOBAL_V2_KEY)의 엔딩. 없거나 손상되면 빈 목록 */
+  private readEndingsAt(key: string): EndingId[] {
+    const raw = this.store.get(key);
     if (!raw) return [];
     try {
       const v = JSON.parse(raw) as unknown;
@@ -327,7 +359,12 @@ export class SaveManager {
     this.store.set(GLOBAL_KEY, JSON.stringify(rec));
     // 엔딩은 보조 키에도(옛 빌드가 전역 기록을 다시 써서 모르는 엔딩을 지워도 남게). 전역 기록과 같이 매번 쓴다:
     // 용량 초과로 이 탭 메모리에만 남은 값도 다음 기록 때 다시 브라우저 저장소에 들어가게(값이 같다고 건너뛰지 않는다)
-    if (rec.endings.length) this.store.set(GLOBAL_EXT_KEY, JSON.stringify({ endings: rec.endings }));
+    // 두 번째 보조 키(GLOBAL_V2_KEY)는 897ae1f 빌드가 모르는 키라, 그 빌드가 앞의 두 키에서 새 엔딩을 지워도 남는다
+    if (rec.endings.length) {
+      const ext = JSON.stringify({ endings: rec.endings });
+      this.store.set(GLOBAL_EXT_KEY, ext);
+      this.store.set(GLOBAL_V2_KEY, JSON.stringify({ schema: GLOBAL_SCHEMA, endings: rec.endings }));
+    }
     this.globalDirty = false;
   }
 
@@ -427,16 +464,19 @@ export class SaveManager {
     const migrated = migrate(v);
     if (!migrated) return { status: 'error', reason: 'schema', message: '예전 버전의 저장 데이터라 불러올 수 없어요.' };
 
-    const checked = this.sanitizeState(migrated.state);
+    // 스키마 3 이하에는 히든 루트('group')가 없었다: 그런 저장은 손으로 고친 것이므로 손상으로 본다
+    const checked = this.sanitizeState(migrated.state, migrated.from === SAVE_SCHEMA);
     if (!checked) return { status: 'error', reason: 'corrupt', message: '저장 데이터의 진행 정보가 손상되었어요.' };
     const { state } = checked;
-    if (migrated.legacy) this.upgradeLegacy(state);
+    // 1·2 는 점수 재계산(upgradeLegacy), 3 은 표식만(markLegacyLate). 3 이 재계산을 타면 코하루 해금 평균이 사라진다
+    if (migrated.from === 1 || migrated.from === 2) this.upgradeLegacy(state);
+    else if (migrated.from === 3) upgradeFrom3(state);
 
     const summary: SaveSummary = isObj(migrated.summary)
       ? {
           sceneTitle: String(migrated.summary.sceneTitle ?? ''),
           text: String(migrated.summary.text ?? ''),
-          route: isHeroineOrNull(migrated.summary.route) ? migrated.summary.route : null,
+          route: isRouteOrNull(migrated.summary.route) ? migrated.summary.route : null,
         }
       : { sceneTitle: '', text: '', route: null };
     const data: SaveData = {
@@ -742,13 +782,14 @@ export class SaveManager {
     rawLogLength: number,
     keptRaw: number[],
     log: LogEntry[],
+    allowGroup: boolean,
   ): { entry: SceneEntry; stage: StageCheck } | null {
     if (!isObj(v) || typeof v.sceneId !== 'string') return null;
     const scene = this.story.scenes[v.sceneId];
     if (!scene) return null;
     const points = sanitizePoints(v.points);
     if (!points) return null;
-    if (!isHeroineOrNull(v.lastHeroine ?? null) || !isHeroineOrNull(v.route ?? null)) return null;
+    if (!isHeroineOrNull(v.lastHeroine ?? null) || !isRouteOrNull(v.route ?? null, allowGroup)) return null;
     const rawLength = Number(v.logLength);
     if (!Number.isInteger(rawLength) || rawLength < 0) return null;
     // 진입 위치가 log 보다 뒤를 가리키면(손상) 기록 내용으로 장면 시작 위치를 다시 찾는다
@@ -759,7 +800,7 @@ export class SaveManager {
         sceneId: v.sceneId,
         points,
         lastHeroine: (v.lastHeroine ?? null) as HeroineId | null,
-        route: (v.route ?? null) as HeroineId | null,
+        route: (v.route ?? null) as RouteId | null,
         choices: sanitizeChoices(v.choices),
         flags: sanitizeFlags(v.flags),
         stage: stage.stage,
@@ -769,13 +810,16 @@ export class SaveManager {
     };
   }
 
-  /** 형식이 이상한 필드는 안전한 기본값으로 고치고, 핵심 필드가 깨졌으면 null */
-  private sanitizeState(v: unknown): SanitizedState | null {
+  /**
+   * 형식이 이상한 필드는 안전한 기본값으로 고치고, 핵심 필드가 깨졌으면 null.
+   * route 는 루트 id(히로인 셋 + 'group', allowGroup = false 면 히로인만)·null, lastHeroine 은 히로인 id·null 만 받는다
+   */
+  private sanitizeState(v: unknown, allowGroup: boolean): SanitizedState | null {
     if (!isObj(v)) return null;
     if (typeof v.sceneId !== 'string' || typeof v.stepId !== 'string') return null;
     const points = sanitizePoints(v.points);
     if (!points) return null;
-    if (!isHeroineOrNull(v.lastHeroine ?? null) || !isHeroineOrNull(v.route ?? null)) return null;
+    if (!isHeroineOrNull(v.lastHeroine ?? null) || !isRouteOrNull(v.route ?? null, allowGroup)) return null;
 
     const stage = this.sanitizeStage(v.stage);
 
@@ -789,15 +833,16 @@ export class SaveManager {
       log.push({ id: String(e.id ?? ''), name: typeof e.name === 'string' ? e.name : null, text: e.text, kind });
       keptRaw.push(i);
     }
-    const endedWith = typeof v.endedWith === 'string' && v.endedWith in this.story.endings ? (v.endedWith as EndingId) : null;
-    const entry = this.sanitizeEntry(v.sceneEntry, rawLog.length, keptRaw, log);
+    // 엔딩은 이 대본의 엔딩(8개) 중 하나만. 'constructor' 같은 프로토타입 이름은 엔딩이 아니다
+    const endedWith = typeof v.endedWith === 'string' && hasOwn(this.story.endings, v.endedWith) ? (v.endedWith as EndingId) : null;
+    const entry = this.sanitizeEntry(v.sceneEntry, rawLog.length, keptRaw, log, allowGroup);
 
     const state: GameState = {
       sceneId: v.sceneId,
       stepId: v.stepId,
       points,
       lastHeroine: (v.lastHeroine ?? null) as HeroineId | null,
-      route: (v.route ?? null) as HeroineId | null,
+      route: (v.route ?? null) as RouteId | null,
       choices: sanitizeChoices(v.choices),
       flags: sanitizeFlags(v.flags),
       stage: stage.stage,
@@ -827,22 +872,46 @@ export class SaveManager {
   }
 }
 
-type Migrated = Record<string, unknown> & { state: unknown; summary?: unknown; legacy?: number };
+/** from = 원래 스키마(1·2·3·4). 이전 경로는 parse 가 이 값으로 고른다(truthy 검사로 섞이지 않게 숫자로 비교) */
+type Migrated = Record<string, unknown> & { state: unknown; summary?: unknown; from: 1 | 2 | 3 | 4 };
 
 /**
  * 스키마 이전(형식만). 이전 버전을 현재 형식으로 바꾼다. 받아들일 수 없는 버전이면 null.
- * 대본 정의가 필요한 이전(점수 재계산·해금 플래그)은 legacy 표시를 보고 SaveManager.upgradeLegacy 가 한다.
+ * 대본 정의가 필요한 이전은 from 을 보고 parse 가 한다: 1·2 → SaveManager.upgradeLegacy(점수 재계산·해금 플래그),
+ * 3 → upgradeFrom3(구저장 표식만. 점수·선택·위치는 그대로).
  */
 function migrate(v: Record<string, unknown>): Migrated | null {
-  if (v.schema === SAVE_SCHEMA) return v as Migrated;
+  const base = v as Record<string, unknown> & { state: unknown };
+  if (v.schema === SAVE_SCHEMA) return { ...base, from: SAVE_SCHEMA };
+  if (v.schema === 3) return { ...base, schema: SAVE_SCHEMA, from: 3 };
   if (v.schema === 1 || v.schema === 2) {
     const state = isObj(v.state) ? { ...v.state } : v.state;
     // 1 → 2: 장면 진입 스냅샷이 없다. 다음 장면으로 넘어가면 실행기가 새로 채우고,
     // 그 전에 복구가 필요하면 rewindToSceneStart 의 스키마 1 규칙을 쓴다.
     if (v.schema === 1 && isObj(state)) delete state.sceneEntry;
-    return { ...v, schema: SAVE_SCHEMA, state, legacy: v.schema };
+    return { ...base, schema: SAVE_SCHEMA, state, from: v.schema };
   }
   return null;
+}
+
+/**
+ * 구저장 표식 규칙(스키마 3 → 4, 계약 6.4). 해금(kh.met === true)·루트 미확정이고
+ * 옛 후반 선택(LEGACY_LATE_CHOICES)을 하나라도 했거나 옛 후반 장면(LEGACY_LATE_SCENES)에 있으면 표식을 붙인다.
+ * 점수·선택·위치·루트는 건드리지 않는다. 결정적이고 여러 번 적용해도 결과가 같다(멱등). 붙였으면 true.
+ */
+export function markLegacyLate(target: Pick<GameState, 'sceneId' | 'route' | 'choices' | 'flags'>): boolean {
+  if (target.flags[LEGACY_MET_FLAG] !== true || target.route !== null) return false;
+  const chose = LEGACY_LATE_CHOICES.some((id) => hasOwn(target.choices, id));
+  const inOldScene = LEGACY_LATE_SCENES.includes(target.sceneId);
+  if (!chose && !inOldScene) return false;
+  target.flags[LEGACY_LATE_FLAG] = true;
+  return true;
+}
+
+/** 스키마 3 저장 이전: 상태와 장면 진입 스냅샷에 같은 규칙으로 표식을 붙인다(각자의 장면·선택·플래그 기준) */
+function upgradeFrom3(state: GameState): void {
+  markLegacyLate(state);
+  if (state.sceneEntry) markLegacyLate(state.sceneEntry);
 }
 
 /** 대본의 모든 해금 플래그 이름 */

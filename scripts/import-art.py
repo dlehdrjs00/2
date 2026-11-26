@@ -77,12 +77,17 @@ KNOWN_LOOKS = {
 }
 CG_IDS = ('kv', 'rain_osana', 'rain_tenko', 'door_osana', 'ramune_osana', 'fireworks_osana', 'homeward_osana',
           'cats_tenko', 'bench_tenko', 'selfie_tenko', 'shutter_tenko', 'polaroid_tenko',
-          'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date')
+          'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date',
+          # 여덟 엔딩 확장: 코덱스 제작 묶음을 그대로 복사했다. 이 스크립트로 변환하지 않는다
+          'group_ice_four', 'group_ice_three', 'group_frog', 'group_rain',
+          'end_akane_walk', 'end_hina_walk', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning')
 # 파일이 있는 배경(BACKGROUNDS 중 color 만 쓰는 black 제외)
 BG_IDS = ('title', 'road_morning', 'road_evening', 'road_rain', 'road_night', 'classroom_day', 'classroom_evening',
           'hallway', 'shoe_lockers', 'shoe_lockers_rain', 'courtyard', 'shotengai', 'riverbank_evening',
           'station_morning', 'apartment_door', 'shrine_steps', 'festival_street', 'riverbank_night', 'shrine_night',
-          'kh_stationery', 'kh_lantern_lane')
+          'kh_stationery', 'kh_lantern_lane',
+          # 여덟 엔딩 확장: 코덱스 제작 묶음을 그대로 복사했다. 이 스크립트로 변환하지 않는다
+          'bg_ice_shop', 'bg_after_rain')
 
 EXT_RANK = {'.png': 0, '.webp': 1, '.jpg': 2, '.jpeg': 2}
 ALLOWED_FORMATS = {'PNG', 'WEBP', 'JPEG'}

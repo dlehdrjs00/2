@@ -6,15 +6,17 @@
  * - .ending-screen[data-ending] 과 [data-action=to-title] 은 테스트 훅이다.
  * - 'END' 영문 대신 '아카네 엔딩' 배지를 쓴다.
  */
-import type { EndingId, HeroineId } from '../../engine/types';
+import type { EndingId, HeroineId, RouteId } from '../../engine/types';
 import { button, cssUrl, el } from '../dom';
 import { ico } from '../icons';
-import { HEROINE_COLORS } from './common';
+import { HEROINE_COLORS, ROUTE_COLORS } from './common';
 import { buildMotes } from './fx';
 
 export interface EndingOptions {
   id: EndingId;
-  heroine: HeroineId;
+  /** 엔딩이 속한 루트(색). 히든 루트는 'group' */
+  route: RouteId;
+  /** 배지에 쓸 루트 이름('아카네', 히든 루트는 '네 사람') */
   heroineName: string;
   title: string;
   bgUrl: string | null;
@@ -37,7 +39,7 @@ export function buildEnding(o: EndingOptions): HTMLElement {
   const scr = el('div', 'ending-screen');
   scr.dataset.noadvance = '';
   scr.dataset.ending = o.id;
-  const tone = HEROINE_COLORS[o.heroine];
+  const tone = ROUTE_COLORS[o.route] ?? ROUTE_COLORS.group;
   scr.style.setProperty('--c1', tone.c1);
   scr.style.setProperty('--c2', tone.c2);
 
