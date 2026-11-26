@@ -124,61 +124,103 @@ test('낮은 가로 화면: 두 줄·3개 선택지도 버튼 밖으로 넘치�
   expect((await info(page)).step).toBe(c.step);
 });
 
-test('낮은 가로 화면: 실제 공통 선택지 7곳(후반은 해금·미해금 둘 다)의 3개 버튼이 모두 들어간다', async ({ page }) => {
-  test.setTimeout(240_000);
+test('낮은 가로 화면: 실제 선택지(초반 4곳, 발견 에피소드 6곳, 미발견·구저장 옛 후반 3곳, 결말 갈래 4곳)의 버튼이 모두 들어간다', async ({ page }) => {
+  test.setTimeout(480_000);
   await page.setViewportSize({ width: 740, height: 320 });
   await boot(page);
-  const at: Array<[string, string, boolean | null, string[]]> = [
-    ['c3_break', 'c3.ch', null, ['a', 'b', 'c']],
-    ['c4_lunch', 'c4.ch', null, ['a', 'b', 'c']],
-    ['c6_rain', 'c6.ch', null, ['a', 'b', 'c']],
-    ['c7_friday', 'c7.ch', null, ['a', 'b', 'c']],
-    // 후반: 해금이면 a·b·k(코하루), 미해금이면 a·b·c(함께)
-    ['c8_bakery', 'c8.ch', true, ['a', 'b', 'k']],
-    ['c8_bakery', 'c8.ch', false, ['a', 'b', 'c']],
-    ['c9_puzzle', 'c9.ch', true, ['a', 'b', 'k']],
-    ['c9_puzzle', 'c9.ch', false, ['a', 'b', 'c']],
-    ['c10_window', 'c10.ch', true, ['a', 'b', 'k']],
-    ['c10_window', 'c10.ch', false, ['a', 'b', 'c']],
+  const at: Array<[string, string, boolean | null, string[], string | null]> = [
+    ['c3_break', 'c3.ch', null, ['a', 'b', 'c'], null],
+    ['c4_lunch', 'c4.ch', null, ['a', 'b', 'c'], null],
+    ['c6_rain', 'c6.ch', null, ['a', 'b', 'c'], null],
+    ['c7_friday', 'c7.ch', null, ['a', 'b', 'c'], null],
+    // 발견(해금) 새 흐름의 에피소드 여섯 선택: a·b·k(코하루)
+    ['e1_ice4', 'e1f.ch1', true, ['a', 'b', 'k'], null],
+    ['e1_ice4', 'e1f.ch2', true, ['a', 'b', 'k'], null],
+    ['e2_frog4', 'e2f.ch1', true, ['a', 'b', 'k'], null],
+    ['e2_frog4', 'e2f.ch2', true, ['a', 'b', 'k'], null],
+    ['e3_rain4', 'e3f.ch1', true, ['a', 'b', 'k'], null],
+    ['e3_rain4', 'e3f.ch2', true, ['a', 'b', 'k'], null],
+    // 옛 후반: 미발견이면 a·b·c(함께), 해금된 구저장(897ae1f 의 c8·c9·c10 위치)이면 a·b·k
+    ['c8_bakery', 'c8.ch', true, ['a', 'b', 'k'], null],
+    ['c8_bakery', 'c8.ch', false, ['a', 'b', 'c'], null],
+    ['c9_puzzle', 'c9.ch', true, ['a', 'b', 'k'], null],
+    ['c9_puzzle', 'c9.ch', false, ['a', 'b', 'c'], null],
+    ['c10_window', 'c10.ch', true, ['a', 'b', 'k'], null],
+    ['c10_window', 'c10.ch', false, ['a', 'b', 'c'], null],
+    // 루트 안 결말 갈래: f(축제)·d(일상) 두 개
+    ['o4_promise', 'o4.fork', null, ['f', 'd'], 'osana'],
+    ['t4_invite', 't4.fork', null, ['f', 'd'], 'tenko'],
+    ['k4', 'k4.fork', true, ['f', 'd'], 'koharu'],
+    ['h5', 'h.fork', true, ['f', 'd'], 'group'],
   ];
-  for (const [n, [sceneId, stepId, met, ids]] of at.entries()) {
+  for (const [n, [sceneId, stepId, met, ids, route]] of at.entries()) {
     if (n > 0) {
       await relayoutTo(page, 740, 320);
       await toTitle(page);
     }
-    await continueAt(page, { sceneId, stepId, flags: met === null ? undefined : { 'kh.met': met } });
+    await continueAt(page, { sceneId, stepId, route, flags: met === null ? undefined : { 'kh.met': met } });
     expect((await info(page)).frame).toBe('choice');
     expect(await visibleChoiceIds(page), `${stepId} kh.met=${met}`).toEqual(ids);
-    await expectChoicesFit(page, `${stepId}${met === null ? '' : met ? ' 해금' : ' 미해금'}`, 3);
+    await expectChoicesFit(page, `${stepId}${met === null ? '' : met ? ' 해금' : ' 미해금'}`, ids.length);
   }
 });
 
-test('타이틀: 히든 엔딩까지 본 엔딩 배지 3개가 낮은 가로 화면에서도 한 줄로 화면 안에 있고, 메뉴와 겹치지 않으며 읽기 이름은 그대로', async ({ page }) => {
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem('badge-seeded')) return;
-    sessionStorage.setItem('badge-seeded', '1');
-    localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: [], endings: ['osana', 'tenko', 'koharu'], cgs: ['kh_date'] }));
-  });
+test('타이틀: 엔딩 배지(처음 ??? 4개, 여덟 엔딩을 다 보면 8개)가 낮은 가로 화면에서도 화면 안에 있고, 메뉴·서로와 겹치지 않으며 같은 루트 두 결말은 붙어 있고 읽기 이름은 그대로', async ({ page }) => {
+  test.setTimeout(120_000);
+  const ALL = ['osana', 'osana_daily', 'tenko', 'tenko_daily', 'koharu', 'koharu_daily', 'group_festival', 'group_daily'];
+  const NAMES = ['아카네 · 축제 엔딩', '아카네 · 일상 엔딩', '히나 · 축제 엔딩', '히나 · 일상 엔딩', '코하루 · 축제 엔딩', '코하루 · 일상 엔딩', '네 사람 · 축제 엔딩', '네 사람 · 일상 엔딩'];
   await boot(page);
-  await expect(page.locator('.title-foot .badge')).toHaveCount(3);
-  // 화면 글자로 줄여도 읽기 이름(글자 내용)은 'OO 엔딩' 그대로
-  expect(await page.locator('.title-foot .badge').allTextContents()).toEqual(['아카네 엔딩', '히나 엔딩', '코하루 엔딩']);
   // 타이틀을 맞춰 둔 크기(album.spec 의 타이틀 검사와 같은 최저 높이 320). 높이 280 타이틀은 배지 수와 상관없이 메뉴가 화면을 다 쓴다
-  for (const [w, h] of [[667, 375], [740, 320], [844, 390], [932, 430], [1280, 720]] as const) {
-    await relayoutTo(page, w, h);
-    const where = `${w}x${h}`;
-    const badges = await rects(page, '.title-foot .badge');
-    const menu = await rects(page, '.title-menu .btn');
-    expect(badges.length, where).toBe(3);
-    for (const [i, b] of badges.entries()) {
-      expect(b.left >= -0.5 && b.top >= -0.5 && b.right <= w + 0.5 && b.bottom <= h + 0.5, `${where}: 배지 ${i + 1} 화면 밖 ${JSON.stringify(b)}`).toBe(true);
-      expect(Math.abs(b.top - badges[0].top), `${where}: 배지가 한 줄이 아님`).toBeLessThan(1);
-      for (const m of menu) expect(overlap(b, m), `${where}: 배지 ${i + 1}이 메뉴 버튼과 겹침`).toBe(false);
+  const sizes = [[667, 375], [740, 320], [844, 390], [932, 430], [1024, 768], [1280, 720]] as const;
+  const check = async (n: number, names: string[]) => {
+    await expect(page.locator('.title-foot .badge')).toHaveCount(n);
+    // 화면 글자를 별만 남겨 접어도 읽기 이름(글자 내용)은 그대로
+    expect(await page.locator('.title-foot .badge').allTextContents()).toEqual(names);
+    for (const [w, h] of sizes) {
+      await relayoutTo(page, w, h);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const where = `${n}개 ${w}x${h}`;
+      const badges = await rects(page, '.title-foot .badge');
+      const menu = await rects(page, '.title-menu .btn');
+      expect(badges.length, where).toBe(n);
+      for (const [i, b] of badges.entries()) {
+        expect(b.left >= -0.5 && b.top >= -0.5 && b.right <= w + 0.5 && b.bottom <= h + 0.5, `${where}: 배지 ${i + 1} 화면 밖 ${JSON.stringify(b)}`).toBe(true);
+        for (const m of menu) expect(overlap(b, m), `${where}: 배지 ${i + 1}이 메뉴 버튼과 겹침`).toBe(false);
+        for (const [j, c] of badges.entries()) if (j > i) expect(overlap(b, c), `${where}: 배지 ${i + 1}·${j + 1} 겹침`).toBe(false);
+      }
+      // 같은 루트의 두 결말(.end-pair)은 한 줄에 붙어 있다
+      const pairs = await page.locator('.title-foot .end-pair').evaluateAll((els) =>
+        els.map((e) => [...e.querySelectorAll('.badge')].map((b) => b.getBoundingClientRect().top)),
+      );
+      expect(pairs.length, where).toBe(n / 2);
+      for (const tops of pairs) expect(Math.abs(tops[0] - tops[1]), `${where}: 같은 루트 두 배지가 다른 줄`).toBeLessThan(1);
+      // 글자 배지면 배지 글자가 배지 밖으로 넘치지 않고, 별만 남긴 배지(data-fit='icons')면 보이는 글자가 없다
+      const fit = await page.locator('.title-foot').getAttribute('data-fit');
+      if (fit === 'icons') {
+        const shown = await page.locator('.title-foot .badge .bn, .title-foot .badge .bk, .title-foot .badge .bq').evaluateAll((els) =>
+          els.filter((e) => e.getBoundingClientRect().width > 1.5).length,
+        );
+        expect(shown, `${where}: 별만 남긴 배지에 보이는 글자`).toBe(0);
+      } else {
+        const clipped = await page.locator('.title-foot .badge').evaluateAll((els) => els.map((e) => e.scrollWidth - e.clientWidth));
+        for (const d of clipped) expect(d, `${where}: 배지 글자 넘침`).toBeLessThanOrEqual(1);
+      }
+      test.info().annotations.push({ type: 'title-foot', description: `${where}: ${fit ?? 'text'}` });
     }
-    // 배지 글자가 배지 밖으로 넘치지 않음
-    const clipped = await page.locator('.title-foot .badge').evaluateAll((els) => els.map((e) => e.scrollWidth - e.clientWidth));
-    for (const d of clipped) expect(d, `${where}: 배지 글자 넘침`).toBeLessThanOrEqual(1);
-  }
+  };
+  // 처음: 아카네·히나 축제·일상 4개가 '???'(루트·갈래·제목이 드러나지 않음)
+  await check(4, Array(4).fill('아직 보지 못한 엔딩'));
+  await expect(page.locator('.title-foot .badge .bq')).toHaveText(Array(4).fill('???'));
+  // 여덟 엔딩을 다 본 기록(다른 탭이 쓴 것처럼 알려 다시 그린다)
+  await relayoutTo(page, 1280, 720);
+  await page.evaluate((all) => {
+    const raw = JSON.stringify({ schema: 1, read: [], endings: all, cgs: ['kh_date', 'end_group_fireworks'] });
+    localStorage.setItem('ashita.global', raw);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ashita.global', newValue: raw, storageArea: localStorage }));
+  }, ALL);
+  await expect(page.locator('.title-foot .badge[data-reached="1"]')).toHaveCount(8);
+  expect(await page.locator('.title-foot .badge').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.ending))).toEqual(ALL);
+  await check(8, NAMES);
 });
 
 test('대사창: 기본 3줄을 넘는 문장은 넘침으로 잡히고, 대사창이 위로 늘어나 글자가 잘리지 않는다', async ({ page }) => {

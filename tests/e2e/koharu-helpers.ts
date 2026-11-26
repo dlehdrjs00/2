@@ -7,6 +7,7 @@
  *   읽은 줄에서는 건너뛰기(S)를 켠다. 건너뛰기는 선택지·처음 보는 줄에서 스스로 멈추므로, 직접 보고 싶은 장면은
  *   읽음 기록에서 빼 둔다(그 장면은 무대를 눌러 한 줄씩 넘긴다). 건너뛰기 중에는 효과음이 나지 않는다(game.ts applyEvents).
  */
+import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { STORY } from '../../src/story';
 
@@ -36,8 +37,28 @@ export const DEFAULT_SETTINGS = { textSpeed: 10, autoSpeed: 10, bgmVolume: 0, sf
 
 /** 이름(코하루·나루세)이 화면에 나오면 안 되는 곳을 볼 때 쓰는 패턴 */
 export const KOHARU_NAMES = /코하루|나루세/;
-/** 미해금 플레이에서 받으면 안 되는 그림 주소(코하루 스프라이트, kh_ 배경·CG 와 그 썸네일). 빌드 해시 이름과 섞이지 않게 폴더까지 본다 */
-export const KOHARU_ASSET = /assets\/char\/koharu\/|assets\/(?:bg|cg)\/(?:thumb\/)?kh_/;
+/**
+ * 코하루가 그려진 CG 중 kh_ 접두가 아닌 것과 히든 루트 전용 CG(계약 6.5·9절). kh_* 와 함께 미발견 플레이에서는
+ * 칸·제목·요청 어디에도 나오면 안 된다. end_group_* 는 route 가 group 으로 정해지기 전에는 요청하지 않는다.
+ */
+export const KOHARU_DRAWN_CGS = ['group_ice_four', 'group_frog', 'group_rain', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning'] as const;
+/** 관람 전 숨김 CG 12장(CG_ORDER 순서): kh_* 6장 + 위 6장 */
+export const HIDDEN_CGS = [
+  'kh_meet', 'kh_draw', 'group_ice_four', 'group_frog', 'group_rain',
+  'kh_relay', 'kh_confession', 'kh_home', 'kh_date', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning',
+] as const;
+/** CG id 가 숨김(코하루 흔적·히든 루트) 그림인가 */
+export const isHiddenCg = (id: string) => id.startsWith('kh_') || (KOHARU_DRAWN_CGS as readonly string[]).includes(id);
+/**
+ * 미해금 플레이에서 받으면 안 되는 그림 주소(코하루 스프라이트, kh_ 배경·CG, 위 6장, 그 썸네일).
+ * 빌드 해시 이름과 섞이지 않게 폴더까지 본다(group_ice_three 는 미발견 판 그림이라 해당하지 않는다)
+ */
+export const KOHARU_ASSET =
+  /assets\/char\/koharu\/|assets\/(?:bg|cg)\/(?:thumb\/)?(?:kh_|(?:group_ice_four|group_frog|group_rain|end_koharu_coin|end_group_fireworks|end_group_morning)\.)/;
+/** 히든 루트 전용 그림 주소(end_group_*): route 가 group 이 아닌 플레이에서는 요청하지 않는다 */
+export const GROUP_ASSET = /assets\/cg\/(?:thumb\/)?end_group_/;
+/** 앨범·타이틀 마크업에 미발견 플레이어에게 드러나면 안 되는 흔적(그림 id·루트 키·이름) */
+export const HIDDEN_MARKUP = /kh_|koharu|group_ice_four|group_frog|group_rain|end_koharu_coin|end_group_|data-route="group"|네 사람/;
 
 export async function kinfo(page: Page): Promise<KInfo> {
   return page.evaluate(() => (window as unknown as { __vn: { info: () => KInfo } }).__vn.info());
@@ -66,6 +87,8 @@ export interface FreshOptions {
   endings?: string[];
   /** 저장 칸 → 원문 JSON(localStorage 'ashita.save.<칸>') */
   slots?: Record<string, string>;
+  /** 그 밖의 localStorage 키 → 원문(예: 옛 빌드가 쓴 'ashita.global.ext') */
+  raw?: Record<string, string>;
   settings?: Record<string, number>;
 }
 
@@ -83,6 +106,7 @@ export async function freshBoot(page: Page, o: FreshOptions = {}) {
         localStorage.setItem('ashita.global', JSON.stringify({ schema: 1, read: o.read ?? [], endings: o.endings ?? [], cgs: o.cgs ?? [] }));
       }
       for (const [k, v] of Object.entries(o.slots ?? {})) localStorage.setItem(`ashita.save.${k}`, v);
+      for (const [k, v] of Object.entries(o.raw ?? {})) localStorage.setItem(k, v);
     } catch {
       /* ignore */
     }
@@ -340,16 +364,65 @@ export async function readSlotJson(page: Page, slot: string): Promise<{
   }, `ashita.save.${slot}`);
 }
 
-/** 전역 기록(읽은 대사·엔딩·본 CG) */
-export async function readGlobalRec(page: Page): Promise<{ read: string[]; endings: string[]; cgs: string[] }> {
+/**
+ * 전역 기록(읽은 대사·본 CG 는 ashita.global, 엔딩은 세 키 ashita.global·.ext·.v2 의 합집합 — 게임이 읽는 그대로, 계약 6.4).
+ * endingsMain 은 ashita.global 의 엔딩만
+ */
+export async function readGlobalRec(page: Page): Promise<{ read: string[]; endings: string[]; endingsMain: string[]; cgs: string[] }> {
   return page.evaluate(() => {
-    const g = JSON.parse(localStorage.getItem('ashita.global') ?? '{}');
-    return { read: g.read ?? [], endings: g.endings ?? [], cgs: g.cgs ?? [] };
+    const parse = (k: string) => {
+      try {
+        return JSON.parse(localStorage.getItem(k) ?? '{}') ?? {};
+      } catch {
+        return {};
+      }
+    };
+    const g = parse('ashita.global');
+    const endings: string[] = [];
+    for (const k of ['ashita.global', 'ashita.global.ext', 'ashita.global.v2']) {
+      const v = parse(k);
+      for (const e of Array.isArray(v.endings) ? v.endings : []) if (!endings.includes(e)) endings.push(e);
+    }
+    return { read: g.read ?? [], endings, endingsMain: g.endings ?? [], cgs: g.cgs ?? [] };
   });
 }
 
+/** 897ae1f(SAVE_SCHEMA 3) 빌드가 실제로 쓴 저장 원문 고정 자료(tests/unit/fixtures/v3-saves.897ae1f.json, 계약 13절) */
+export interface V3Save {
+  name: string;
+  /** 만든 방법(사람이 읽는 설명) */
+  how: string;
+  picks: string;
+  sceneId: string;
+  stepId: string;
+  route: string | null;
+  points: Record<Hid, number>;
+  met: boolean;
+  /** 같은 상태를 897ae1f 로 끝까지 진행한 결과 */
+  old: { finalRoute: string; ending: string; finalPoints: Record<Hid, number> };
+  /** localStorage 'ashita.save.<칸>' 값(JSON.stringify 하면 897ae1f 가 쓴 원문 그대로) */
+  save: { schema: number; state: { sceneId: string; stepId: string; flags: Record<string, unknown> } } & Record<string, unknown>;
+}
+export interface V3Fixture {
+  saves: V3Save[];
+  /** 같은 빌드가 세 엔딩·CG 17장을 기록한 뒤 쓴 ashita.global·ashita.global.ext 원문(객체) */
+  global: Record<string, unknown>;
+}
+let v3Cache: V3Fixture | null = null;
+export function v3Fixture(): V3Fixture {
+  v3Cache ??= JSON.parse(readFileSync(new URL('../unit/fixtures/v3-saves.897ae1f.json', import.meta.url), 'utf8')) as V3Fixture;
+  return v3Cache;
+}
+export function v3Save(name: string): V3Save {
+  const e = v3Fixture().saves.find((x) => x.name === name);
+  if (!e) throw new Error(`897ae1f 저장 견본 없음: ${name}`);
+  return e;
+}
+/** 897ae1f 저장 원문(localStorage 값 문자열) */
+export const v3Raw = (name: string) => JSON.stringify(v3Save(name).save);
+
 /**
- * 원하는 위치(장면·스텝)에서 [이어하기]로 시작한다. 새 게임의 자동 저장(스키마 3)을 받아 위치·점수·플래그·선택·루트·무대를 바꿔 넣는다.
+ * 원하는 위치(장면·스텝)에서 [이어하기]로 시작한다. 새 게임의 자동 저장(지금 빌드의 스키마 4)을 받아 위치·점수·플래그·선택·루트·무대를 바꿔 넣는다.
  * (helpers.ts continueAt 과 같은 방식에 점수·플래그·선택을 더했다)
  */
 export async function continueAtState(

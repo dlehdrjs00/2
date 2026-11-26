@@ -1,12 +1,14 @@
-/** 선택 전후 · 루트 진입 후 · 후일담에서의 저장/불러오기, 새로고침 후 이어하기 */
+/** 선택 전후 · 루트 진입 후 · 결말 갈래 선택 전 · 후일담에서의 저장/불러오기, 새로고침 후 이어하기 */
 import { expect, test, type Page } from '@playwright/test';
 import {
-  COMMON_CHOICES,
+  FORK_CHOICES,
+  LAST_COMMON_LINE,
   ROUTE_FIRST_STEP,
   advanceOne,
   advanceToRoute,
   advanceToStop,
   boot,
+  commonChoices,
   info,
   newGame,
   openMenu,
@@ -83,25 +85,27 @@ test('선택 전 저장 → 다른 선택 → 불러오기 → 같은 선택지�
 });
 
 for (const [route, picks, epilogue, early, final, meetFlag] of [
-  // a,b,a,b: osana 4, tenko 5 → 해금(koharu 4.5) → 후반 b,b,b → tenko 5+9=14 단독
-  ['tenko', 'ababbbb', /^t[5-7]\./, { osana: 4, tenko: 5, koharu: 4.5 }, { osana: 4, tenko: 14, koharu: 4.5 }, true],
-  // 함께 4회 4/4 → 해금(koharu 4) → 후반 a,b,k → 7/7/7 동점 → 마지막 k → koharu
-  ['koharu', 'ccccabk', /^k[5-8]\./, { osana: 4, tenko: 4, koharu: 4 }, { osana: 7, tenko: 7, koharu: 7 }, true],
+  // a,b,a,b: osana 4, tenko 5 → 해금(koharu 4.5) → 에피소드 b×6(+0.5씩) → tenko 5+3=8 단독
+  ['tenko', 'ababbbbbbb', /^t[5-7]\./, { osana: 4, tenko: 5, koharu: 4.5 }, { osana: 4, tenko: 8, koharu: 4.5 }, true],
+  // 함께 4회 4/4 → 해금(koharu 4) → 에피소드 a,b,k,k,k,k → 4.5/4.5/6 → koharu 단독
+  ['koharu', 'ccccabkkkk', /^k[5-8]\./, { osana: 4, tenko: 4, koharu: 4 }, { osana: 4.5, tenko: 4.5, koharu: 6 }, true],
 ] as const) {
-  test(`루트 진입 후·후일담 저장, 새로고침 후 불러오기와 이어하기 (${route})`, async ({ page }, ti) => {
+  test(`루트 진입 후·결말 갈래 선택 전·후일담 저장, 새로고침 후 불러오기와 이어하기 (${route})`, async ({ page }, ti) => {
     test.skip(route === 'koharu' && ti.project.name === 'phone-landscape', '코하루 루트 저장은 데스크톱·iPad WebKit 에서(휴대폰은 히나 루트로 같은 흐름)');
-    test.setTimeout(330_000);
+    test.setTimeout(480_000);
     await boot(page);
     await newGame(page);
+    const order = commonChoices(meetFlag);
+    expect(order.length).toBe(picks.length);
     for (const [n, p] of [...picks].entries()) {
       const c = await advanceToStop(page);
-      expect(c.step).toBe(COMMON_CHOICES[n]);
+      expect(c.step).toBe(order[n]);
       if (n === 4) expect(c.points, '해금 판정 뒤').toEqual(early);
       await pick(page, p);
     }
-    // 루트는 마지막 공통 선택(c10)의 반응과 독백(c10.j10) 뒤에 확정된다
+    // 루트는 마지막 공통 선택(e3f.ch2)의 반응과 처마 장면 끝(e3f.410) 뒤에 확정된다
     const { lastCommon, first } = await advanceToRoute(page);
-    expect(lastCommon).toBe('c10.j10');
+    expect(lastCommon).toBe(LAST_COMMON_LINE.met);
     expect(first.route).toBe(route);
     expect(first.step!.startsWith(ROUTE_FIRST_STEP[route])).toBe(true);
     expect(first.points).toEqual(final);
@@ -110,12 +114,19 @@ for (const [route, picks, epilogue, early, final, meetFlag] of [
     const routeLine = await info(page);
     await saveTo(page, '2');
 
-    // 후일담까지 진행
+    // 후일담까지 진행. 루트 안의 결말 갈래 선택지에서는 고르기 전에 저장해 두고 축제(f)를 고른다
     let epi = await info(page);
+    let fork: { step: string | null; points: unknown } | null = null;
     for (let g = 0; g < 400; g++) {
       epi = await info(page);
       if (epi.frame === 'choice') {
-        await pick(page, (await page.locator('.choice').first().getAttribute('data-option'))!);
+        expect(epi.step).toBe(FORK_CHOICES[route]);
+        expect(await visibleChoiceIds(page)).toEqual(['f', 'd']);
+        fork = { step: epi.step, points: epi.points };
+        await saveTo(page, '4');
+        await pick(page, 'f');
+        // 갈래 선택은 점수에 영향이 없다
+        expect((await info(page)).points).toEqual(routePoints);
         continue;
       }
       const inEpilogue = await page.evaluate(() => document.querySelector('#vn')!.getAttribute('data-step'));
@@ -155,6 +166,22 @@ for (const [route, picks, epilogue, early, final, meetFlag] of [
     expect(r2.points).toEqual(routePoints);
     const slot2 = (await readSlot(page, '2')) as unknown as { state: { flags: Record<string, unknown> } };
     expect(slot2.state.flags['kh.met']).toBe(meetFlag);
+
+    // 결말 갈래 선택 전 저장 불러오기: 같은 선택지(f/d)로, 점수 그대로. 이번에는 일상(d)으로 가도 루트·점수가 바뀌지 않는다
+    expect(fork, '결말 갈래 선택지를 지났다').not.toBeNull();
+    await loadFrom(page, '4');
+    const f4 = await info(page);
+    expect(f4.step).toBe(fork!.step);
+    expect(f4.frame).toBe('choice');
+    expect(f4.route).toBe(route);
+    expect(f4.points).toEqual(fork!.points);
+    expect(await visibleChoiceIds(page)).toEqual(['f', 'd']);
+    await pick(page, 'd');
+    const d1 = await info(page);
+    expect(d1.route).toBe(route);
+    expect(d1.points).toEqual(routePoints);
+    // 일상 쪽 첫 줄은 'X.d' 라벨 뒤 새 줄(o4.d10·t4.d10·k4.d10 …)
+    expect(d1.step).toMatch(new RegExp(`^${FORK_CHOICES[route].split('.')[0]}\\.d`));
   });
 }
 
@@ -316,21 +343,24 @@ test.describe('구판 저장(스키마 2) 불러오기', () => {
     await advanceOne(page);
     await expect.poll(async () => (await readAutoState(page))?.stepId).toBe((await info(page)).step);
     expect((await readAutoState(page))!.flags).not.toHaveProperty('kh.met');
-    // c6 a(+2) → 4/2, c7 b(+3) → 4/5 → 차 1 해금, koharu 4.5 → 복도 첫 만남 → 토요일 추첨 → c8.ch 에 k
+    // c6 a(+2) → 4/2, c7 b(+3) → 4/5 → 차 1 해금, koharu 4.5 → 복도 첫 만남 → 토요일 추첨 → 빙수집 넷 판 e1f.ch1 에 k
     const seen: string[] = [];
     const onSay = async (x: { step: string | null }) => void seen.push(x.step!);
     expect((await advanceToStop(page, onSay)).step).toBe('c6.ch');
     await pick(page, 'a');
     expect((await advanceToStop(page, onSay)).step).toBe('c7.ch');
     await pick(page, 'b');
-    const c8 = await advanceToStop(page, onSay);
-    expect(c8.step).toBe('c8.ch');
-    expect(c8.points).toEqual({ osana: 4, tenko: 5, koharu: 4.5 });
+    const e1 = await advanceToStop(page, onSay);
+    expect(e1.step).toBe('e1f.ch1');
+    expect(e1.points).toEqual({ osana: 4, tenko: 5, koharu: 4.5 });
     expect(seen).toContain('c7.m20');
     expect(seen.some((s) => s.startsWith('c8r.'))).toBe(true);
+    expect(seen.filter((s) => /^(?:c8|e1t)\./.test(s)), '해금인데 빵집·빙수집 셋 판').toEqual([]);
     expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'k']);
-    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('c8.ch');
+    await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('e1f.ch1');
     expect((await readAutoState(page))!.flags['kh.met']).toBe(true);
+    // 구판(스키마 2)에서 이어 와도 옛 후반 선택을 한 적이 없어 호환 표식(kh.late3)은 없다
+    expect((await readAutoState(page))!.flags['kh.late3']).toBeUndefined();
   });
 
   test('노을길(c7.j30) 저장: 점수를 다시 세고 kh.met = false 라 복도·추첨 없이 후반 선택지는 함께(c)', async ({ page }) => {
@@ -344,8 +374,12 @@ test.describe('구판 저장(스키마 2) 불러오기', () => {
     const c8 = await advanceToStop(page, async (x) => void seen.push(x.step!));
     expect(c8.step).toBe('c8.ch');
     expect(c8.points).toEqual({ osana: 4, tenko: 5, koharu: 0 });
-    expect(seen.filter((s) => s.startsWith('c7.m') || s.startsWith('c8r.')), '코하루 장면').toEqual([]);
+    expect(seen.filter((s) => s.startsWith('c7.m') || s.startsWith('c8r.') || s.startsWith('e1f.')), '코하루 장면').toEqual([]);
     expect(seen).toContain('c7.j40');
+    // 노을길 → 빙수집 셋 판(e1_ice3) → 빵집
+    const ice3 = seen.findIndex((s) => s.startsWith('e1t.'));
+    expect(ice3, '빙수집 셋 판').toBeGreaterThan(seen.indexOf('c7.j40'));
+    expect(seen.indexOf('c8.010')).toBeGreaterThan(ice3);
     expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'c']);
     await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('c8.ch');
     expect((await readAutoState(page))!.flags['kh.met']).toBe(false);

@@ -21,7 +21,7 @@ test('다른 탭이 엔딩·본 CG·자동 저장을 바꾸면 떠 있는 타이
   await advanceOne(page);
   await toTitle(page);
   await expect(page.locator('[data-action=continue]')).toBeEnabled();
-  await expect(page.locator('#vn-album-count')).toContainText('0 / 11');
+  await expect(page.locator('#vn-album-count')).toContainText('0 / 14');
   await expect(page.locator('.title-foot [data-ending=osana]')).toHaveAttribute('data-reached', '0');
 
   // 다른 탭(같은 저장소)에서 아카네 엔딩과 CG 3장을 보고, 엔딩으로 자동 저장이 지워졌다
@@ -35,7 +35,7 @@ test('다른 탭이 엔딩·본 CG·자동 저장을 바꾸면 떠 있는 타이
     localStorage.removeItem('ashita.save.auto');
   });
   await expect(page.locator('.title-foot [data-ending=osana]')).toHaveAttribute('data-reached', '1');
-  await expect(page.locator('#vn-album-count')).toContainText('3 / 11');
+  await expect(page.locator('#vn-album-count')).toContainText('3 / 14');
   await expect(page.locator('[data-action=continue]')).toBeDisabled();
   expect((await info(page)).mode).toBe('title');
 
@@ -49,7 +49,7 @@ test('다른 탭이 엔딩·본 CG·자동 저장을 바꾸면 떠 있는 타이
     g.cgs = [...g.cgs, 'cats_tenko'];
     localStorage.setItem('ashita.global', JSON.stringify(g));
   });
-  await expect(page.locator('#vn-album-count')).toContainText('4 / 11');
+  await expect(page.locator('#vn-album-count')).toContainText('4 / 14');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
   await expect.poll(() => activeAction(page)).toBe('album');
@@ -57,7 +57,21 @@ test('다른 탭이 엔딩·본 CG·자동 저장을 바꾸면 떠 있는 타이
   await expect(page.locator('[data-panel=album] .panel-body')).toHaveAttribute('data-seen', '4');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
-  await expect(page.locator('#vn-album-count')).toContainText('4 / 11');
+  await expect(page.locator('#vn-album-count')).toContainText('4 / 14');
+
+  // 다른 탭이 두 번째 보조 키(ashita.global.v2)에만 새 엔딩을 적어도(옛 빌드가 앞의 두 키를 덮어쓴 경우) 배지가 맞춰진다(계약 6.4 감시)
+  await expect(page.locator('.title-foot [data-ending=osana_daily]')).toHaveAttribute('data-reached', '0');
+  await other.evaluate(() => {
+    const v = JSON.parse(localStorage.getItem('ashita.global.v2') ?? '{"schema":1,"endings":[]}');
+    v.endings = [...new Set([...(v.endings ?? []), 'osana_daily'])];
+    localStorage.setItem('ashita.global.v2', JSON.stringify(v));
+  });
+  await expect(page.locator('.title-foot [data-ending=osana_daily]')).toHaveAttribute('data-reached', '1');
+  await expect(page.locator('.title-foot [data-ending=osana_daily]')).toContainText('아카네 · 일상');
+  await expect(page.locator('.title-foot [data-ending=osana]')).toHaveAttribute('data-reached', '1');
+  // 코하루·네 사람 배지는 여전히 없다(아카네·히나 4개)
+  await expect(page.locator('.title-foot .badge')).toHaveCount(4);
+  expect((await info(page)).mode).toBe('title');
   await other.close();
 });
 

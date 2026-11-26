@@ -145,11 +145,37 @@ export async function advanceToStop(page: Page, onSay?: (i: Info) => Promise<voi
   throw new Error('너무 깁니다');
 }
 
-/** 공통 선택 7회(시간순). 초반 4회는 a/b/c(함께), 후반 3회는 a/b + 해금 시 k, 미해금 시 c(함께) */
-export const COMMON_CHOICES = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch', 'c8.ch', 'c9.ch', 'c10.ch'] as const;
+/** 초반 공통 선택 4회(a/b/c(함께), 모든 플레이) */
+export const EARLY_CHOICES = ['c3.ch', 'c4.ch', 'c6.ch', 'c7.ch'] as const;
+/**
+ * 후반 공통 선택. 코하루를 만난(kh.met) 새 흐름은 에피소드 여섯 선택(a/b/k, 고른 한 사람 +0.5, 계약 3.1·5절),
+ * 만나지 못한 흐름은 옛 c8·c9·c10(a/b +3, c 함께, 계약 3.2)
+ */
+export const LATE_CHOICES_MET = ['e1f.ch1', 'e1f.ch2', 'e2f.ch1', 'e2f.ch2', 'e3f.ch1', 'e3f.ch2'] as const;
+export const LATE_CHOICES_UNMET = ['c8.ch', 'c9.ch', 'c10.ch'] as const;
+/** 미발견 흐름의 공통 선택 7회(시간순). 초반 4회는 a/b/c(함께), 후반 3회는 a/b/c(함께) */
+export const COMMON_CHOICES = [...EARLY_CHOICES, ...LATE_CHOICES_UNMET] as const;
+/** 흐름별 공통 선택(시간순): 발견 10회, 미발견 7회 */
+export function commonChoices(met: boolean): readonly string[] {
+  return met ? [...EARLY_CHOICES, ...LATE_CHOICES_MET] : COMMON_CHOICES;
+}
+/** 루트 판정 직전(판정 장면의 마지막 대사): 발견 e3_rain4, 미발견 e3_rain3(계약 3.1·3.2) */
+export const LAST_COMMON_LINE = { met: 'e3f.410', unmet: 'e3t.670' } as const;
+/** 결말 갈래 선택(루트마다 하나, 옵션 f 축제 / d 일상, 계약 3.5) */
+export const FORK_CHOICES: Record<'osana' | 'tenko' | 'koharu' | 'group', string> = { osana: 'o4.fork', tenko: 't4.fork', koharu: 'k4.fork', group: 'h.fork' };
 
-/** 루트 첫 장면(o1_shop·t1_cats·k1)의 대사 id 접두사 */
-export const ROUTE_FIRST_STEP: Record<'osana' | 'tenko' | 'koharu', string> = { osana: 'o1.', tenko: 't1.', koharu: 'k1.' };
+/** 루트 첫 장면(o1_shop·t1_cats·k1·h1)의 대사 id 접두사 */
+export const ROUTE_FIRST_STEP: Record<'osana' | 'tenko' | 'koharu' | 'group', string> = { osana: 'o1.', tenko: 't1.', koharu: 'k1.', group: 'h1.' };
+
+/**
+ * 코하루가 그려졌거나(kh_* 와 에피소드 넷 판·코하루 일상 결말) 히든 루트 전용인 그림 id(계약 6.5·9절).
+ * 미발견 플레이에서는 한 장도 요청하면 안 된다. end_group_* 는 루트가 group 으로 정해지기 전에는 요청하면 안 된다.
+ */
+export const KOHARU_DRAWN_CG_IDS = ['group_ice_four', 'group_frog', 'group_rain', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning'] as const;
+/** 미발견 플레이에서 받으면 안 되는 그림 주소(코하루 스프라이트, kh_ 배경·CG, 위 6장, 그 썸네일). 빌드 해시 이름과 섞이지 않게 폴더까지 본다 */
+export const HIDDEN_ART = /\/assets\/(?:char\/koharu\/|(?:bg|cg)\/(?:thumb\/)?(?:kh_|(?:group_ice_four|group_frog|group_rain|end_koharu_coin|end_group_fireworks|end_group_morning)\.))/;
+/** 히든 루트 전용 그림 주소(end_group_*) */
+export const GROUP_ONLY_ART = /\/assets\/cg\/(?:thumb\/)?end_group_/;
 
 /** 지금 화면에 보이는 선택지의 옵션 id(위에서부터). 선택지가 다 나타나 누를 수 있게 된 뒤에 읽는다 */
 export async function visibleChoiceIds(page: Page): Promise<string[]> {
@@ -158,10 +184,11 @@ export async function visibleChoiceIds(page: Page): Promise<string[]> {
 }
 
 /**
- * 끝까지 플레이. picks 는 공통 선택지 7회(COMMON_CHOICES 순서)의 옵션 id, 루트 확정 후 선택지는 첫 옵션.
- * picks 가 모자라거나 고를 옵션이 화면에 없으면(예: 미해금인데 k) 바로 실패한다.
+ * 끝까지 플레이. picks 는 루트가 정해지기 전 공통 선택지의 옵션 id(시간순: 발견 10회, 미발견 7회 — commonChoices).
+ * 루트 확정 후 선택지(결말 갈래 o4.fork·t4.fork·k4.fork·h.fork)는 fork(기본: 첫 옵션 = 축제 f).
+ * picks 가 모자라거나 고를 옵션이 화면에 없으면(예: 미발견인데 k) 바로 실패한다.
  */
-export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info) => Promise<void>) {
+export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info) => Promise<void>, fork?: 'f' | 'd') {
   let n = 0;
   for (let guard = 0; guard < 50; guard++) {
     const i = await advanceToStop(page, onSay);
@@ -175,6 +202,9 @@ export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info
         expect(n, `공통 선택 ${i.step} 에 고를 옵션이 없음(picks ${picks.join(',')})`).toBeLessThan(picks.length);
         opt = picks[n++];
         expect(await visibleChoiceIds(page), `${i.step} 에 보이는 옵션`).toContain(opt);
+      } else if (fork) {
+        expect(await visibleChoiceIds(page), `${i.step} 결말 갈래`).toEqual(['f', 'd']);
+        opt = fork;
       } else {
         opt = await page.locator('.choice').first().getAttribute('data-option');
       }
@@ -187,7 +217,8 @@ export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info
 /** 루트가 정해질 때까지(마지막 공통 선택 뒤 독백을 지나 decideRoute 가 실행될 때까지) 진행. 루트가 없던 마지막 대사를 돌려준다 */
 export async function advanceToRoute(page: Page): Promise<{ lastCommon: string | null; first: Info }> {
   let lastCommon: string | null = null;
-  for (let g = 0; g < 120; g++) {
+  // 미발견 흐름은 마지막 선택(c10.ch) 뒤 반응·처마 셋 판(e3_rain3)을 지나 판정한다(약 90줄)
+  for (let g = 0; g < 200; g++) {
     const i = await info(page);
     if (i.route !== null) return { lastCommon, first: i };
     if (i.frame === 'choice') throw new Error(`루트가 정해지기 전에 선택지가 또 나옴: ${i.step}`);
@@ -350,6 +381,27 @@ export async function continueAt(
 /** 전역 기록(읽은 대사·엔딩·본 CG, src/engine/save.ts GLOBAL_KEY 'ashita.global') */
 export async function readGlobal(page: Page): Promise<{ schema: number; read: string[]; endings: string[]; cgs?: string[] }> {
   return page.evaluate(() => JSON.parse(localStorage.getItem('ashita.global') ?? '{"schema":1,"read":[],"endings":[],"cgs":[]}'));
+}
+
+/** 전역 기록 세 키(ashita.global·.ext·.v2, save.ts GLOBAL_RECORD_KEYS) */
+export const GLOBAL_KEYS = ['ashita.global', 'ashita.global.ext', 'ashita.global.v2'] as const;
+
+/** 게임이 읽는 도달 엔딩(세 키의 합집합, 계약 6.4)과 키별 엔딩 */
+export async function readEndingsAll(page: Page): Promise<{ union: string[]; byKey: Record<string, string[] | null> }> {
+  return page.evaluate((keys) => {
+    const byKey: Record<string, string[] | null> = {};
+    const all: string[] = [];
+    for (const k of keys) {
+      try {
+        const v = JSON.parse(localStorage.getItem(k) ?? 'null');
+        byKey[k] = v && Array.isArray(v.endings) ? v.endings : null;
+      } catch {
+        byKey[k] = null;
+      }
+      for (const e of byKey[k] ?? []) if (!all.includes(e)) all.push(e);
+    }
+    return { union: all, byKey };
+  }, GLOBAL_KEYS as unknown as string[]);
 }
 
 /** 자동 저장(ashita.save.auto)에 든 진행 상태 중 분기 확인에 쓰는 부분(플래그는 화면·debugInfo 에 나오지 않는다) */

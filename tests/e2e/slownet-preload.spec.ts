@@ -14,7 +14,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { BACKGROUNDS } from '../../src/story/assets';
-import { boot, info, newGame, tapStage, tapStageAt, toTitle, waitSettled, continueAt } from './helpers';
+import { boot, info, newGame, tapStage, tapStageAt, toTitle, waitSettled, continueAt, HIDDEN_ART } from './helpers';
 
 /**
  * 배경 그림 요청 주소 패턴. 매니페스트(BACKGROUNDS[id].src)에서 만든다: 배경 파일을 바꿔도(예: 임시 SVG → 최종 WebP)
@@ -402,7 +402,7 @@ test('타이틀: 자동 저장이 있으면 미리 불러오기를 [이어하기
   }
 });
 
-test('타이틀: 해금된 자동 저장 기준으로 대기열에 넣은 코하루 그림은, 새 게임(미해금)을 시작하면 받지 않는다', async ({ page, browser }, ti) => {
+test('타이틀: 해금된 자동 저장 기준으로 대기열에 넣은 코하루 흔적 그림(kh_* 와 새 CG 6장)은, 새 게임(미해금)을 시작하면 받지 않는다', async ({ page, browser }, ti) => {
   test.skip(ti.project.name !== 'desktop', '미리 불러오기 대기열 검사(desktop 에서만)');
   await boot(page);
   await newGame(page);
@@ -444,7 +444,8 @@ test('타이틀: 해금된 자동 저장 기준으로 대기열에 넣은 코하
       await new Promise<void>((r) => held.push(r));
       await route.continue().catch(() => undefined);
     });
-    const KOHARU = /assets\/char\/koharu\/|assets\/(?:bg|cg)\/(?:thumb\/)?kh_/;
+    // 코하루 흔적 그림: 스프라이트, kh_ 배경·CG, 코하루가 그려진 넷 판 에피소드·일상 결말 CG, 히든 루트 CG(여덟 엔딩 계약 9절)
+    const KOHARU = HIDDEN_ART;
     let phase: 'title' | 'new' = 'title';
     const reqs: Array<{ phase: string; url: string }> = [];
     p2.on('request', (r) => reqs.push({ phase, url: r.url() }));

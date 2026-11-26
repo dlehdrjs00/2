@@ -1,7 +1,10 @@
 /**
  * 추억 앨범(타이틀 시트의 이벤트 CG 갤러리)과 감상 화면(뷰어).
- * - 처음엔 0 / 11, 모든 칸 잠김. 잠긴 칸은 눌러도 열리지 않는다. 11 은 일반 CG 수(히든 kh_* 6장은 관람 전 칸·총 장수에 없음).
- * - 히든 CG 는 본 한 장씩만 칸·총 장수·제목에 나타나고, 코하루 묶음은 보일 칸이 있을 때만 생긴다(공통 kh_meet·kh_draw 는 공통 묶음).
+ * - 처음엔 0 / 14, 모든 칸 잠김. 잠긴 칸은 눌러도 열리지 않는다. 14 는 일반 CG 수(아카네 6·히나 7·공통 group_ice_three 1).
+ *   숨김 CG 12장(kh_* 6장, 코하루가 그려진 group_ice_four·group_frog·group_rain·end_koharu_coin, 히든 루트 end_group_* 2장)은
+ *   관람 전 칸·총 장수에 없다(여덟 엔딩 계약 8·9절). 모두 보면 26 / 26.
+ * - 숨김 CG 는 본 한 장씩만 칸·총 장수·제목에 나타나고, 코하루 묶음·네 사람 묶음은 보일 칸이 있을 때만 생긴다
+ *   (공통 kh_meet·kh_draw·넷 판 에피소드 세 장은 공통 묶음).
  * - 전역 기록(ashita.global 의 cgs)에 있는 CG 만 열리고, 새 게임을 해도 남는다.
  * - 실제 진행에서 본 CG 는 기록된다(보통 진행·건너뛰기 중·불러오기 직후).
  * - 감상: ←/→·좌우 버튼·스와이프로 '본 그림' 사이를 오가고 Esc·닫기·빈 곳으로 닫힌다. 입력은 뒤의 타이틀·시트로 새지 않고,
@@ -16,11 +19,17 @@ import { advanceOne, advanceToStop, boot, info, newGame, openMenu, pick, readGlo
 type Box = { left: number; top: number; right: number; bottom: number; width: number; height: number };
 
 /**
- * 관람 전에 보이는 총 장수: 계약(3·4절)상 일반 CG 11장. CG_ORDER.length(히든 포함 17)는 쓰지 않는다.
- * 히든 CG 를 하나 볼 때마다 총 장수에 한 장씩 더해진다.
+ * 관람 전에 보이는 총 장수: 일반 CG 14장(아카네 6·히나 7·공통 1). CG_ORDER.length(숨김 포함 26)는 쓰지 않는다.
+ * 숨김 CG 를 하나 볼 때마다 총 장수에 한 장씩 더해진다.
  */
-const BASE_TOTAL = 11;
-const HIDDEN_CGS = ['kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date'];
+const BASE_TOTAL = 14;
+/** 숨김 CG 12장(CG_ORDER 순서): kh_* 6장 + 코하루가 그려진 넷 판 에피소드 3장·코하루 일상 결말 1장 + 히든 루트 2장 */
+const HIDDEN_CGS = [
+  'kh_meet', 'kh_draw', 'group_ice_four', 'group_frog', 'group_rain',
+  'kh_relay', 'kh_confession', 'kh_home', 'kh_date', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning',
+];
+/** 관람 전 공통 묶음에 잠긴 칸으로 보이는 일반 CG(미발견 판 빙수집) */
+const COMMON_BASE = ['group_ice_three'];
 const overlap = (a: Box, b: Box) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
 
 /** 전역 기록에 본 CG 를 넣고(처음 한 번만) 게임을 연다 */
@@ -105,7 +114,7 @@ async function expectTitleMenu(page: Page, where: string) {
   for (const d of clipped) expect(d, `${where}: 버튼 글자 넘침`).toBeLessThanOrEqual(1);
 }
 
-test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠긴 칸은 눌러도 열리지 않는다', async ({ page }) => {
+test('추억 앨범: 처음엔 0 / 14 이고 모든 칸이 잠겨 있으며, 잠긴 칸은 눌러도 열리지 않는다', async ({ page }) => {
   await boot(page);
   await expectTitleMenu(page, '타이틀');
   const btn = page.locator('.title-menu [data-action=album]');
@@ -120,16 +129,20 @@ test('추억 앨범: 처음엔 0 / 11 이고 모든 칸이 잠겨 있으며, 잠
   await expect(album.locator('.sys-tabs [role=tab]')).toHaveText(['불러오기', '추억 앨범', '설정']);
   await expect(album.locator('.album-total')).toHaveText(`0 / ${BASE_TOTAL}`);
   await expect(album.locator('.album-bar')).toHaveAttribute('aria-valuenow', '0');
-  // 루트별 묶음(아카네 → 히나), 각 묶음 안은 CG_ORDER 순서, 모두 잠김. 히든 CG(코하루·공통 kh_*)는 빈칸도 없다
-  await expect(album.locator('.album-group')).toHaveCount(2);
-  await expect(album.locator('.cg-card[data-cg^="kh_"]')).toHaveCount(0);
-  expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko']);
+  // 루트별 묶음(아카네 → 히나), 공통 묶음은 맨 뒤(미발견 판 빙수집 한 칸). 각 묶음 안은 CG_ORDER 순서, 모두 잠김.
+  // 숨김 CG(코하루·네 사람 묶음, 공통 kh_*·넷 판 에피소드)는 빈칸도 없다
+  await expect(album.locator('.album-group')).toHaveCount(3);
+  for (const id of HIDDEN_CGS) await expect(album.locator(`.cg-card[data-cg="${id}"]`), id).toHaveCount(0);
+  await expect(album.locator('.album-group[data-route=koharu], .album-group[data-route=group]')).toHaveCount(0);
+  expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko', 'common']);
   for (const route of ['osana', 'tenko'] as const) {
-    const ids = CG_ORDER.filter((id) => CGS[id].route === route);
+    const ids = CG_ORDER.filter((id) => CGS[id].route === route && !CGS[id].hidden);
     const cards = album.locator(`.album-group[data-route=${route}] .cg-card`);
     expect(await cards.evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.cg))).toEqual(ids);
     await expect(album.locator(`.album-group[data-route=${route}] .album-count`)).toHaveText(`0 / ${ids.length}`);
   }
+  expect(await album.locator('.album-group[data-route=common] .cg-card').evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.cg))).toEqual(COMMON_BASE);
+  await expect(album.locator('.album-group[data-route=common] .album-count')).toHaveText(`0 / ${COMMON_BASE.length}`);
   const cards = album.locator('.cg-card');
   await expect(cards).toHaveCount(BASE_TOTAL);
   await expect(album.locator('.cg-card[data-seen="1"]')).toHaveCount(0);
@@ -170,8 +183,8 @@ test('추억 앨범: 전역 기록에 본 CG 만 열리고(모르는 id 는 무�
     const res = await page.request.get(new URL(src!, page.url()).href);
     expect(res.headers()['content-type'] ?? '').toMatch(/^image\//);
   }
-  await expect(album.locator('.album-group[data-route=osana] .album-count')).toHaveText('1 / 5');
-  await expect(album.locator('.album-group[data-route=tenko] .album-count')).toHaveText('1 / 6');
+  await expect(album.locator('.album-group[data-route=osana] .album-count')).toHaveText('1 / 6');
+  await expect(album.locator('.album-group[data-route=tenko] .album-count')).toHaveText('1 / 7');
   await page.keyboard.press('Escape');
 
   // 새 게임 → 타이틀: 앨범 기록은 남는다
@@ -191,14 +204,20 @@ test('추억 앨범: 진행 중 본 CG 는 보통 진행·건너뛰기 중·불�
   test.skip(ti.project.name !== 'desktop', '긴 진행은 데스크톱에서');
   test.setTimeout(240_000);
   // 전역 기록에서 CG 하나를 지우고 새로 연다. 열려 있는 탭은 떠날 때(pagehide) 메모리 기록을 다시 쓰므로,
-  // 새 문서의 페이지 스크립트보다 먼저(초기화 스크립트에서) 지운다
+  // 새 문서의 페이지 스크립트보다 먼저(초기화 스크립트에서) 지운다. 본 CG 는 ashita.global 에만 있다
+  // (보조 키 ashita.global.ext·.v2 는 엔딩만 담고, 게임은 세 키의 엔딩 합집합을 읽는다 — 계약 6.4). 그래도 보조 키에 cgs 가 생겼다면 함께 지운다
   await page.addInitScript(() => {
     const id = sessionStorage.getItem('drop-cg');
     if (!id) return;
     sessionStorage.removeItem('drop-cg');
-    const g = JSON.parse(localStorage.getItem('ashita.global') || '{}');
-    g.cgs = (g.cgs || []).filter((x: string) => x !== id);
-    localStorage.setItem('ashita.global', JSON.stringify(g));
+    for (const k of ['ashita.global', 'ashita.global.ext', 'ashita.global.v2']) {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const g = JSON.parse(raw);
+      if (!Array.isArray(g.cgs)) continue;
+      g.cgs = g.cgs.filter((x: string) => x !== id);
+      localStorage.setItem(k, JSON.stringify(g));
+    }
   });
   const reloadWithout = async (id: string) => {
     await page.evaluate((id) => sessionStorage.setItem('drop-cg', id), id);
@@ -510,10 +529,11 @@ test('추억 앨범: 앞 묶음(아카네)은 하나도 못 보고 히나 묶음
       return c.top >= b.top - 0.5 && c.bottom <= b.bottom + 0.5;
     });
   await expect.poll(firstSeenVisible).toBe(true);
-  // 묶음 순서는 그대로(아카네가 먼저)
+  // 묶음 순서는 그대로(아카네가 먼저, 공통은 맨 뒤)
   expect(await page.locator('[data-panel=album] .album-group').evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.route))).toEqual([
     'osana',
     'tenko',
+    'common',
   ]);
   // 앞 묶음에 본 칸이 하나라도 있으면 맨 위(모은 수)부터 보인다
   await page.keyboard.press('Escape');
@@ -530,24 +550,30 @@ test('추억 앨범: 앞 묶음(아카네)은 하나도 못 보고 히나 묶음
   expect(await page.locator('[data-panel=album] .panel-body').evaluate((e) => e.scrollTop)).toBe(0);
 });
 
-test('대본의 이벤트 CG 는 모두 추억 앨범 목록(CG_ORDER)에 있고, 히든은 코하루 6장뿐이다', async () => {
+test('대본의 이벤트 CG 는 모두 추억 앨범 목록(CG_ORDER)에 있고, 숨김은 코하루 흔적·히든 루트 12장뿐이다', async () => {
   const used = new Set<string>();
   for (const s of Object.values(STORY.scenes)) for (const st of s.steps) if (st.t === 'cg' && st.cg) used.add(st.cg);
   expect([...used].sort()).toEqual([...CG_ORDER].sort());
   expect(CG_ORDER.filter((id) => CGS[id].hidden)).toEqual(HIDDEN_CGS);
   expect(CG_ORDER.filter((id) => !CGS[id].hidden).length).toBe(BASE_TOTAL);
+  expect(CG_ORDER.length).toBe(26);
+  // 묶음: 히든 루트 그림은 route 'group', 넷 판 에피소드·kh_meet·kh_draw·미발견 판 빙수집은 공통(null)
+  expect(CG_ORDER.filter((id) => CGS[id].route === 'group')).toEqual(['end_group_fireworks', 'end_group_morning']);
+  expect(CG_ORDER.filter((id) => CGS[id].route === null)).toEqual(['kh_meet', 'kh_draw', 'group_ice_four', 'group_ice_three', 'group_frog', 'group_rain']);
 });
 
 test('추억 앨범: 히든 CG 는 본 것만 칸·총 장수·제목에 나타나고, 코하루 묶음은 보일 칸이 있을 때만 생긴다', async ({ page }, ti) => {
   test.skip(ti.project.name !== 'desktop', '전역 기록 확인은 데스크톱에서');
-  // 공통 kh_meet(route null) + 코하루 kh_relay + 일반 rain_osana 를 봤다 → 총 11 + 2 = 13
+  // 공통 kh_meet(route null) + 코하루 kh_relay + 일반 rain_osana 를 봤다 → 총 14 + 2 = 16
   await bootWithCgs(page, ['kh_meet', 'kh_relay', 'rain_osana']);
   await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 3 / ${BASE_TOTAL + 2}`);
   await openAlbum(page);
   const album = page.locator('[data-panel=album]');
   await expect(album.locator('.album-total')).toHaveText(`3 / ${BASE_TOTAL + 2}`);
-  // 본 히든 두 장만 칸이 있고(제목·썸네일), 보지 않은 kh_* 는 빈칸도 없다
+  // 본 히든 두 장만 칸이 있고(제목·썸네일), 보지 않은 숨김 CG(kh_*·코하루가 그려진 넷 판·히든 루트)는 빈칸도 없다
   expect(await album.locator('.cg-card[data-cg^="kh_"]').evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.cg).sort())).toEqual(['kh_meet', 'kh_relay']);
+  for (const id of HIDDEN_CGS.filter((x) => !x.startsWith('kh_'))) await expect(album.locator(`.cg-card[data-cg="${id}"]`), id).toHaveCount(0);
+  await expect(album.locator('.album-group[data-route=group]')).toHaveCount(0);
   for (const id of ['kh_meet', 'kh_relay'] as const) {
     const card = album.locator(`.cg-card[data-cg=${id}]`);
     await expect(card).toHaveAttribute('data-seen', '1');
@@ -558,11 +584,53 @@ test('추억 앨범: 히든 CG 는 본 것만 칸·총 장수·제목에 나타�
   await expect(album.locator('.album-group[data-route=koharu] .cg-card')).toHaveCount(1);
   await expect(album.locator('.album-group[data-route=koharu] .album-count')).toHaveText('1 / 1');
   await expect(album.locator('.album-group[data-route=common] .cg-card[data-cg=kh_meet]')).toHaveCount(1);
-  // 일반 묶음의 칸 수는 그대로(아카네 5·히나 6)
-  await expect(album.locator('.album-group[data-route=osana] .album-count')).toHaveText('1 / 5');
-  await expect(album.locator('.album-group[data-route=tenko] .album-count')).toHaveText('0 / 6');
+  // 공통 묶음: 본 kh_meet + 잠긴 미발견 판 빙수집 = 1 / 2
+  await expect(album.locator('.album-group[data-route=common] .album-count')).toHaveText('1 / 2');
+  // 일반 묶음의 칸 수는 그대로(아카네 6·히나 7)
+  await expect(album.locator('.album-group[data-route=osana] .album-count')).toHaveText('1 / 6');
+  await expect(album.locator('.album-group[data-route=tenko] .album-count')).toHaveText('0 / 7');
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await info(page)).overlays).toBe(0);
   // 코하루 엔딩 배지는 엔딩에 도달하기 전에는 없다(CG 를 봤어도)
   await expect(page.locator('.title-screen .badge[data-ending=koharu]')).toHaveCount(0);
+  await expect(page.locator('.title-screen .badge[data-ending=koharu_daily]')).toHaveCount(0);
+});
+
+test('추억 앨범: 네 사람 묶음은 그 그림을 본 뒤에만 생기고(이름 「네 사람」), 모두 보면 26 / 26 이며 기존 기록은 그대로다', async ({ page }, ti) => {
+  test.skip(ti.project.name !== 'desktop', '전역 기록 확인은 데스크톱에서');
+  // 히든 루트 축제 그림 한 장 + 넷 판 빙수집(공통) + 옛 기록(아카네 한 장)
+  await bootWithCgs(page, ['end_group_fireworks', 'group_ice_four', 'rain_osana'], { endings: ['osana'] });
+  await expect(page.locator('#vn-album-count')).toHaveText(`모은 추억 3 / ${BASE_TOTAL + 2}`);
+  await openAlbum(page);
+  const album = page.locator('[data-panel=album]');
+  // 묶음 순서: 아카네 → 히나 → 네 사람 → 공통(코하루 묶음은 볼 칸이 없어 없다)
+  expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko', 'group', 'common']);
+  const grp = album.locator('.album-group[data-route=group]');
+  await expect(grp.locator('.cg-card')).toHaveCount(1);
+  await expect(grp.locator('.cg-card[data-cg=end_group_fireworks]')).toHaveAttribute('data-seen', '1');
+  await expect(grp.locator('.album-count')).toHaveText('1 / 1');
+  await expect(grp).toContainText('네 사람');
+  await expect(grp.locator('.cg-card[data-cg=end_group_fireworks] .cg-cap')).toHaveText(CGS.end_group_fireworks.title);
+  // 보지 않은 일상 쪽 그림(end_group_morning)은 빈칸도 없다
+  await expect(album.locator('.cg-card[data-cg=end_group_morning]')).toHaveCount(0);
+  expect(await album.locator('.album-group[data-route=common] .cg-card').evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.cg))).toEqual(['group_ice_four', 'group_ice_three']);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+
+  // 전부 본 기록: 26 / 26, 묶음 다섯 개
+  await page.evaluate((ids) => {
+    const g = JSON.parse(localStorage.getItem('ashita.global')!);
+    g.cgs = ids;
+    localStorage.setItem('ashita.global', JSON.stringify(g));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ashita.global', newValue: JSON.stringify(g), storageArea: localStorage }));
+  }, [...CG_ORDER]);
+  await expect(page.locator('#vn-album-count')).toHaveText('모은 추억 26 / 26');
+  await openAlbum(page);
+  await expect(album.locator('.album-total')).toHaveText('26 / 26');
+  expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko', 'koharu', 'group', 'common']);
+  await expect(album.locator('.cg-card[data-seen="1"]')).toHaveCount(26);
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await info(page)).overlays).toBe(0);
+  // 기존 엔딩 기록은 그대로(CG 를 봐도 엔딩을 재분류하지 않음)
+  expect((await readGlobal(page)).endings).toEqual(['osana']);
 });
