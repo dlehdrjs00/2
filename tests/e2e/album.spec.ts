@@ -412,6 +412,10 @@ test('감상: 마우스·터치로 열고 넘기며, 닫기·그림 밖 빈 곳�
       const cdp = await page.context().newCDPSession(page);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x0, y }] });
       for (let s = 1; s <= 6; s++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + (dx * s) / 6, y }] });
+      // 끝에서 손가락을 잠깐 멈췄다 뗀다. 이동 여섯 번이 몰려 들어가면(부하) 속도가 커서 Chromium 이 플링(fling)을 시작하고,
+      // 플링 중에 들어온 다음 탭은 '플링 멈추기'로 처리돼 click 이 오지 않는다(1초 뒤의 탭도 100번 중 3번 사라짐 → 멈춤 추가 뒤 0/100)
+      await page.waitForTimeout(150);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x0 + dx, y }] });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await cdp.detach();
     } else {
@@ -625,6 +629,9 @@ test('추억 앨범: 네 사람 묶음은 그 그림을 본 뒤에만 생기고(
     window.dispatchEvent(new StorageEvent('storage', { key: 'ashita.global', newValue: JSON.stringify(g), storageArea: localStorage }));
   }, [...CG_ORDER]);
   await expect(page.locator('#vn-album-count')).toHaveText('모은 추억 26 / 26');
+  // 첫 [추억 앨범] 클릭에서 0.5초 안에 같은 자리를 다시 누르면 게임이 더블클릭의 나머지로 흡수한다(game.ts ECHO_MS·lockUi):
+  // 앞 검사가 빨리 끝나면 그 안에 들어가므로 위 테스트들처럼 충분히 띄운다
+  await page.waitForTimeout(600);
   await openAlbum(page);
   await expect(album.locator('.album-total')).toHaveText('26 / 26');
   expect(await album.locator('.album-group').evaluateAll((g) => g.map((e) => (e as HTMLElement).dataset.route))).toEqual(['osana', 'tenko', 'koharu', 'group', 'common']);
