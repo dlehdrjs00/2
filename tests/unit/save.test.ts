@@ -305,6 +305,23 @@ describe('퀵저장·수동 30칸·썸네일용 무대 요약', () => {
     expect(s.windowOpacity).toBe(40);
     expect(loadSettings(new MemoryStore(true))).toMatchObject({ textScale: 0, particles: 1 });
   });
+
+  it('대사창 불투명도: 처음 플레이·깨진 설정은 기본 70%, 이미 저장된 값(예전 기본 82% 포함)은 그대로', () => {
+    expect(DEFAULT_SETTINGS.windowOpacity).toBe(70);
+    expect(loadSettings(new MemoryStore(true)).windowOpacity).toBe(70);
+    const broken = new MemoryStore(true);
+    broken.set('ashita.settings', '{not json');
+    expect(loadSettings(broken).windowOpacity).toBe(70);
+    // 항목이 빠진 예전 설정(다른 항목만 저장)도 기본 70%
+    const partial = new MemoryStore(true);
+    partial.set('ashita.settings', JSON.stringify({ schema: 1, textSpeed: 8 }));
+    expect(loadSettings(partial)).toMatchObject({ textSpeed: 8, windowOpacity: 70 });
+    for (const v of [82, 40, 55, 100]) {
+      const store = new MemoryStore(true);
+      saveSettings(store, { ...DEFAULT_SETTINGS, windowOpacity: v });
+      expect(loadSettings(store).windowOpacity).toBe(v);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

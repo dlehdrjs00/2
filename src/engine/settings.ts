@@ -10,7 +10,7 @@ export interface Settings {
   /** 음량 0~100 */
   bgmVolume: number;
   sfxVolume: number;
-  /** 대사창 불투명도 40~100 */
+  /** 대사창 바탕 불투명도 40~100(기본 70). 빠른 메뉴 탭은 이 값과 82 중 큰 값을 쓴다(play.css .qbar) */
   windowOpacity: number;
   /** 글자 크기 단계 0~2 (보통 / 크게 / 더 크게 → 배율 1 / 1.12 / 1.25) */
   textScale: number;
@@ -23,7 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSpeed: 5,
   bgmVolume: 60,
   sfxVolume: 70,
-  windowOpacity: 82,
+  windowOpacity: 70,
   textScale: 0,
   particles: 1,
 };

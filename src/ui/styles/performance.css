@@ -94,6 +94,15 @@
     rgba(244, 250, 255, min(1, calc(var(--win-alpha) * 0.9 + 0.12)))
   );
 }
+/* 설정 화면의 미리보기 대사창도 같은 보강을 받아 실제 플레이 화면의 낮 대사창과 같은 바탕이 되게 한다
+ * (미리보기는 #vn 의 직속 자식이 아니라 위 규칙에 안 걸리고, 흐림은 위 * 규칙이 이미 뺀다. 그림이 낮 교실이라 낮 규칙만) */
+.vn[data-render='apple-touch'] .preview-stage .textbox {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, min(1, calc(var(--win-alpha) * 0.96 + 0.12))),
+    rgba(244, 250, 255, min(1, calc(var(--win-alpha) * 0.9 + 0.12)))
+  );
+}
 .vn[data-render='apple-touch'] .qbar {
   background: rgba(250, 253, 255, min(1, calc(var(--win-alpha) * 0.97 + 0.12)));
 }
