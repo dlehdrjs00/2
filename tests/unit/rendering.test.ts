@@ -108,14 +108,10 @@ describe('낮은 가로 화면 CG 구도(play.css #vn[data-cgfit=low])·암전 �
 
   it('그림 없는 암전(맨 앞 배경 black)에서 햇살을 끄는 :has() 규칙은 홀로 선 선택자다(모르는 브라우저는 그 규칙만 버린다)', () => {
     const hit = blocks.filter((b) => b.selectors.some((x) => x.includes(':has(') && x.includes('.sunwash')));
-    expect(hit.map((b) => b.selectors)).toEqual([
-      [".stage:has(> .bg-layer.on[data-bg='black'] + .chars) .sunwash"],
-      [".stage:has(> .veil.on):has(> .bg-layer.on[data-bg='black'] + .chars) .sunwash"],
-    ]);
+    expect(hit.map((b) => b.selectors)).toEqual([[".stage:has(> .bg-layer.on[data-bg='black'] + .chars) .sunwash"]]);
     expect(prop(hit[0].body, 'opacity')).toBe('0');
-    // 막이 덮인 암전에서만 전환 없이 끈다(막 없는 교차 전환은 0.6초 페이드 그대로). 이 규칙은 opacity 를 건드리지 않는다
-    expect(prop(hit[1].body, 'transition')).toBe('none');
-    expect(prop(hit[1].body, 'opacity')).toBeUndefined();
+    // 전환은 그대로 둔다(막 뒤 즉시 교체는 stage.ts setBgInstant 가 그 순간만 전환을 끈다. 크로스페이드 암전은 함께 줄어든다)
+    expect(prop(hit[0].body, 'transition')).toBeUndefined();
     // 'black' 은 그림 없는 배경이다(그림 있는 배경이 이 규칙에 걸리지 않게)
     expect((BACKGROUNDS as Record<string, { src?: string }>).black.src).toBeUndefined();
   });

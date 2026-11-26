@@ -613,11 +613,14 @@ export class StageView {
       const back = this.bgLayers[1 - this.activeBg];
       this.paintBg(front, id);
       this.raiseBg(front);
-      withoutTransition([front, back], () => {
+      // 배경이 한 번에 바뀌면 햇살(.sunwash)도 같은 순간에 맞춘다(톤 data-tone 도 이 안에서 바꾼다). 막(암전·번쩍임) 뒤에서
+      // 배경이 바뀌는데 햇살만 0.6초 페이드로 따라오면, 막(약 0.35초)이 걷힌 뒤에도 검은 화면이나 밤 장면 위에 앞 장면
+      // 햇살이 0.3초쯤 남아 보였다(e3f.010·c9.010·e1s.010). 크로스페이드(fadeBg)는 햇살도 0.6초에 걸쳐 따라간다
+      withoutTransition([front, back, this.sunwash], () => {
         front.classList.add('on');
         back.classList.remove('on');
+        this.shown(id);
       });
-      this.shown(id);
     });
   }
 
