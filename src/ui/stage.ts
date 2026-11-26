@@ -31,7 +31,7 @@
  *   무대가 낮으면 카드 묶음이 무대를 넘지 않게 실제 높이를 재서 압축 단계(.card[data-fit] 0~4)를 고른다.
  */
 import type { BgFx, BgId, CgId, CharId, CharState, StageState, Step } from '../engine/types';
-import { BACKGROUNDS, type BgTone } from '../story/assets';
+import { BACKGROUNDS, type BgTone, type BgWeather } from '../story/assets';
 import { CGS } from '../story/cg';
 import { DATES } from '../story/config';
 import { el } from './dom';
@@ -213,8 +213,13 @@ export function toneOfBg(id: string | undefined): BgTone {
   return (BACKGROUNDS as Record<string, { tone?: BgTone } | undefined>)[id]?.tone ?? 'day';
 }
 
-/** 일력 머리띠의 날씨 아이콘: 비 배경은 비, 밤·축제는 달, 그 밖은 해 */
-export function weatherOf(id: string | undefined, tone: BgTone): 'sun' | 'rain' | 'moon' {
+/**
+ * 일력 머리띠의 날씨 아이콘. 매니페스트에 날씨(BACKGROUNDS[id].weather)가 있으면 그것을 먼저 쓴다
+ * (bg_after_rain 처럼 이름은 _rain 이지만 비가 그친 그림). 없으면 비 배경(_rain)은 비, 밤·축제는 달, 그 밖은 해
+ */
+export function weatherOf(id: string | undefined, tone: BgTone): BgWeather {
+  const set = id ? (BACKGROUNDS as Record<string, { weather?: BgWeather } | undefined>)[id]?.weather : undefined;
+  if (set) return set;
   if (id && /_rain$/.test(id)) return 'rain';
   if (tone === 'night' || (id && (/night/.test(id) || /^festival/.test(id)))) return 'moon';
   return 'sun';

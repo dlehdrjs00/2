@@ -23,11 +23,13 @@ import type {
   EndingId,
   EndingStep,
   Expr,
+  GroupRouteId,
   Hair,
   HeroineId,
   LabelStep,
   Outfit,
   Pos,
+  RouteId,
   SayStep,
   Scene,
   SceneRoute,
@@ -154,11 +156,21 @@ export const unlock = (heroine: HeroineId, among: [HeroineId, HeroineId], maxDif
 });
 /**
  * 루트 확정. order = 루트에 영향을 주는 선택지 id 시간순(동점 처리에 뒤에서부터 훑는다),
- * hidden = 히든 히로인 → 해금 플래그(true 일 때만 후보).
+ * hidden = 히든 히로인 → 해금 플래그(true 일 때만 후보),
+ * opts.tieRoute = 후보가 세 명 전원이고 세 점수가 완전히 같을 때 확정할 히든 루트('group').
  */
-export const decideRoute = (order: string[], hidden?: Partial<Record<HeroineId, string>>): StepDraft =>
-  hidden ? { t: 'decideRoute', order: [...(order ?? [])], hidden: { ...hidden } } : { t: 'decideRoute', order: [...(order ?? [])] };
-export const routeBranch = (scenes: Record<HeroineId, string>): StepDraft => ({ t: 'routeBranch', scenes });
+export const decideRoute = (
+  order: string[],
+  hidden?: Partial<Record<HeroineId, string>>,
+  opts: { tieRoute?: GroupRouteId } = {},
+): StepDraft => ({
+  t: 'decideRoute',
+  order: [...(order ?? [])],
+  ...(hidden ? { hidden: { ...hidden } } : {}),
+  ...(opts.tieRoute ? { tieRoute: opts.tieRoute } : {}),
+});
+/** 확정 루트 → 장면. 이 지점에서 나올 수 있는 루트를 모두 적는다 */
+export const routeBranch = (scenes: Partial<Record<RouteId, string>>): StepDraft => ({ t: 'routeBranch', scenes: { ...scenes } });
 export function ending(id: string, endingId: EndingId): EndingStep {
   return { t: 'ending', id, ending: endingId };
 }

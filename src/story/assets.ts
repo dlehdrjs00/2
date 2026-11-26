@@ -14,6 +14,8 @@ import { EXPRS } from '../engine/types';
 
 /** 배경 톤: UI 유리의 색(밤이면 남색 유리)과 장소 표시 아이콘(해/달)을 고른다 */
 export type BgTone = 'day' | 'evening' | 'night';
+/** 일력 머리띠·장소 표시의 날씨 아이콘(해·비·달) */
+export type BgWeather = 'sun' | 'rain' | 'moon';
 
 export interface ImageAsset {
   /** public/ 기준 경로. 단색 배경이면 생략하고 color 사용 */
@@ -26,6 +28,12 @@ export interface ImageAsset {
   desc: string;
   /** 배경 톤. 생략하면 낮(day). 비 배경은 id 의 '_rain' 으로 따로 판별한다 */
   tone?: BgTone;
+  /**
+   * 날씨 아이콘을 명시한다(stage.ts weatherOf 가 id 규칙보다 먼저 쓴다). 생략하면 기존 규칙:
+   * id 가 '_rain' 으로 끝나면 비, 밤 톤·night·festival 이면 달, 그 밖은 해.
+   * 예: bg_after_rain 은 이름에 rain 이 있지만 비가 그친 그림이라 'sun'
+   */
+  weather?: BgWeather;
 }
 
 export interface AudioAsset {
@@ -62,6 +70,12 @@ export const BACKGROUNDS: Record<BgId, ImageAsset> = {
   // 코하루 루트 인계 패키지의 배경(원본·썸네일 모두 받은 그대로. 썸네일은 bg-thumbs.py 가 덮어쓰지 않는다)
   kh_stationery: { src: `${BG}/kh_stationery.webp`, thumb: `${BG}/thumb/kh_stationery.webp`, placeholder: false, desc: '상점가 문구점 앞(민트색 차양, 유리 미닫이문, 나무 견본 테이블)', tone: 'day' },
   kh_lantern_lane: { src: `${BG}/kh_lantern_lane.webp`, thumb: `${BG}/thumb/kh_lantern_lane.webp`, placeholder: false, desc: '축제 거리 끝 마지막 등롱길(밤)', tone: 'night' },
+  // 여덟 엔딩 확장 배경(코덱스 제작, 인물 없음). 원본·썸네일 모두 받은 그대로(bg-thumbs.py PROVIDED 에 sha 쌍 등록)
+  // 톤은 그림을 보고 정했다: 빙수집은 파란 하늘 아래 강한 햇빛과 나뭇잎 그림자(한낮~이른 오후) → 낮.
+  // 처마는 비 갠 뒤 파란 하늘·흰 구름에 금빛 햇살이 젖은 마루에 비친 늦은 오후다. 노을(분홍·주황 하늘)이 아니라
+  // 같은 늦은 오후 그림인 shotengai 처럼 낮으로 둔다. 비가 그친 그림이므로 날씨는 해(이름의 _rain 규칙을 덮어씀).
+  bg_ice_shop: { src: `${BG}/bg_ice_shop.webp`, thumb: `${BG}/thumb/bg_ice_shop.webp`, placeholder: false, desc: '상점가 빙수집 가게 밖 야외 테이블(토요일 오후, 수국과 나뭇잎 그림자)', tone: 'day' },
+  bg_after_rain: { src: `${BG}/bg_after_rain.webp`, thumb: `${BG}/thumb/bg_after_rain.webp`, placeholder: false, desc: '소나기가 그친 학교 처마 마루와 젖은 마당(방과 후, 햇빛이 돌아옴)', tone: 'day', weather: 'sun' },
   black: { color: '#08070c', placeholder: false, desc: '검은 화면(파일 없음)' },
 };
 

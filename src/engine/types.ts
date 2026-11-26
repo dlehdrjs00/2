@@ -21,6 +21,20 @@ export function isHeroineId(v: unknown): v is HeroineId {
   return typeof v === 'string' && (HEROINES as readonly string[]).includes(v);
 }
 
+/**
+ * 히든 루트(세 사람과 함께하는 네 사람 루트) 식별자.
+ * 점수 대상도, 화면에 서는 인물도 아니다(HEROINES 에 넣지 않는다). 루트·엔딩·장면 구분에만 쓴다.
+ */
+export type GroupRouteId = 'group';
+export const GROUP_ROUTE: GroupRouteId = 'group';
+/** 루트 식별자 = 히로인 루트 셋 + 히든 루트 */
+export type RouteId = HeroineId | GroupRouteId;
+export const ROUTES: readonly RouteId[] = ['osana', 'tenko', 'koharu', 'group'] as const;
+
+export function isRouteId(v: unknown): v is RouteId {
+  return typeof v === 'string' && (ROUTES as readonly string[]).includes(v);
+}
+
 /** 화면에 그림이 있는 캐릭터 = 히로인 3명 */
 export type CharId = HeroineId;
 
@@ -38,7 +52,9 @@ export type SpeakerId =
   | 'classmates'
   | 'shopkeeper'
   | 'kh_friend'
-  | 'raffle';
+  | 'raffle'
+  /** 여럿이 한목소리로 말하는 줄. 이름표는 sayAs 의 label 로 정한다(기본 표시 '다 같이') */
+  | 'chorus';
 
 export type Expr = 'neutral' | 'smile' | 'fluster' | 'shy' | 'pout' | 'sad';
 export const EXPRS: readonly Expr[] = ['neutral', 'smile', 'fluster', 'shy', 'pout', 'sad'] as const;
@@ -69,6 +85,10 @@ export type BgId =
   | 'shrine_night'
   | 'kh_stationery'
   | 'kh_lantern_lane'
+  /** 토요일 상점가 빙수집 야외 테이블(인물 없음) */
+  | 'bg_ice_shop'
+  /** 소나기가 그친 뒤의 학교 처마 마루(인물 없음, 비 갠 날씨) */
+  | 'bg_after_rain'
   | 'black';
 
 export type BgmId = 'title' | 'daily' | 'heart' | 'evening' | 'festival' | 'confession';
@@ -84,7 +104,21 @@ export type SfxId =
   | 'footsteps'
   | 'cat';
 
-export type EndingId = 'osana' | 'tenko' | 'koharu';
+/**
+ * 엔딩 식별자. 기존 세 id(osana·tenko·koharu)는 각 루트의 '축제 쪽 결말'로 그대로 둔다
+ * (전역 기록·클리어 기록이 이 id 를 참조하므로 바꾸거나 지우면 기록이 사라진다).
+ */
+export type EndingId =
+  | 'osana'
+  | 'tenko'
+  | 'koharu'
+  | 'osana_daily'
+  | 'tenko_daily'
+  | 'koharu_daily'
+  | 'group_festival'
+  | 'group_daily';
+/** 결말 갈래: 축제 쪽(festival) / 일상 쪽(daily) */
+export type EndingKind = 'festival' | 'daily';
 
 /** 이벤트 CG(한 장 그림). 무대 위(캐릭터보다 앞, 대사창 뒤)에 화면 가득 표시된다. */
 export type CgId =
@@ -104,13 +138,23 @@ export type CgId =
   | 'kh_relay'
   | 'kh_confession'
   | 'kh_home'
-  | 'kh_date';
+  | 'kh_date'
+  // 여덟 엔딩 확장(코덱스 제작 9장). 코하루가 그려진 그림: group_ice_four·group_frog·group_rain·end_koharu_coin·end_group_*
+  | 'group_ice_four'
+  | 'group_ice_three'
+  | 'group_frog'
+  | 'group_rain'
+  | 'end_akane_walk'
+  | 'end_hina_walk'
+  | 'end_koharu_coin'
+  | 'end_group_fireworks'
+  | 'end_group_morning';
 
 /** 배경 전환 방식. */
 export type BgFx = 'fade' | 'black' | 'white' | 'cut';
 
 /** 장면이 어느 구간에 속하는지. 루트 혼입 검사에 사용. */
-export type SceneRoute = 'common' | HeroineId;
+export type SceneRoute = 'common' | RouteId;
 export type ScenePart = 'main' | 'epilogue';
 
 // ---------------------------------------------------------------------------
@@ -123,7 +167,7 @@ export type Cond =
   /** 플래그 값 비교 */
   | { flag: string; eq: boolean | number | string }
   /** 확정 루트 */
-  | { route: HeroineId }
+  | { route: RouteId }
   | { not: Cond }
   | { all: Cond[] }
   | { any: Cond[] };
@@ -300,12 +344,18 @@ export interface DecideRouteStep extends StepBase {
   order: string[];
   /** 히든 히로인 → 후보가 되기 위한 플래그 이름(flags[이름] === true 여야 후보) */
   hidden?: Partial<Record<HeroineId, string>>;
+  /**
+   * 후보가 HEROINES 전원(히든 히로인 해금 포함)이고 세 사람의 누적 점수가 완전히 같으면 이 루트로 확정한다(히든 루트).
+   * 구버전 후반 선택(+3)을 이미 한 저장(flags['kh.late3'] === true)에서는 쓰지 않는다. 없으면 기존 규칙만 쓴다
+   */
+  tieRoute?: GroupRouteId;
 }
 
 /** 확정 루트에 따라 장면 이동. decideRoute 이후에만 사용. */
 export interface RouteBranchStep extends StepBase {
   t: 'routeBranch';
-  scenes: Record<HeroineId, string>;
+  /** 확정 루트 → 장면. 이 스텝에서 나올 수 있는 루트는 모두 적어야 한다(없는 루트로 오면 StoryError) */
+  scenes: Partial<Record<RouteId, string>>;
 }
 
 /** 엔딩 도달. 블로킹(엔딩 화면). */
@@ -349,7 +399,10 @@ export interface Scene {
 
 export interface EndingDef {
   id: EndingId;
-  heroine: HeroineId;
+  /** 이 엔딩이 속한 루트(히든 루트는 'group'). ending 스텝이 있는 장면의 route 와 같아야 한다 */
+  route: RouteId;
+  /** 축제 쪽 / 일상 쪽 결말 */
+  kind: EndingKind;
   title: string;
 }
 
@@ -400,7 +453,7 @@ export interface SceneEntry {
   sceneId: string;
   points: Record<HeroineId, number>;
   lastHeroine: HeroineId | null;
-  route: HeroineId | null;
+  route: RouteId | null;
   choices: Record<string, string>;
   flags: Record<string, boolean | number | string>;
   /** 장면 첫 지시가 실행되기 전 무대(이전 장면에서 물려받은 배경·음악·캐릭터) */
@@ -419,7 +472,7 @@ export interface GameState {
    * 선택 기록(choices)으로 다시 계산하고, 이 값은 order 가 없는 스토리의 동점 처리와 표시용이다
    */
   lastHeroine: HeroineId | null;
-  route: HeroineId | null;
+  route: RouteId | null;
   /** choice step id -> option id */
   choices: Record<string, string>;
   flags: Record<string, boolean | number | string>;
