@@ -11,19 +11,22 @@
  *   원본은 내려받아 해독이 끝난 뒤에야 .art-hi 에 넣어 페이드로 띄운다(.kv-ready). 느린 망에서 원본이
  *   위에서부터 반쯤 그려진 채 오래 보이지 않게. 한 번 해독한 원본은 다시 그릴 때 연출 없이 바로 보인다.
  */
-import type { EndingId, HeroineId, RouteId } from '../../engine/types';
+import type { EndingId, EndingKind, HeroineId, RouteId } from '../../engine/types';
 import { button, cssUrl, el } from '../dom';
-import { ROUTE_COLORS } from './common';
+import { ENDING_KIND_NAMES, routeColors } from './common';
 import { buildMotes } from './fx';
 import { prefersDataSaving } from './preload';
 
 export interface TitleEnding {
   id: EndingId;
-  /** 엔딩이 속한 루트(배지 색). 히든 루트는 'group' */
+  /** 엔딩이 속한 루트(배지 색·묶음). 히든 루트는 'group' */
   route: RouteId;
+  /** 축제 쪽 / 일상 쪽(같은 루트의 두 결말을 배지 글자로 구별한다) */
+  kind: EndingKind;
+  /** 루트 이름('아카네', 히든 루트는 '네 사람') */
   name: string;
   reached: boolean;
-  /** 본 엔딩이면 엔딩 제목 */
+  /** 엔딩 제목(본 엔딩만 title 속성에 쓴다) */
   title: string;
 }
 
@@ -189,6 +192,67 @@ function logo(title: string): HTMLElement {
   return h;
 }
 
+/**
+ * 타이틀 엔딩 배지 하나(.badge[data-ending][data-reached][data-kind]).
+ * 본 엔딩: 별(루트 색) + '아카네 · 축제'(같은 루트의 두 결말을 갈래 이름으로 구별), title 「제목」. 읽기는 '아카네 · 축제 엔딩'.
+ * 못 본 엔딩: 회색 별 + '???'(루트·갈래·제목 어느 것도 보이지 않음), title·읽기 '아직 보지 못한 엔딩'.
+ */
+function endingBadge(e: TitleEnding): HTMLElement {
+  const b = el('span', `badge${e.reached ? ' got' : ''}`);
+  b.dataset.ending = e.id;
+  b.dataset.reached = e.reached ? '1' : '0';
+  if (e.reached) {
+    b.dataset.kind = e.kind;
+    b.append(el('span', 'bn', e.name), el('span', 'bk', ` · ${ENDING_KIND_NAMES[e.kind] ?? e.kind}`), el('span', 'sr-only', ' 엔딩'));
+    b.title = `「${e.title}」`;
+    b.style.setProperty('--c', routeColors(e.route).c1);
+  } else {
+    const q = el('span', 'bq', '???');
+    q.setAttribute('aria-hidden', 'true');
+    b.append(q, el('span', 'sr-only', '아직 보지 못한 엔딩'));
+    b.title = '아직 보지 못한 엔딩';
+  }
+  return b;
+}
+
+/**
+ * 엔딩 배지 줄이 왼쪽 열 아래로 넘치면(좁고 낮은 가로 휴대폰에서 배지가 두 줄 이상이 될 때) 글자를 접고 별만 남긴다
+ * (.title-foot[data-fit='icons']: 본 엔딩은 루트 색 별, 못 본 엔딩은 회색 별. 읽기 이름·title 은 그대로).
+ * 글자 크기는 줄이지 않는다(16px 미만 글자 없음). 열의 크기(화면 회전·주소창)와 늦게 온 글꼴에 맞춰 다시 잰다.
+ * ResizeObserver 콜백 안에서 배치를 바꾸면 'ResizeObserver loop' 경고가 나므로 다음 프레임으로 미룬다.
+ */
+function watchFootFit(left: HTMLElement, foot: HTMLElement): void {
+  let raf = 0;
+  const fit = () => {
+    raf = 0;
+    if (!left.isConnected) return;
+    delete foot.dataset.fit;
+    const over = () => foot.getBoundingClientRect().bottom > left.getBoundingClientRect().bottom + 0.5 || foot.scrollWidth > foot.clientWidth + 0.5;
+    if (foot.childElementCount && over()) foot.dataset.fit = 'icons';
+  };
+  const schedule = () => {
+    if (!raf) raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fit) : (setTimeout(fit, 16) as unknown as number);
+  };
+  if (typeof ResizeObserver === 'function') {
+    let attached = false;
+    const ro = new ResizeObserver(() => {
+      if (!left.isConnected) {
+        // 타이틀을 다시 그려 이 열이 문서에서 빠졌으면 그만 본다(문서에 붙기 전의 첫 알림은 건너뛴다)
+        if (attached) ro.disconnect();
+        return;
+      }
+      attached = true;
+      schedule();
+    });
+    ro.observe(left);
+  } else if (typeof window !== 'undefined') {
+    const onResize = () => (left.isConnected ? schedule() : window.removeEventListener('resize', onResize));
+    window.addEventListener('resize', onResize);
+    schedule();
+  }
+  if (typeof document !== 'undefined') void document.fonts?.ready?.then(schedule);
+}
+
 export function buildTitle(o: TitleOptions): HTMLElement {
   const scr = el('div', `title-screen${o.keyVisual ? ' kv' : ''}`);
   scr.dataset.noadvance = '';
@@ -253,19 +317,20 @@ export function buildTitle(o: TitleOptions): HTMLElement {
 
   const foot = el('div', 'title-foot');
   foot.setAttribute('aria-label', '엔딩');
-  // 배지 수(screens.css: 3개면 좁은 가로 화면에서 '엔딩' 글자를 보이지 않게 줄여 한 줄에 둔다. 읽기는 그대로 'OO 엔딩')
+  // 배지 수(보이는 엔딩 수: 처음 4 → 코하루 엔딩을 본 뒤 6 → 네 사람 엔딩까지 8). 좁은 화면 배치는 screens.css 가 이 값으로 고른다
   foot.dataset.n = String(o.endings.length);
+  // 같은 루트의 두 결말(축제 → 일상)은 한 묶음(.end-pair)으로 놓아 줄이 바뀌어도 둘이 떨어지지 않게 한다
+  let pair: HTMLElement | null = null;
   for (const e of o.endings) {
-    const b = el('span', `badge${e.reached ? ' got' : ''}`);
-    b.append(e.name, el('span', 'bw', ' 엔딩'));
-    b.dataset.ending = e.id;
-    b.dataset.reached = e.reached ? '1' : '0';
-    b.title = e.reached ? `「${e.title}」` : '아직 보지 못한 엔딩';
-    if (e.reached) b.style.setProperty('--c', (ROUTE_COLORS[e.route] ?? ROUTE_COLORS.group).c1);
-    foot.append(b);
+    if (!pair || pair.dataset.route !== e.route) {
+      pair = el('span', 'end-pair');
+      pair.dataset.route = e.route;
+      foot.append(pair);
+    }
+    pair.append(endingBadge(e));
   }
-
   left.append(logo(o.title), sub, menu, foot);
+  watchFootFit(left, foot);
   if (art) scr.append(art);
   scr.append(el('div', 'sunlight'), el('div', 'leftveil'), heroines);
   // 빛망울은 늘 만들고, 설정에서 끄면 CSS([data-particles='0'] .motes)가 숨긴다

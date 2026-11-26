@@ -26,10 +26,10 @@
  *  - 추억 앨범(타이틀 시트의 탭)의 감상 화면은 시트 위에 겹친 오버레이다. 키 입력은 맨 위 오버레이의 onKey 가 먼저 받고
  *    (←/→ 넘기기 등), 클릭은 오버레이 안에서 전파를 멈춘다. 닫으면 포커스는 연 칸 → 시트를 닫으면 [추억 앨범]으로 돌아간다.
  */
-import type { CgId, CharId, ChoiceOption, ChoiceStep, EndingId, GameState, HeroineId, SayStep, StageState, Story } from '../engine/types';
-import { HIDDEN_HEROINES, isHeroineId } from '../engine/types';
+import type { CgId, CharId, ChoiceOption, ChoiceStep, EndingId, GameState, HeroineId, RouteId, SayStep, StageState, Story } from '../engine/types';
+import { GROUP_ROUTE, HIDDEN_HEROINES, isHeroineId } from '../engine/types';
 import { advance, choose, findStep, newGameState, pushLog, settle, StoryError, visibleOptions, type StageEvent, type StepResult } from '../engine/runner';
-import { KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotDurability, type SlotId } from '../engine/save';
+import { isGlobalRecordKey, KEY_PREFIX, SaveManager, type LoadResult, type SaveSummary, type SlotDurability, type SlotId } from '../engine/save';
 import { autoDelayMs, charsPerSecond, DEFAULT_SETTINGS, loadSettings, saveSettings, textScaleFactor, type Settings } from '../engine/settings';
 import type { KeyValueStore } from '../engine/storage';
 import { AudioManager } from '../engine/audio';
@@ -71,7 +71,7 @@ import {
   type PreloadKind,
   type PreloadResolver,
 } from './screens/preload';
-import { medalHeroines, reachedHeroines, titleEndings } from './reveal';
+import { endingMedals, reachedHeroines, titleEndings } from './reveal';
 import { renderProfile } from './render-profile';
 import { buildSaveLoad, type SaveLoadView, type SlotPage } from './screens/saveload';
 import { buildSettings, type CfgCat } from './screens/settings';
@@ -101,6 +101,11 @@ export interface GameContent {
    * 이번 플레이에서 해금되면(해금 플래그 true·그 루트 확정) 나머지 대기열에 더한다
    */
   hiddenImageUrls?(heroine: HeroineId): string[];
+  /**
+   * 그 히든 히로인이 그려진 이벤트 CG 원본 주소(코하루: kh_* 와 여덟 엔딩 확장 6장, cg.ts KOHARU_DRAWN_CGS).
+   * 해금되지 않은 플레이로 바뀌면 미리 불러오기 대기열에서 뺀다. 없으면 앨범 목록의 hidden·route 로 어림한다
+   */
+  hiddenCgUrls?(heroine: HeroineId): string[];
   titleSprites: Array<{ char: CharId; outfit: string; hair: string; expr: string }>;
   /** 아직 임시 에셋인 분류를 알리는 짧은 문구(예: '임시 배경·음악'). 모두 최종이면 null */
   placeholderNote: string | null;
@@ -276,6 +281,10 @@ export class Game {
   private unlockFlagMap: Map<HeroineId, string> | null = null;
   /** 미리 불러오기가 마지막으로 본 플레이에서 해금돼 있던 히든 히로인(전용 그림을 나머지 대기열에 넣음) */
   private hiddenQueued = new Set<HeroineId>();
+  /** 루트 전용 CG 주소 → 그 루트(routeOnlyCgUrls 가 한 번 만든다) */
+  private routeOnlyCgs: Map<string, RouteId> | null = null;
+  /** 날짜 찾기(dateOf)가 쓰는 앞 장면 지도 */
+  private predsCache: Map<string, string[]> | null = null;
 
   constructor(mount: HTMLElement, content: GameContent, store: KeyValueStore) {
     this.c = content;
@@ -1663,15 +1672,17 @@ export class Game {
     // 같은 탭에서는 이 탭에만 있는 최신 진행을 이어 간다(BrowserStore.get 이 메모리 값을 먼저 본다). 그 사실을 작게 표시
     const autoTabOnly = hasAuto && !this.saves.slotPersisted('auto');
     const album = this.hasAlbum() ? this.albumCount() : null;
-    // 엔딩 배지: 기본 히로인 엔딩은 늘, 히든 히로인 엔딩은 도달한 뒤에만(reveal.ts)
+    // 엔딩 배지(reveal.ts): 아카네·히나의 축제·일상 결말은 늘(못 본 것은 '???'), 코하루·네 사람의 두 결말은 그 루트의 엔딩에
+    // 하나라도 도달한 뒤에만. 본 배지는 '아카네 · 축제'처럼 루트 이름과 갈래로 같은 루트의 두 결말을 구별한다
     const endings = titleEndings(Object.values(this.story.endings), reached).map((e) => ({
       id: e.id,
       route: e.route,
+      kind: e.kind,
       name: routeName(e.route, (h) => this.c.heroineNames[h]),
       reached: reached.has(e.id),
       title: this.t(e.title),
     }));
-    const sig = JSON.stringify([endings.map((e) => e.reached), hasAuto, autoDate, autoTabOnly, album]);
+    const sig = JSON.stringify([endings.map((e) => [e.id, e.reached]), hasAuto, autoDate, autoTabOnly, album]);
     if (this.screenEl && sig === this.titleSig) return;
     this.titleSig = sig;
     const version = `${this.c.buildLabel}${this.c.placeholderNote ? ` · ${this.c.placeholderNote}` : ''}`;
@@ -1725,7 +1736,8 @@ export class Game {
    * 전역 기록(엔딩·본 CG)이나 저장 칸이 바뀌면 떠 있는 타이틀과 열린 저장·불러오기 목록을 다시 그린다.
    */
   private onStoreChanged(key: string | null) {
-    const global = key === null || key === `${KEY_PREFIX}global`;
+    // 전역 기록은 세 키(ashita.global · .ext · .v2)에 나뉘어 있다: 어느 키가 바뀌어도 다시 읽는다(save.ts isGlobalRecordKey)
+    const global = isGlobalRecordKey(key);
     const slot = key === null || key.startsWith(`${KEY_PREFIX}save.`);
     if (!global && !slot) return;
     if (global) this.saves.syncFromStore();
@@ -1789,6 +1801,21 @@ export class Game {
     if (scene) {
       const hit = scan(scene.steps, loc ? loc.index : scene.steps.length - 1);
       if (hit) return hit;
+      // 이 장면으로 들어오는 장면(jump·routeBranch)을 가까운 것부터. 대본 순서만 보면 같은 루트의 다른 결말 갈래
+      // (일상 쪽 od* 앞의 축제 쪽 o5~o7)나 다른 판(넷·셋)의 날짜를 잘못 집을 수 있다
+      const preds = this.scenePreds();
+      const seen = new Set([scene.id]);
+      const queue = [scene.id];
+      while (queue.length) {
+        for (const p of preds.get(queue.shift()!) ?? []) {
+          if (seen.has(p)) continue;
+          seen.add(p);
+          const s = this.story.scenes[p];
+          const h = s ? scan(s.steps, s.steps.length - 1) : null;
+          if (h) return h;
+          queue.push(p);
+        }
+      }
       // 대본 순서상 앞 장면(공통 + 같은 루트)
       const ids = Object.keys(this.story.scenes);
       for (let k = ids.indexOf(scene.id) - 1; k >= 0; k--) {
@@ -1807,6 +1834,25 @@ export class Game {
     return null;
   }
 
+  /** 장면 id → 그 장면으로 jump·routeBranch 하는 장면 id(대본 순서). 한 번 만들어 둔다 */
+  private scenePreds(): Map<string, string[]> {
+    if (this.predsCache) return this.predsCache;
+    const m = new Map<string, string[]>();
+    const add = (to: string, from: string) => {
+      const list = m.get(to) ?? [];
+      if (!list.includes(from)) list.push(from);
+      m.set(to, list);
+    };
+    for (const sc of Object.values(this.story.scenes)) {
+      for (const st of sc.steps) {
+        if (st.t === 'jump') add(st.scene, sc.id);
+        else if (st.t === 'routeBranch') for (const to of Object.values(st.scenes)) if (to) add(to, sc.id);
+      }
+    }
+    this.predsCache = m;
+    return m;
+  }
+
   private onNewGame() {
     if (this.saves.exists('auto')) {
       void this.ask(
@@ -1821,28 +1867,35 @@ export class Game {
     this.setMode('ending');
     this.hideScreen();
     const def = this.story.endings[id];
+    const endings = Object.values(this.story.endings);
     const reached = new Set(this.saves.endingsReached());
     const stage = state?.stage;
     const bg = stage?.bg ?? 'black';
     const date = state ? this.dateOf(state) : null;
-    // 루트 이름(히든 루트는 '네 사람'). 정식 엔딩 화면(일상 쪽·네 사람 표시)은 화면 담당이 정한다
-    const name = routeName(def.route, (h) => this.c.heroineNames[h]);
+    const nameOf = (r: RouteId) => routeName(r, (h) => this.c.heroineNames[h]);
+    // 루트 이름(히든 루트는 '네 사람'). 날짜를 못 찾으면 '아카네와 함께' · '네 사람과 함께'
+    const name = nameOf(def.route);
     const caption = date ? (date.place ? `${date.md}, ${date.place}` : date.md) : `${withJosa(name, '와')} 함께`;
+    // 메달·분모: 보이는 루트·엔딩만(reveal.ts endingMedals). 지금 엔딩은 기록 전이어도 도달로 센다
+    const progress = endingMedals(endings, reached, id);
     const scr = buildEnding({
       id,
       route: def.route,
-      heroineName: name,
+      kind: def.kind,
+      name,
       title: this.t(def.title),
       bgUrl: this.c.bgUrl(bg),
       bgColor: this.c.bgColor(bg),
       photo: this.endingPhoto(id, stage),
       caption,
-      // 메달: 기본 히로인 + 도달했거나 지금 엔딩인 히든 히로인(reveal.ts)
-      medals: medalHeroines(Object.values(this.story.endings), reached, def.route).map((h) => ({
-        heroine: h,
-        name: this.c.heroineNames[h],
-        reached: h === def.route || Object.values(this.story.endings).some((e) => e.route === h && reached.has(e.id)),
+      medals: progress.medals.map((m) => ({
+        route: m.route,
+        name: nameOf(m.route),
+        reached: m.reached,
+        endings: m.endings.map((x) => ({ id: x.ending.id, kind: x.ending.kind, reached: x.reached, title: this.t(x.ending.title) })),
       })),
+      got: progress.got,
+      total: progress.total,
       onTitle: () => this.showTitle(),
     });
     this.root.insertBefore(scr, this.overlayRoot);
@@ -2507,20 +2560,46 @@ export class Game {
         this.preloader.drop(this.hiddenArtUrls(h));
       }
     }
+    // 루트 전용 CG(end_group_*): 이번 플레이의 루트가 그 루트가 아니면(타이틀에서 네 사람 루트 [이어하기] 위치로 세웠다가
+    // 새 게임·다른 저장을 불러온 경우 등) 앞서 대기열에 들어간 것을 뺀다
+    const route = known?.route ?? null;
+    const stale = [...this.routeOnlyCgUrls()].filter(([, r]) => r !== route).map(([u]) => u);
+    if (stale.length) this.preloader.drop(stale);
   }
 
   /**
-   * 해금되지 않은 플레이로 바뀔 때 대기열에서 뺄 그 히든 히로인 그림: 전용 그림(hiddenImageUrls) + 숨은 CG(앨범 목록의 hidden,
-   * 그 루트이거나 공통). CG 는 게임 전체 그림에 없고 타이틀의 [이어하기] 위치 기준 가까운 묶음으로만 들어온다
+   * 해금되지 않은 플레이로 바뀔 때 대기열에서 뺄 그 히든 히로인 그림: 전용 그림(hiddenImageUrls) + 그 인물이 그려진 CG
+   * (hiddenCgUrls: 코하루는 kh_* 와 group_ice_four·group_frog·group_rain·end_koharu_coin·end_group_*. 이름 접두에 기대지 않는다).
+   * CG 는 게임 전체 그림에 없고 타이틀의 [이어하기] 위치 기준 가까운 묶음으로만 들어온다.
+   * hiddenCgUrls 가 없으면 앨범 목록의 hidden CG 중 공통·그 루트·히든 루트(네 사람) 것으로 어림한다
    */
   private hiddenArtUrls(h: HeroineId): string[] {
     const out = [...(this.c.hiddenImageUrls?.(h) ?? [])];
-    for (const e of this.c.cgCatalog ?? []) {
-      if (!e.hidden || (e.route !== null && e.route !== h)) continue;
-      const u = this.c.cgUrl?.(e.id);
-      if (u) out.push(u);
+    if (this.c.hiddenCgUrls) out.push(...this.c.hiddenCgUrls(h));
+    else {
+      for (const e of this.c.cgCatalog ?? []) {
+        if (!e.hidden || (e.route !== null && e.route !== h && e.route !== GROUP_ROUTE)) continue;
+        const u = this.c.cgUrl?.(e.id);
+        if (u) out.push(u);
+      }
     }
     return out;
+  }
+
+  /**
+   * 그 루트에서만 쓰는 CG 주소(앨범 목록에서 루트가 히든 루트 'group' 인 그림 = end_group_*. 검증기 routeOnlyAssets 가
+   * 그 루트 경로에서만 실행됨을 확인한다). 이번 플레이의 루트가 그 루트로 확정되기 전에는 미리 받지 않는다
+   */
+  private routeOnlyCgUrls(): Map<string, RouteId> {
+    if (this.routeOnlyCgs) return this.routeOnlyCgs;
+    const m = new Map<string, RouteId>();
+    for (const e of this.c.cgCatalog ?? []) {
+      if (e.route !== GROUP_ROUTE) continue;
+      const u = this.c.cgUrl?.(e.id);
+      if (u) m.set(u, e.route);
+    }
+    this.routeOnlyCgs = m;
+    return m;
   }
 
   /**
@@ -2541,7 +2620,13 @@ export class Game {
     };
     try {
       // 지금 장면 나머지 + 바로 다음 장면(지금 상태로 갈래·해금·루트를 판정. 선택지가 떠 있으면 보이는 옵션마다)
-      const items: PreloadItem[] = nearbyImages(this.story, sceneId, stepId, stage, known, r);
+      const routeOnly = this.routeOnlyCgUrls();
+      const route = known?.route ?? null;
+      // 루트 전용 CG(end_group_*)는 이번 플레이의 루트가 그 루트로 확정된 뒤에만(시뮬레이션이 미리 정한 루트로는 받지 않는다)
+      const items: PreloadItem[] = nearbyImages(this.story, sceneId, stepId, stage, known, r).filter((it) => {
+        const need = routeOnly.get(it.url);
+        return need === undefined || need === route;
+      });
       const rank = new Map<string, number>();
       /** 처음 쓰이는 곳까지의 거리(당김 없이). 아직 고르지 않은 선택지 뒤에서만 쓰이는 그림(branch)은 넣지 않는다 */
       const dist = new Map<string, number>();

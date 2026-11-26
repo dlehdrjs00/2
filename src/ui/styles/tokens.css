@@ -101,6 +101,11 @@
   --me-1: #2c69ab;
   --me-2: #5c9bd9;
   --me-soft: #e6f1fc;
+  /* 히든 루트(네 사람): 소우타 색을 그대로 가리킨다. 세 히로인 색(빨강·분홍·민트)과 색상이 겹치지 않고, 흰 글자 5.6:1
+   * (근거는 src/ui/screens/common.ts ROUTE_COLORS). 루트 색을 바꿀 때는 이 세 줄만 고친다 */
+  --group-1: var(--me-1);
+  --group-2: var(--me-2);
+  --group-soft: var(--me-soft);
   --npc-1: #56667f;
   --npc-2: #7d8ca3;
   --npc-soft: #eef1f6;

@@ -29,7 +29,7 @@ import { ROUTES } from '../../engine/types';
 import { cssUrl, el } from '../dom';
 import { ico } from '../icons';
 import { isHiddenRoute, revealedHeroines, visibleCatalog } from '../reveal';
-import { ROUTE_COLORS, prefersReducedMotion, routeName } from './common';
+import { prefersReducedMotion, routeColors, routeName } from './common';
 import type { SheetView } from './sheet';
 
 export interface AlbumEntry {
@@ -157,7 +157,7 @@ export function buildAlbum(o: AlbumOptions): AlbumView {
     const sec = el('section', 'album-group');
     sections.push(sec);
     sec.dataset.route = g.route ?? 'common';
-    const colors = g.route ? ROUTE_COLORS[g.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
+    const colors = routeColors(g.route);
     sec.style.setProperty('--c1', colors.c1);
     sec.style.setProperty('--c2', colors.c2);
     const name = groupLabel(g.route, o.heroineName);
@@ -391,7 +391,7 @@ export function buildViewer(o: ViewerOptions): ViewerPanel {
     const my = ++token;
     p.dataset.cg = item.id;
     who.textContent = item.route ? routeName(item.route, o.heroineName) : '공통';
-    const colors = item.route ? ROUTE_COLORS[item.route] : { c1: 'var(--npc-1)', c2: 'var(--npc-2)' };
+    const colors = routeColors(item.route);
     who.style.setProperty('--c1', colors.c1);
     who.style.setProperty('--c2', colors.c2);
     title.textContent = item.title;

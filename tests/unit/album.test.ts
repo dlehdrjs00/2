@@ -1,10 +1,11 @@
 /** 추억 앨범 목록 모델: 루트별 묶음·순서·모은 수·감상 순서(끝에서 처음으로) + 히든 히로인·히든 루트 공개 규칙(reveal.ts) */
 import { describe, expect, it } from 'vitest';
 import { albumModel, groupLabel, wrapIndex, type AlbumEntry } from '../../src/ui/screens/album';
-import { medalHeroines, reachedHeroines, revealedHeroines, titleEndings, visibleCatalog } from '../../src/ui/reveal';
+import { endingMedals, reachedHeroines, revealedHeroines, titleEndings, visibleCatalog, visibleEndings, visibleRoutes } from '../../src/ui/reveal';
+import { ENDING_KIND_NAMES, GROUP_ROUTE_NAME, ROUTE_COLORS, endingLabel, routeColors, routeName } from '../../src/ui/screens/common';
 import { CG_ORDER, CGS, ENDING_CG, KOHARU_DRAWN_CGS } from '../../src/story/cg';
 import { STORY } from '../../src/story';
-import type { EndingId } from '../../src/engine/types';
+import type { EndingDef, EndingId, HeroineId, RouteId } from '../../src/engine/types';
 
 // main.ts 의 cgCatalog 와 같은 모양(hidden 포함)
 const catalog: AlbumEntry[] = CG_ORDER.map((id) => ({ id, title: CGS[id].title, route: CGS[id].route, hidden: CGS[id].hidden === true }));
@@ -221,13 +222,121 @@ describe('히든 히로인(코하루)·히든 루트(네 사람): 관람 전에�
     expect(count(['kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date'], ['koharu'])).toBe('6 / 20');
   });
 
-  it('엔딩 화면 메달: 코하루 메달은 도달했거나 지금 그 루트 엔딩일 때만', () => {
-    expect(medalHeroines(endings, [], 'osana')).toEqual(['osana', 'tenko']);
-    expect(medalHeroines(endings, ['osana', 'tenko'], 'tenko')).toEqual(['osana', 'tenko']);
+  it('엔딩 화면 메달(endingMedals): 보이는 루트마다 하나, 코하루·네 사람 메달은 도달했거나 지금 그 루트 엔딩일 때만', () => {
+    const routes = (r: ReturnType<typeof endingMedals>) => r.medals.map((m) => m.route);
+    expect(routes(endingMedals(endings, [], 'osana'))).toEqual(['osana', 'tenko']);
+    expect(routes(endingMedals(endings, ['osana', 'tenko'], 'tenko'))).toEqual(['osana', 'tenko']);
     // 처음 코하루 엔딩에 닿은 순간(markEnding 전이라도)
-    expect(medalHeroines(endings, [], 'koharu')).toEqual(['osana', 'tenko', 'koharu']);
+    expect(routes(endingMedals(endings, [], 'koharu'))).toEqual(['osana', 'tenko', 'koharu']);
     // 한 번 도달한 뒤에는 다른 엔딩 화면에서도(일상 쪽 결말도 같은 루트)
-    expect(medalHeroines(endings, ['koharu'], 'osana')).toEqual(['osana', 'tenko', 'koharu']);
-    expect(medalHeroines(endings, ['koharu_daily'], 'osana')).toEqual(['osana', 'tenko', 'koharu']);
+    expect(routes(endingMedals(endings, ['koharu'], 'osana'))).toEqual(['osana', 'tenko', 'koharu']);
+    expect(routes(endingMedals(endings, ['koharu_daily'], 'osana'))).toEqual(['osana', 'tenko', 'koharu']);
+    // 네 사람 엔딩을 처음 보는 순간: 네 사람 메달만 더해진다(코하루 엔딩을 본 적 없으면 코하루 메달은 없다)
+    expect(routes(endingMedals(endings, [], 'group_daily'))).toEqual(['osana', 'tenko', 'group']);
+    expect(routes(endingMedals(endings, ['koharu'], 'group_festival'))).toEqual(['osana', 'tenko', 'koharu', 'group']);
+  });
+});
+
+describe('엔딩 8개: 공개 정책·분모·배지 문구(설계 계약 7·9절)', () => {
+  const ids = (xs: readonly { id: EndingId }[]) => xs.map((e) => e.id);
+  const BASE4: EndingId[] = ['osana', 'osana_daily', 'tenko', 'tenko_daily'];
+  const KOHARU2: EndingId[] = ['koharu', 'koharu_daily'];
+  const GROUP2: EndingId[] = ['group_festival', 'group_daily'];
+  const hiddenTrace = (xs: readonly { route: RouteId }[]) => xs.filter((e) => e.route === 'koharu' || e.route === 'group');
+  const name = (h: HeroineId) => ({ osana: '아카네', tenko: '히나', koharu: '코하루' })[h];
+
+  it('이야기의 엔딩 정의: 8개, 루트마다 축제·일상 하나씩(엔딩=히로인 1:1 가정이 없다)', () => {
+    expect(endings).toHaveLength(8);
+    for (const r of ['osana', 'tenko', 'koharu', 'group'] as RouteId[]) {
+      expect(endings.filter((e) => e.route === r).map((e) => e.kind).sort(), r).toEqual(['daily', 'festival']);
+    }
+  });
+
+  it('아무것도 보지 않았으면(미발견 플레이어): 공개 목록·메달·분모에 코하루·네 사람 흔적이 0, 분모 4', () => {
+    expect(ids(titleEndings(endings, []))).toEqual(BASE4);
+    expect(hiddenTrace(titleEndings(endings, []))).toEqual([]);
+    expect(visibleRoutes(endings, [])).toEqual(['osana', 'tenko']);
+    const r = endingMedals(endings, ['osana'], 'osana');
+    expect([r.got, r.total]).toEqual([1, 4]);
+    expect(r.medals.flatMap((m) => m.endings.map((x) => x.ending.route)).filter((x) => x === 'koharu' || x === 'group')).toEqual([]);
+    // 아카네 두 결말을 다 본 상태(b): 여전히 4
+    const both = endingMedals(endings, ['osana', 'osana_daily'], 'osana_daily');
+    expect([both.got, both.total]).toEqual([2, 4]);
+    expect(both.medals[0].endings.map((x) => [x.ending.id, x.reached])).toEqual([
+      ['osana', true],
+      ['osana_daily', true],
+    ]);
+    expect(both.medals[1].reached).toBe(false);
+  });
+
+  it('코하루 엔딩을 하나라도 본 뒤(또는 지금 그 엔딩 화면): 코하루 두 결말이 함께 보여 분모 6', () => {
+    expect(ids(titleEndings(endings, ['koharu']))).toEqual([...BASE4, ...KOHARU2]);
+    expect(ids(titleEndings(endings, ['koharu_daily']))).toEqual([...BASE4, ...KOHARU2]);
+    // 기록 전(지금 그 엔딩 화면)
+    const now = endingMedals(endings, [], 'koharu');
+    expect([now.got, now.total]).toEqual([1, 6]);
+    expect(now.medals[2].endings.map((x) => [x.ending.id, x.reached])).toEqual([
+      ['koharu', true],
+      ['koharu_daily', false],
+    ]);
+    expect(endingMedals(endings, ['koharu', 'tenko'], 'tenko').total).toBe(6);
+  });
+
+  it('네 사람 엔딩도 같은 규칙: 코하루·네 사람을 다 본 뒤 8, 네 사람만 봤으면 6(코하루 결말은 그 루트 엔딩을 본 뒤에만)', () => {
+    expect(ids(titleEndings(endings, ['koharu', 'group_festival']))).toEqual([...BASE4, ...KOHARU2, ...GROUP2]);
+    expect(endingMedals(endings, ['koharu', 'group_festival'], 'group_festival').total).toBe(8);
+    expect(ids(titleEndings(endings, ['group_daily']))).toEqual([...BASE4, ...GROUP2]);
+    expect(endingMedals(endings, [], 'group_daily').total).toBe(6);
+    const all = endingMedals(endings, Object.keys(STORY.endings) as EndingId[], 'group_daily');
+    expect([all.got, all.total]).toEqual([8, 8]);
+    expect(all.medals.map((m) => [m.route, m.endings.length, m.reached])).toEqual([
+      ['osana', 2, true],
+      ['tenko', 2, true],
+      ['koharu', 2, true],
+      ['group', 2, true],
+    ]);
+    // 지금 엔딩이 아닌 네 사람 엔딩을 기록 없이 보지는 않는다(타이틀)
+    expect(hiddenTrace(titleEndings(endings, ['osana', 'tenko', 'osana_daily', 'tenko_daily']))).toEqual([]);
+  });
+
+  it('순서는 루트(아카네 → 히나 → 코하루 → 네 사람) → 축제 → 일상, 모르는 루트의 엔딩은 숨긴다', () => {
+    const shuffled = [...endings].reverse();
+    expect(ids(visibleEndings(shuffled, Object.keys(STORY.endings) as EndingId[]))).toEqual([...BASE4, ...KOHARU2, ...GROUP2]);
+    const bogus = { id: 'bogus' as EndingId, route: 'nobody' as RouteId, kind: 'festival', title: 'x' } as EndingDef;
+    expect(ids(visibleEndings([...endings, bogus], ['bogus' as EndingId]))).toEqual(BASE4);
+  });
+
+  it('배지 문구: 같은 루트의 두 결말이 갈래 이름으로 구별되고(8개 모두 다름), 히든 루트 이름은 「네 사람」', () => {
+    const labels = endings.map((e) => endingLabel(e.route, e.kind, name));
+    expect(new Set(labels).size).toBe(8);
+    expect(endingLabel('osana', 'festival', name)).toBe('아카네 · 축제');
+    expect(endingLabel('osana', 'daily', name)).toBe('아카네 · 일상');
+    expect(endingLabel('group', 'daily', name)).toBe('네 사람 · 일상');
+    expect(routeName('group', name)).toBe(GROUP_ROUTE_NAME);
+    expect(ENDING_KIND_NAMES).toEqual({ festival: '축제', daily: '일상' });
+    for (const l of labels) expect(l).not.toMatch(/undefined|NaN/);
+  });
+
+  it('루트 색: 네 사람은 고유 토큰(--group-1·-2)으로 세 히로인 색과 다르고, 모르는 루트는 공통 색(TypeError 없음)', () => {
+    expect(ROUTE_COLORS.group).toEqual({ c1: 'var(--group-1)', c2: 'var(--group-2)' });
+    for (const h of ['osana', 'tenko', 'koharu'] as RouteId[]) expect(ROUTE_COLORS[h].c1).not.toBe(ROUTE_COLORS.group.c1);
+    expect(routeColors('nobody' as RouteId)).toEqual({ c1: 'var(--npc-1)', c2: 'var(--npc-2)' });
+    expect(routeColors(null)).toEqual({ c1: 'var(--npc-1)', c2: 'var(--npc-2)' });
+  });
+
+  it('앨범 총 장수: hidden CG 는 본 것만 센다(네 사람 그림 한 장을 보면 총 장수가 딱 1 늘고 「네 사람」 묶음이 생긴다)', () => {
+    const before = albumModel(catalog, BASE_IDS);
+    expect(before.total).toBe(14);
+    for (const id of HIDDEN_IDS) {
+      const m = albumModel(catalog, [...BASE_IDS, id]);
+      expect(m.total, id).toBe(15);
+      expect(m.order.filter((x) => x === id), id).toEqual([id]);
+    }
+    const g = albumModel(catalog, ['end_group_fireworks']);
+    expect(g.groups.map((x) => x.route)).toEqual(['osana', 'tenko', 'group', null]);
+    expect(g.groups[2].items.map((i) => [i.id, i.seen])).toEqual([['end_group_fireworks', true]]);
+    // 기존 기록(엔딩 3개·CG 17장)은 이름이 그대로라 그대로 열린다
+    const old = ['rain_osana', 'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date', 'polaroid_tenko'];
+    expect(albumModel(catalog, old, reachedHeroines(endings, ['osana', 'tenko', 'koharu'])).seen).toBe(old.length);
   });
 });

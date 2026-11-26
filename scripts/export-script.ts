@@ -180,11 +180,28 @@ for (const r of ROUTES) {
 w();
 if (report.paths.length) {
   const b = report.branching;
-  const endingsLine = ENDINGS.map((e) => `${endingName(e.id)} ${(b.endings as Record<string, number>)[e.id] ?? 0}`).join(' / ');
+  const num = (v: number) => v.toLocaleString('en-US');
+  const endingsLine = ENDINGS.map((e) => `${endingName(e.id)} ${num((b.endings as Record<string, number>)[e.id] ?? 0)}`).join(' / ');
+  const routesLine = ROUTES.map((r) => `${R[r]} ${num((b.routes as Record<string, number>)[r] ?? 0)}`).join(' / ');
+  // 경로 단위(결말 갈래 선택 포함)와 판정 단위(결말 갈래 선택 전 조합)를 섞지 않고 따로 적는다
   w(
-    `선택 조합 ${b.paths.toLocaleString('en-US')}개(보이는 옵션만) → 엔딩 ${endingsLine}. 초반 조합 ${b.earlyCombos}개 중 해금 ${b.unlockedEarlyCombos}개` +
-      ` (해금 경로 ${b.unlockedPaths} / 미해금 경로 ${b.lockedPaths}). 동점 처리 ${b.ties}회(해금 ${b.tiesUnlocked} / 미해금 ${b.tiesLocked}).`,
+    `선택 조합 ${num(b.paths)}개(보이는 옵션만, 결말 갈래 선택 포함) → 엔딩 ${endingsLine}. 초반 조합 ${b.earlyCombos}개 중 해금 ${b.unlockedEarlyCombos}개` +
+      ` (해금 경로 ${num(b.unlockedPaths)} / 미해금 경로 ${num(b.lockedPaths)}).`,
   );
+  w();
+  w(
+    `루트 판정 ${num(b.decisions)}회(결말 갈래 선택 전 조합, 해금 ${num(b.unlockedDecisions)} / 미해금 ${num(b.lockedDecisions)}) → ${routesLine}.` +
+      ` 그중 히든 루트(${R.group}, 세 사람 완전 동점) ${num(b.hidden)}회, 두 사람 동점 처리 ${num(b.ties)}회(해금 ${num(b.tiesUnlocked)} / 미해금 ${num(b.tiesLocked)}).`,
+  );
+  if (b.legacy) {
+    const l = b.legacy;
+    const lr = ROUTES.filter((r) => (l.routes as Record<string, number>)[r]).map((r) => `${R[r]} ${num((l.routes as Record<string, number>)[r])}`).join(' / ');
+    w();
+    w(
+      `구저장 발견 경로(옛 \`c8_bakery\`·\`c9_puzzle\`·\`c10_window\` 에 해금 상태로 들어온 진행 중 저장, 옛 +3·옛 판정): 판정 ${num(l.decisions)}회 → ${lr}.` +
+        ` 히든 루트 ${num(l.hidden)}회, 동점 처리 ${num(l.ties)}회(그중 세 명 동점 ${num(l.allTied)}회는 옛 규칙대로 최근 선택).`,
+    );
+  }
   w();
   // 초반 조합별: 해금 여부·시작 점수와 그 뒤 후반 27조합의 엔딩 분포
   const groups = new Map<string, (typeof report.paths)[number][]>();

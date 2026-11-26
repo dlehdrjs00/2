@@ -3,32 +3,55 @@
  * 진입점: 스토리 데이터 + 에셋 매니페스트 + 설정을 엔진 UI 에 연결한다.
  */
 import './ui/styles.css';
-import type { BgId, BgmId, CharId, Expr, Hair, HeroineId, Outfit, SfxId } from './engine/types';
+import type { BgId, BgmId, CgId, CharId, Expr, Hair, HeroineId, Outfit, SfxId } from './engine/types';
 import { HIDDEN_HEROINES } from './engine/types';
 import { Game, type GameContent } from './ui/game';
 import { openStore } from './engine/storage';
 import { STORY } from './story';
 import { BACKGROUNDS, BGM, SFX, SPRITE_SETS, allSpritePaths, spriteFile, spritePath } from './story/assets';
-import { CGS, CG_ORDER, ENDING_CG, KEY_VISUAL } from './story/cg';
+import { CGS, CG_ORDER, ENDING_CG, KEY_VISUAL, KOHARU_DRAWN_CGS } from './story/cg';
 import { BUILD_LABEL, GAME_SUBTITLE, GAME_TITLE, NAMES, SPEAKER_NAMES, TEXT_VARS } from './story/config';
 
 const BASE = import.meta.env.BASE_URL;
 const url = (p: string) => BASE + p;
 
 /**
- * 히든 히로인 전용 배경의 id 접두(에셋 계약: 코하루 전용 배경·CG 는 'kh_'). 그 인물 스프라이트와 함께
+ * 히든 히로인 전용 배경의 id 접두(에셋 계약: 코하루 전용 배경은 'kh_'). 그 인물 스프라이트와 함께
  * 해금되지 않은 플레이·타이틀의 '게임 전체 그림' 미리 받기에서 뺀다(hiddenImageUrls 로 해금 뒤에만 받는다)
  */
 const HIDDEN_BG_PREFIX: Partial<Record<HeroineId, string>> = { koharu: 'kh_' };
 
-/** 그 히든 히로인 전용 그림(public/ 기준 경로): 스프라이트 전부 + 전용 배경 */
+/**
+ * 그 히든 히로인이 그려진 이벤트 CG(계약 id 목록. kh_ 접두가 없는 여덟 엔딩 확장 6장 포함). 미리 불러오기 대기열에서
+ * 해금 전에 빼는 기준이다(CG 는 게임 전체 그림에 넣지 않고, 가까운 장면 시뮬레이션으로만 받는다)
+ */
+const HIDDEN_DRAWN_CGS: Partial<Record<HeroineId, readonly CgId[]>> = { koharu: KOHARU_DRAWN_CGS };
+
+/**
+ * 그 히로인 루트 장면에서만 쓰는 배경(대본에서 찾는다): 접두를 지키지 않은 전용 배경도 놓치지 않게 접두와 함께 쓴다.
+ * 공통·다른 루트 장면에서 한 번이라도 쓰면 넣지 않는다
+ */
+function routeOnlyBackgrounds(h: HeroineId): Set<string> {
+  const mine = new Set<string>();
+  const shared = new Set<string>();
+  for (const scene of Object.values(STORY.scenes)) {
+    for (const st of scene.steps) {
+      if (st.t !== 'bg') continue;
+      (scene.route === h ? mine : shared).add(st.bg);
+    }
+  }
+  return new Set([...mine].filter((id) => !shared.has(id)));
+}
+
+/** 그 히든 히로인 전용 그림(public/ 기준 경로): 스프라이트 전부 + 전용 배경(접두 또는 그 루트 장면에서만 쓰는 배경) */
 function hiddenImagePaths(h: HeroineId): string[] {
   const out: string[] = [];
   const set = SPRITE_SETS[h];
   if (set) for (const look of set.looks) for (const e of set.expressions) out.push(spriteFile(set, look.outfit, look.hair, e));
   const prefix = HIDDEN_BG_PREFIX[h];
-  if (prefix) {
-    for (const [id, b] of Object.entries(BACKGROUNDS)) if (id.startsWith(prefix) && b.src) out.push(b.src);
+  const only = routeOnlyBackgrounds(h);
+  for (const [id, b] of Object.entries(BACKGROUNDS)) {
+    if (b.src && ((prefix && id.startsWith(prefix)) || only.has(id))) out.push(b.src);
   }
   return out;
 }
@@ -79,6 +102,7 @@ const content: GameContent = {
       .filter((p) => !HIDDEN_PATHS.has(p))
       .map(url),
   hiddenImageUrls: (h) => hiddenImagePaths(h).map(url),
+  hiddenCgUrls: (h) => (HIDDEN_DRAWN_CGS[h] ?? []).map((id) => url(CGS[id].src)),
   cgUrl: (id) => {
     const a = (CGS as Record<string, { src: string } | undefined>)[id];
     return a ? url(a.src) : null;

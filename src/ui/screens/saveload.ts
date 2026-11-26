@@ -20,7 +20,7 @@ import { MANUAL_SLOTS, type SaveManager, type SlotId, type SlotPeek } from '../.
 import type { HeroineId, StageState } from '../../engine/types';
 import { el, formatSlotDate } from '../dom';
 import { ico } from '../icons';
-import { ROUTE_COLORS, routeName } from './common';
+import { routeColors, routeName } from './common';
 import type { SheetView } from './sheet';
 
 export type SlotPage = 'q' | 1 | 2 | 3 | 4 | 5;
@@ -183,9 +183,10 @@ export function buildSaveLoad(o: SaveLoadOptions): SaveLoadView {
       thumb.append(no);
       const route = s?.route ?? null;
       if (route) {
-        // 히든 루트('group')는 '네 사람 루트'와 고유 색(ROUTE_COLORS). 모르는 값이면 공통 색으로 둔다(TypeError 방지)
+        // 히든 루트('group')는 '네 사람 루트'와 고유 색(ROUTE_COLORS: --group-1). 같은 루트의 축제·일상 갈래 저장은 루트 이름이
+        // 같다(갈래는 루트 확정 뒤의 선택이라 루트 배지로 나누지 않는다). 모르는 값이면 공통 색(TypeError 방지)
         const rName = routeName(route, o.heroineName);
-        const rColor = (ROUTE_COLORS[route] ?? ROUTE_COLORS.group).c1;
+        const rColor = routeColors(route).c1;
         const r = el('span', 'slot-route', `${rName} 루트`);
         r.style.setProperty('--r', rColor);
         thumb.append(r);

@@ -2549,7 +2549,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 10px;
+  gap: 8px 9px;
   margin-top: auto;
   padding-top: 10px;
   font: 500 16px/1.3 var(--font-ui);
@@ -2558,9 +2558,9 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.35em;
   min-height: 32px;
-  padding: 0 0.85em 0 0.7em;
+  padding: 0 0.75em 0 0.6em;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid #fff;
@@ -2584,18 +2584,44 @@
 .badge.got::before {
   background: var(--c);
 }
-/* 배지 3개(히든 엔딩에 도달한 뒤)가 메뉴 폭(46vw)에 한 줄로 들어가지 않는 좁은 가로 화면(667×375 에서 둘째 줄이 화면 밖으로
- * 밀려 잘리던 것): '엔딩' 글자는 보이지 않게만 하고(스크린리더는 'OO 엔딩'으로 읽음) 이름과 별만 남긴다. 글자 크기는 그대로 */
-@media (max-width: 900px) and (min-aspect-ratio: 1/1) {
-  .title-foot[data-n='3'] .badge .bw {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
+/* 같은 루트의 두 결말(축제 → 일상)은 한 묶음: 줄이 바뀌어도 두 배지가 떨어지지 않는다 */
+.title-foot .end-pair {
+  display: inline-flex;
+  gap: 5px;
+}
+/* 못 본 엔딩: '???'(읽기는 '아직 보지 못한 엔딩') */
+.badge .bq {
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+/* 배지 줄이 왼쪽 열 아래로 넘칠 때(title.ts watchFootFit: 좁고 낮은 가로 휴대폰에서 엔딩이 여럿일 때): 글자는 보이지 않게만
+ * 하고(읽기 이름은 그대로) 별만 남긴다. 본 엔딩은 루트 색 테·별, 못 본 엔딩은 회색 별. 글자 크기는 줄이지 않는다 */
+.title-foot[data-fit='icons'] {
+  gap: 6px 9px;
+}
+.title-foot[data-fit='icons'] .end-pair {
+  gap: 3px;
+}
+.title-foot[data-fit='icons'] .badge {
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+  gap: 0;
+}
+.title-foot[data-fit='icons'] .badge::before {
+  width: 1em;
+  height: 1em;
+}
+.title-foot[data-fit='icons'] .badge .bn,
+.title-foot[data-fit='icons'] .badge .bk,
+.title-foot[data-fit='icons'] .badge .bq {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .title-screen .ver {
   position: absolute;
@@ -2853,6 +2879,10 @@
   font: 600 clamp(16px, min(1.5vw, 3vh), 19px) / 1.3 var(--font-ui);
   color: #e6edfb;
 }
+/* '엔딩 n / m · 안내'가 좁은 화면에서 한 글자만 다음 줄로 떨어지지 않게(띄어쓰기에서만 줄바꿈) */
+.end-count {
+  word-break: keep-all;
+}
 .medal {
   display: inline-flex;
   align-items: center;
@@ -2865,20 +2895,24 @@
   color: #dfe7f7;
   white-space: nowrap;
 }
-.medal::before {
-  content: '';
-  width: 1em;
-  height: 1em;
-  background: rgba(255, 255, 255, 0.45);
-  -webkit-mask: var(--i-star) center / contain no-repeat;
-  mask: var(--i-star) center / contain no-repeat;
-}
 .medal.got {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.7);
   background: linear-gradient(90deg, var(--c1), var(--c2));
 }
-.medal.got::before {
+/* 메달 안 별 두 개: 그 루트의 축제·일상 결말 도달 표시(.pip[data-ending][data-reached]) */
+.medal .pips {
+  display: inline-flex;
+  gap: 0.15em;
+}
+.medal .pip {
+  width: 1em;
+  height: 1em;
+  background: rgba(255, 255, 255, 0.4);
+  -webkit-mask: var(--i-star) center / contain no-repeat;
+  mask: var(--i-star) center / contain no-repeat;
+}
+.medal .pip[data-reached='1'] {
   background: #fff3c4;
 }
 .ending-inner .btn.primary {
