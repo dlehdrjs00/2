@@ -24,8 +24,8 @@
  *   아직 고르지 않은 선택지 뒤의 해금 판정은 '해금 안 됨'으로 본다(그 갈래의 점수를 미리 셈하지 않는다). 그래서 해금되지 않은
  *   플레이에서는 히든 히로인 전용 그림(스프라이트·CG·배경)을 미리 받지 않고, 해금된 뒤에는 다음 장면 그림을 평소대로 받는다.
  */
-import type { CharId, CharState, GameState, HeroineId, StageState, Step, Story } from '../../engine/types';
-import { BASE_HEROINES, HEROINES, isHeroineId } from '../../engine/types';
+import type { CharId, CharState, GameState, HeroineId, RouteId, StageState, Step, Story } from '../../engine/types';
+import { BASE_HEROINES, GROUP_ROUTE, HEROINES, isHeroineId } from '../../engine/types';
 import { applyUnlock, evalCond, initialStage, routeCandidates, routeFor, visibleOptions } from '../../engine/runner';
 
 export interface PreloadResolver {
@@ -411,6 +411,29 @@ export class ImagePreloader {
   }
 }
 
+/**
+ * 루트 전용 CG 주소 → 그 루트. 앨범 목록에서 루트가 히든 루트('group', 네 사람 묶음)인 그림(end_group_*)이다
+ * (검증기 routeOnlyAssets 가 그 루트 경로에서만 실행됨을 확인한다). 히로인 루트 묶음 그림은 공통 장면(c6 우산 등)에서도
+ * 쓰므로 넣지 않는다
+ */
+export function routeOnlyCgUrls(catalog: ReadonlyArray<{ id: string; route: RouteId | null }>, cgUrl: (id: string) => string | null): Map<string, RouteId> {
+  const out = new Map<string, RouteId>();
+  for (const e of catalog) {
+    if (e.route !== GROUP_ROUTE) continue;
+    const u = cgUrl(e.id);
+    if (u) out.set(u, e.route);
+  }
+  return out;
+}
+
+/** 루트 전용 CG 는 이번 플레이의 루트(route: 실제 상태)가 그 루트로 확정됐을 때만 남긴다(시뮬레이션이 미리 정한 루트로는 받지 않는다) */
+export function dropRouteOnly<T extends { url: string }>(items: readonly T[], routeOnly: ReadonlyMap<string, RouteId>, route: RouteId | null): T[] {
+  return items.filter((it) => {
+    const need = routeOnly.get(it.url);
+    return need === undefined || need === route;
+  });
+}
+
 /** 미리 불러오기가 갈래를 판단할 때 쓰는 지금 상태(GameState 의 일부) */
 export type KnownState = Pick<GameState, 'points' | 'flags' | 'choices' | 'route'> & Partial<Pick<GameState, 'lastHeroine'>>;
 
@@ -722,8 +745,13 @@ export function sceneImages(
           break;
         case 'routeBranch': {
           const rt = effRoute(c);
-          for (const [h, id] of Object.entries(step.scenes) as Array<[HeroineId, string]>) {
-            if (rt ? rt === h : c.candidates ? c.candidates.includes(h) : BASE_HEROINES.includes(h) || heroineFlagOn(story, c.sim, h)) goNext(c, id);
+          // 확정 루트(실행기와 같은 판정 함수 routeFor 로 정한 것)가 있으면 그 장면만. 아직 고르지 않은 선택지 뒤라 루트를
+          // 모르면 후보 히로인만 따라간다(히든 루트 'group' 은 후보가 아니라 판정 전에는 따라가지 않는다: end_group_* 를 미리 받지 않음)
+          for (const [r, id] of Object.entries(step.scenes) as Array<[RouteId, string]>) {
+            const ok = rt
+              ? rt === r
+              : r !== GROUP_ROUTE && (c.candidates ? c.candidates.includes(r) : BASE_HEROINES.includes(r) || heroineFlagOn(story, c.sim, r));
+            if (ok) goNext(c, id);
           }
           done = true;
           break;

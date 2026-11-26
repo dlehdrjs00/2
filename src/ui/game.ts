@@ -59,12 +59,14 @@ import { buildLog } from './screens/log';
 import { buildConfirm, buildMenu, type AskMessage, type AskOptions, type MenuItem } from './screens/menu';
 import { albumModel, buildAlbum, buildViewer, type AlbumEntry, type AlbumView, type ViewerPanel } from './screens/album';
 import {
+  dropRouteOnly,
   HOLD_MAX_MS,
   heroineUnlocked,
   ImagePreloader,
   nearbyImages,
   preloadConcurrency,
   prefersDataSaving,
+  routeOnlyCgUrls,
   unlockFlags,
   type KnownState,
   type PreloadItem,
@@ -2586,20 +2588,10 @@ export class Game {
     return out;
   }
 
-  /**
-   * 그 루트에서만 쓰는 CG 주소(앨범 목록에서 루트가 히든 루트 'group' 인 그림 = end_group_*. 검증기 routeOnlyAssets 가
-   * 그 루트 경로에서만 실행됨을 확인한다). 이번 플레이의 루트가 그 루트로 확정되기 전에는 미리 받지 않는다
-   */
+  /** 루트 전용 CG(end_group_*) 주소 → 그 루트(preload.ts routeOnlyCgUrls, 한 번 만든다) */
   private routeOnlyCgUrls(): Map<string, RouteId> {
-    if (this.routeOnlyCgs) return this.routeOnlyCgs;
-    const m = new Map<string, RouteId>();
-    for (const e of this.c.cgCatalog ?? []) {
-      if (e.route !== GROUP_ROUTE) continue;
-      const u = this.c.cgUrl?.(e.id);
-      if (u) m.set(u, e.route);
-    }
-    this.routeOnlyCgs = m;
-    return m;
+    this.routeOnlyCgs ??= routeOnlyCgUrls(this.c.cgCatalog ?? [], (id) => this.c.cgUrl?.(id) ?? null);
+    return this.routeOnlyCgs;
   }
 
   /**
@@ -2620,13 +2612,8 @@ export class Game {
     };
     try {
       // 지금 장면 나머지 + 바로 다음 장면(지금 상태로 갈래·해금·루트를 판정. 선택지가 떠 있으면 보이는 옵션마다)
-      const routeOnly = this.routeOnlyCgUrls();
-      const route = known?.route ?? null;
       // 루트 전용 CG(end_group_*)는 이번 플레이의 루트가 그 루트로 확정된 뒤에만(시뮬레이션이 미리 정한 루트로는 받지 않는다)
-      const items: PreloadItem[] = nearbyImages(this.story, sceneId, stepId, stage, known, r).filter((it) => {
-        const need = routeOnly.get(it.url);
-        return need === undefined || need === route;
-      });
+      const items: PreloadItem[] = dropRouteOnly(nearbyImages(this.story, sceneId, stepId, stage, known, r), this.routeOnlyCgUrls(), known?.route ?? null);
       const rank = new Map<string, number>();
       /** 처음 쓰이는 곳까지의 거리(당김 없이). 아직 고르지 않은 선택지 뒤에서만 쓰이는 그림(branch)은 넣지 않는다 */
       const dist = new Map<string, number>();
@@ -2692,10 +2679,18 @@ export class Game {
     return { name, who, mono: false, char };
   }
 
-  /** 이름표 글자 → 화자 id(이름표 색). 이름 그대로이거나 '이름 · 문자' 형식이면 그 화자, 모르는 이름(익명 이름표)은 null */
+  /**
+   * 이름표 글자 → 화자 id(이름표 색). 이름 그대로이거나 '이름 · 문자' 형식이면 그 화자, 모르는 이름(익명 이름표)은 null.
+   * 아는 이름이 둘 이상 ' · ' 로 이어진 이름표('소우타 · 히나 · 코하루', 여럿이 한목소리 chorus)는 'chorus'
+   * (첫 이름의 인물 색으로 보이지 않게. 색은 네 사람 루트 색 --group-1)
+   */
   private speakerOfName(name: string): string | null {
     const names = Object.entries(this.c.speakerNames);
-    return names.find(([, v]) => v === name)?.[0] ?? names.find(([, v]) => name.startsWith(`${v} · `))?.[0] ?? null;
+    const exact = names.find(([, v]) => v === name)?.[0];
+    if (exact) return exact;
+    const known = name.split(' · ').filter((part) => names.some(([, v]) => v === part));
+    if (known.length >= 2) return 'chorus';
+    return names.find(([, v]) => name.startsWith(`${v} · `))?.[0] ?? null;
   }
 
   /**

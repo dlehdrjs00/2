@@ -1,13 +1,14 @@
 /**
  * 추억 앨범(이벤트 CG 갤러리, docs/UI_DESIGN.md 6.17) — 타이틀 시스템 시트의 탭 하나 + 전체 화면 감상(뷰어)
  *
- * 히든 히로인(reveal.ts): hidden CG 는 관람한 것만 칸·총 장수·썸네일·제목·묶음에 들어간다(관람 전에는 빈칸도 없음).
- * 히든 히로인 묶음은 보일 칸이 있을 때만 생기고, 이름은 heroineName 으로 쓴다.
+ * 히든 히로인·히든 루트(reveal.ts): hidden CG 는 관람한 것만 칸·총 장수·썸네일·제목·묶음에 들어간다(관람 전에는 빈칸도 없음).
+ * 코하루 묶음과 네 사람 묶음('group', 이름 「네 사람」·색 --group-1)은 보일 칸이 있을 때만 생긴다.
+ * 묶음 순서는 ROUTES(아카네 → 히나 → 코하루 → 네 사람), 공통은 맨 뒤. 처음 0 / 14, 모두 보면 26 / 26.
  *
  * 앨범 본문
  *   .panel-body.album[data-seen][data-total]
- *     .album-sum                      모은 추억 n / 11 + 진행 막대 + 한 줄 안내
- *     section.album-group[data-route] 히로인별 묶음(CGS[id].route, 공통 CG 는 '공통' 묶음)
+ *     .album-sum                      모은 추억 n / 전체 + 진행 막대 + 한 줄 안내
+ *     section.album-group[data-route] 루트별 묶음(CGS[id].route: osana·tenko·koharu·group, 공통 CG 는 '공통' 묶음 common)
  *       .album-head                   이름 알약(인물 색) + n / m + 장식선
  *       ul.album-grid > li > button.cg-card[data-cg][data-seen]
  *         본 칸   : .cg-photo > img(작은 그림) + .cg-cap(제목). 누르면 뷰어

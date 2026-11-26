@@ -2,7 +2,7 @@
  * 대화 기록 본문(docs/UI_DESIGN.md 6.12)
  *
  * .panel-body.log > .log-list > .log-item.is-<say|mono|card|choice>(.k-<화자>)(.now)
- *   이름 .log-name(인물 색은 .k-osana/.k-tenko/.k-me, 그 밖은 npc 색) + 본문 .log-text
+ *   이름 .log-name(인물 색은 .k-osana/.k-tenko/.k-koharu/.k-me, 여럿이 한목소리는 .k-chorus(네 사람 색), 그 밖은 npc 색) + 본문 .log-text
  *   - 독백: 본문만, 왼쪽 하늘 선 / 날짜 카드: 가운데 구분선 / 선택: '선택' 배지가 붙은 분홍 알약
  *   - 색만이 아니라 모양으로도 구분한다(접근성).
  * 클래스 접두를 is- 로 둬서 무대 카드(.stage > .card)·선택지(.choice) 스타일과 섞이지 않는다(부록 A).

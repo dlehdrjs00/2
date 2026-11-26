@@ -1583,6 +1583,9 @@
 .log-item.k-me {
   --name-1: var(--me-1);
 }
+.log-item.k-chorus {
+  --name-1: var(--group-1);
+}
 /* 독백: 본문만, 왼쪽 하늘 선 */
 .log-item.is-mono .log-text {
   color: var(--ink-2);
@@ -2591,7 +2594,7 @@
 }
 /* 못 본 엔딩: '???'(읽기는 '아직 보지 못한 엔딩') */
 .badge .bq {
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   color: var(--ink-3);
 }
 /* 배지 줄이 왼쪽 열 아래로 넘칠 때(title.ts watchFootFit: 좁고 낮은 가로 휴대폰에서 엔딩이 여럿일 때): 글자는 보이지 않게만

@@ -6,10 +6,15 @@
  *  - o4 먼저 기다리고 먼저 약속한다(본편 끝, 아직 사귀지 않음)
  *  - o5 축제 → o6 불꽃 전의 고백과 분명한 승낙 → o7 연인이 된 첫 귀갓길
  *  - 결말 갈래(o4.fork, o4.100 뒤): f 축제 쪽 = 기존 o4.110~ → o5~o7 → 엔딩 osana
- *                                  d 일상 쪽 = o4.d → od1 … → 엔딩 osana_daily(뼈대, 작가 초안이 대체)
+ *                                  d 일상 쪽 = o4.d → od1(월 아침) → od2(월 하굣길 자판기, end_akane_walk) → od3(화 하굣길 데이트) → 엔딩 osana_daily
+ *    일상 쪽 장면은 scenes/osana-daily.ts 에 두고 이 배열 끝에 펼쳐 붙인다.
+ *  - o1 첫머리 연결 줄(ep3.done = 7/13 처마 장면을 지난 새 흐름만, 구저장 흐름은 원문 그대로):
+ *    넷 판(kh.met)은 e3_rain4 끝에서 아카네가 이미 먼저 일어나 흩어졌으므로 코하루가 떠나는 줄만,
+ *    셋 판(kh.met 아님)은 e3_rain3 가 셋 다 앉은 채 끝나므로 아카네가 먼저 일어서는 줄을 둔다.
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, jump, label, me, mono, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, isFlag, jump, label, me, mono, not, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { OSANA_DAILY_SCENES } from './osana-daily';
 
 export const OSANA_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -20,6 +25,16 @@ export const OSANA_SCENES: Scene[] = [
     bg('shotengai', 'black'),
     bgm(null),
     card('o1.010', '{r1}', '방과 후 · 상점가'),
+    // 새 흐름(ep3.done): 7/13 처마에서 흩어진 직후로 잇는다. 구저장 흐름은 o1.020 부터 원문 그대로
+    when(not(isFlag('ep3.done')), 'o1.e3j'),
+    when(not(isFlag('kh.met')), 'o1.e3m'),
+    // 넷 판: e3_rain4 끝에서 {osana:가} 회의로 먼저 일어나 다들 흩어졌다(e3f.390~410). 남은 건 {koharuFamily}가 떠나는 줄뿐
+    mono('o1.e20', '{koharuFamily:는} 1학년 신발장 쪽으로 손을 크게 흔들며 뛰어갔다.'),
+    goto('o1.e3j'),
+    label('o1.e3m'),
+    // 셋 판: e3_rain3 은 셋 다 앉은 채 끝난다(e3t.650~670). 먼저 일어선 사람을 여기서 정한다
+    mono('o1.e10', '비 그친 처마 밑에서 제일 먼저 일어선 건 {osana:였}다. 회의 시간이 다 됐다며 휴대폰을 한 번 더 들여다보고.'),
+    label('o1.e3j'),
     mono('o1.020', '{osana:는} 도서위원 회의, {tenko:는} 동아리 견학. 혼자 지나던 상점가, {osana:와} 다니던 막과자 가게 유리문에 종이가 붙어 있었다.'),
     mono('o1.040', '『그동안 고마웠습니다. {r5:을} 끝으로 가게를 닫습니다.』'),
     when(chose('c7.ch', 'a'), 'o1.c7a'),
@@ -28,6 +43,14 @@ export const OSANA_SCENES: Scene[] = [
     label('o1.c7a'),
     mono('o1.060', '“아무것도 아니야”라던 금요일의 굳은 얼굴. 기다리던 대답이 이거였구나.'),
     label('o1.c7j'),
+    // 넷 판 복선 회수: 토요일 e1_ice4 에서 상점가 끝(후루카와 상점 쪽)을 두 번 피했다(e1f.150·e1f.690)
+    when(not({ all: [isFlag('kh.met'), isFlag('ep3.done')] }), 'o1.ice'),
+    mono('o1.065', '토요일, 상점가 끝 쪽만 두 번이나 피해서 골목으로 꺾던 뒷모습도.'),
+    label('o1.ice'),
+    // 셋 판 복선 회수: 토요일 e1_ice3 에서 상점가 끝을 등지고 걸었고(e1t.570), 처마 끝말잇기 '막과자'에 한 박자 늦었다(e3t.510~520)
+    when(not({ all: [not(isFlag('kh.met')), isFlag('ep3.done')] }), 'o1.ice3'),
+    mono('o1.066', '토요일엔 상점가 끝을 등지고 걸었고, 아까 처마에선 ‘막과자’ 한마디에 대답이 한 박자 늦었다.'),
+    label('o1.ice3'),
     sfx('message'),
     mono('o1.070', '『지금 {shop} 앞인데, 올래?』 메시지를 보내자 10초도 안 돼서 답장이 왔다. 『5분.』'),
     sfx('footsteps'),
@@ -190,10 +213,10 @@ export const OSANA_SCENES: Scene[] = [
     place('강변 둑'),
     show('osana', { pos: 'center', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     mono('o4.100', '월요일과 같은 자리, 덤으로 받은 라무네. 다른 건 내가 꺼내려는 말뿐이었다.'),
-    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로, d 는 일상 쪽(o4.d → od1)
-    choice('o4.fork', '(초안) 꺼내려는 말은…', [
-      opt('f', '(초안) 다음 달 축제, 둘이서 가자고 한다', { goto: 'o4.110' }),
-      opt('d', '(초안) 월요일 하굣길을 먼저 약속한다', { goto: 'o4.d' }),
+    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로(o4.110~ → o5~o7), d 는 일상 쪽(o4.d → od1~od3)
+    choice('o4.fork', '먼저 꺼낼 말은…', [
+      opt('f', '다음 달 축제, 둘이서 가자고 한다', { goto: 'o4.110' }),
+      opt('d', '축제 얘기보다 먼저, 월요일 하굣길을 약속한다', { goto: 'o4.d' }),
     ]),
     me('o4.110', '{osana}. 다음 달 축제, 같이 가자.'),
     say('o4.120', 'osana', '응? 당연히 가지. {tenko}도 불러야지.', 'smile'),
@@ -210,9 +233,18 @@ export const OSANA_SCENES: Scene[] = [
     mono('o4.210', '노을에 묻힐 만큼 작은 대답이었지만, 분명히 들었다.'),
     jump('o5_festival'),
 
-    // ---- 일상 쪽 결말 갈래(o4.fork d) ----
+    // ---- 일상 쪽 결말 갈래(o4.fork d): 축제 초대 없이, '월요일엔 내가 데리러 갈게'로 역할을 뒤집는다 ----
     label('o4.d'),
-    mono('o4.d10', '(초안) 축제 얘기보다 먼저, 월요일 하굣길을 약속했다.'),
+    me('o4.d10', '{osana}. 월요일에 내가 데리러 갈게.'),
+    say('o4.d20', 'osana', '이번 주에도 왔잖아. 수요일부터 꼬박꼬박.', 'neutral'),
+    me('o4.d30', '다음 주에도 갈 거야. 아침만 말고, 하굣길도.'),
+    say('o4.d40', 'osana', '하굣길은 원래 같이 걷잖아. 어차피 가는 길인데.', 'pout'),
+    me('o4.d50', '그 ‘어차피’를 빼고 싶어. 같이 가자고 하고, 같이 가는 걸로.'),
+    mono('o4.d60', '{osana:는} 라무네 병을 기울여 구슬 구르는 소리만 한참 들었다. 그러다 둑 아래 상점가 쪽을 봤다.'),
+    say('o4.d70', 'osana', '할머니 가게 없어지면, 하굣길에 들를 데도 없는데.', 'sad'),
+    me('o4.d80', '그럼 들를 데부터 같이 찾자. 월요일에.'),
+    say('o4.d90', 'osana', '…그럼 월요일. 늦으면 벌칙은 알지? 3분에 음료 하나.', 'smile'),
+    mono('o4.d100', '빈 병 속에서 구슬이 달각거렸다. 월요일까지 사흘. 주말이 그렇게 길게 느껴진 건 처음이었다.'),
     jump('od1'),
   ]),
 
@@ -321,19 +353,6 @@ export const OSANA_SCENES: Scene[] = [
     ending('o7.end', 'osana'),
   ]),
 
-  // ---------------------------------------------------------------------------
-  // od1 — 일상 쪽 결말 「내일은 데이트하자」. {n1} 하굣길 자판기 → end_akane_walk → 엔딩(뼈대)
-  // ---------------------------------------------------------------------------
-  scene({ id: 'od1', title: '내일은 데이트하자', route: 'osana', part: 'epilogue' }, [
-    hide('all'),
-    bg('road_evening', 'black'),
-    bgm('evening'),
-    place('{n1} 방과 후 · 하굣길 자판기 앞'),
-    mono('od1.010', '(초안) {osana:가} 동전을 건네며 이번엔 자기 음료를 골라 보라고 했다. 복숭아 소다를 눌렀다.'),
-    me('od1.020', '(초안) 내일은 데이트하자.'),
-    say('od1.030', 'osana', '(초안) 내일도 어차피 같이 가잖아.'),
-    cg('end_akane_walk'),
-    mono('od1.040', '(초안) 세 걸음쯤 가다 멈춘 {osana:가} 돌아봤다.'),
-    ending('od1.end', 'osana_daily'),
-  ]),
+  // 일상 쪽 결말(o4.fork d) 「내일은 데이트하자」: od1~od3 — scenes/osana-daily.ts
+  ...OSANA_DAILY_SCENES,
 ];

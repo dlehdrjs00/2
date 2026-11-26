@@ -7,6 +7,9 @@
  *   자동 저장이 이 탭에만 있으면 날짜 자리에 주황 '이 탭에만'(.sub > .tab-only)을 둔다(날짜는 읽어 줄 글자·title 로).
  * - [추억 앨범]·[설정]은 .half: 낮은 화면(높이 540px 이하)에서는 한 줄에 반씩 나란히 놓인다(screens.css).
  * - 히로인 위치는 .title-heroines .akane/.hina 클래스로만 잡는다(일러스트를 바꾸면 CSS 두 값만 조정).
+ * - 엔딩 배지(.title-foot[data-n] > .end-pair[data-route] > .badge[data-ending][data-reached]): 보이는 엔딩만(reveal.ts
+ *   titleEndings: 처음 아카네·히나 4개, 코하루·네 사람 두 결말은 그 루트 엔딩을 본 뒤). 본 배지는 '아카네 · 축제'처럼 루트 이름과
+ *   갈래, 못 본 배지는 '???'. 배지 줄이 왼쪽 열 아래로 넘치면 별만 남긴다(data-fit='icons', watchFootFit).
  * - 키 비주얼(.kv)은 배경 대신 .title-art 두 겹으로 그린다: 작은 그림(.art-lo, 흐림)을 먼저 깔고,
  *   원본은 내려받아 해독이 끝난 뒤에야 .art-hi 에 넣어 페이드로 띄운다(.kv-ready). 느린 망에서 원본이
  *   위에서부터 반쯤 그려진 채 오래 보이지 않게. 한 번 해독한 원본은 다시 그릴 때 연출 없이 바로 보인다.

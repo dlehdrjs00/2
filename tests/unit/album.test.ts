@@ -335,7 +335,7 @@ describe('엔딩 8개: 공개 정책·분모·배지 문구(설계 계약 7·9�
     const g = albumModel(catalog, ['end_group_fireworks']);
     expect(g.groups.map((x) => x.route)).toEqual(['osana', 'tenko', 'group', null]);
     expect(g.groups[2].items.map((i) => [i.id, i.seen])).toEqual([['end_group_fireworks', true]]);
-    // 기존 기록(엔딩 3개·CG 17장)은 이름이 그대로라 그대로 열린다
+    // 897ae1f 의 기존 기록(엔딩 osana·tenko·koharu, 옛 CG id)은 이름이 그대로라 그대로 열린다
     const old = ['rain_osana', 'kh_meet', 'kh_draw', 'kh_relay', 'kh_confession', 'kh_home', 'kh_date', 'polaroid_tenko'];
     expect(albumModel(catalog, old, reachedHeroines(endings, ['osana', 'tenko', 'koharu'])).seen).toBe(old.length);
   });

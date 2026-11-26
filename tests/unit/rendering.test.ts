@@ -5,9 +5,9 @@ import { renderProfile, usesAppleTouchRenderer } from '../../src/ui/render-profi
 import type { ChoiceStep, GameState, Story } from '../../src/engine/types';
 import { STORY } from '../../src/story';
 import { advance, choose, newGameState, settle, visibleOptions, type StepResult } from '../../src/engine/runner';
-import { heroineUnlocked, nearbyImages, sceneImages, unlockFlags, type PreloadResolver } from '../../src/ui/screens/preload';
+import { dropRouteOnly, heroineUnlocked, nearbyImages, routeOnlyCgUrls, sceneImages, unlockFlags, type PreloadResolver } from '../../src/ui/screens/preload';
 import { BACKGROUNDS, SPRITE_SETS, spritePath } from '../../src/story/assets';
-import { CGS, KOHARU_DRAWN_CGS } from '../../src/story/cg';
+import { CGS, CG_ORDER, KOHARU_DRAWN_CGS } from '../../src/story/cg';
 import { bg as bgStep, cg as cgStep, choice, decideRoute, ending, isFlag, jump, mono, not, opt, routeBranch, scene as sceneDef, show, unlock, when } from '../../src/engine/dsl';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -335,6 +335,122 @@ describe('근접 장면 미리 불러오기: 히든 히로인 해금 여부를 �
     expect(heroineUnlocked(flags, { points: { osana: 0, tenko: 0, koharu: 0 }, flags: {}, choices: {}, route: null }, 'koharu')).toBe(false);
     expect(heroineUnlocked(flags, { points: { osana: 0, tenko: 0, koharu: 0 }, flags: { 'kh.met': true }, choices: {}, route: null }, 'koharu')).toBe(true);
     expect(heroineUnlocked(flags, { points: { osana: 0, tenko: 0, koharu: 0 }, flags: {}, choices: {}, route: 'koharu' }, 'koharu')).toBe(true);
+  });
+});
+
+describe('미리 불러오기: 여덟 엔딩 확장 그림의 요청 시점(설계 계약 9절)', () => {
+  /** 코하루가 그려진 여덟 엔딩 확장 CG 6장(kh_ 접두가 없다) */
+  const NEW6 = ['group_ice_four', 'group_frog', 'group_rain', 'end_koharu_coin', 'end_group_fireworks', 'end_group_morning'] as const;
+  const url = (id: string) => CGS[id as keyof typeof CGS].src;
+  const END_GROUP = new Set(['end_group_fireworks', 'end_group_morning'].map(url));
+  const NEW6_URLS = new Set(NEW6.map(url));
+  const LATE6 = ['e1f.ch1', 'e1f.ch2', 'e2f.ch1', 'e2f.ch2', 'e3f.ch1', 'e3f.ch2'];
+  const LATE3 = ['c8.ch', 'c9.ch', 'c10.ch'];
+
+  /**
+   * 선택 계획대로 끝까지 플레이하며 블로킹 스텝마다 nearbyImages 를 부른다(game.ts present 와 같은 때).
+   * 계획에 든 각 그림이 처음 계획된 때의 실제 상태(kh.met·route)를 돌려준다
+   */
+  function planned(picks: Record<string, string>) {
+    const st = newGameState(STORY);
+    let res: StepResult | null = settle(STORY, st);
+    const first = new Map<string, { met: boolean; route: string | null; at: string }>();
+    const shown = new Set<string>();
+    for (let n = 0; res && res.step.t !== 'ending' && n < 5000; n++) {
+      if (st.stage.cg) shown.add(url(st.stage.cg));
+      for (const it of nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver)) {
+        if (!first.has(it.url)) first.set(it.url, { met: st.flags['kh.met'] === true, route: st.route, at: st.stepId });
+      }
+      if (res.step.t === 'choice') {
+        const step = res.step as ChoiceStep;
+        const shownOpts = visibleOptions(st, step).map((o) => o.id);
+        const want = picks[step.id];
+        res = choose(STORY, st, want && shownOpts.includes(want) ? want : shownOpts[0]);
+      } else res = advance(STORY, st);
+    }
+    return { first, shown, ending: res?.step.t === 'ending' ? res.step.ending : null, route: st.route, met: st.flags['kh.met'] === true };
+  }
+  const picks = (early: string, late: string, lateIds: string[], fork: 'f' | 'd') => {
+    const p: Record<string, string> = {};
+    [...early].forEach((c, i) => (p[EARLY[i]] = c));
+    [...late].forEach((c, i) => (p[lateIds[i]] = c));
+    for (const id of ['o4.fork', 't4.fork', 'k4.fork', 'h.fork']) p[id] = fork;
+    return p;
+  };
+
+  it('미발견 플레이: 새 CG 6장은 한 번도 계획되지 않고, 셋 판 빙수집(group_ice_three)은 보이기 전에 계획된다', () => {
+    for (const [early, late, fork] of [
+      ['aaab', 'aaa', 'f'],
+      ['aaab', 'ccc', 'd'],
+      ['bbba', 'bbb', 'f'],
+      ['bbba', 'bcb', 'd'],
+    ] as const) {
+      const r = planned(picks(early, late, LATE3, fork));
+      expect(r.met, early).toBe(false);
+      expect([...r.first.keys()].filter((u) => NEW6_URLS.has(u)), `${early}/${late}/${fork}`).toEqual([]);
+      expect([...r.first.keys()].filter((u) => KOHARU_CG_URLS.has(u)), `${early}/${late}/${fork}`).toEqual([]);
+      expect(r.first.has(url('group_ice_three')), early).toBe(true);
+      expect(r.shown.has(url('group_ice_three')), early).toBe(true);
+    }
+  });
+
+  it('발견 플레이: 새 CG 중 코하루가 그려진 넷 판 그림은 kh.met 이 true 가 된 뒤에만, end_group_* 는 루트가 group 으로 확정된 뒤에만 계획된다', () => {
+    const cases: Array<[string, string, 'f' | 'd', string]> = [
+      ['cccc', 'aaaaaa', 'f', 'osana'],
+      ['cccc', 'aaaaaa', 'd', 'osana_daily'],
+      ['cccc', 'bbbbbb', 'd', 'tenko_daily'],
+      ['cccc', 'kkkkkk', 'd', 'koharu_daily'],
+      // 설계 계약 5.1 첫 줄(함께 ×4 → A H K A H K → 5/5/5): 히든 루트
+      ['cccc', 'abkabk', 'f', 'group_festival'],
+      ['abba', 'bkbakb', 'd', 'group_daily'],
+    ];
+    for (const [early, late, fork, want] of cases) {
+      const r = planned(picks(early, late, LATE6, fork));
+      const tag = `${early}/${late}/${fork}`;
+      expect(r.ending, tag).toBe(want);
+      for (const [u, when] of r.first) {
+        if (NEW6_URLS.has(u)) expect(when.met, `${tag} ${u} @${when.at}`).toBe(true);
+        if (END_GROUP.has(u)) expect(when.route, `${tag} ${u} @${when.at}`).toBe('group');
+      }
+      const endGroupPlanned = [...r.first.keys()].filter((u) => END_GROUP.has(u));
+      if (r.route === 'group') {
+        // 히든 루트: 결말 갈래(h.fork) 뒤 두 결말 그림은 보이기 전에 계획된다(고른 갈래 것은 반드시)
+        const mine = url(want === 'group_festival' ? 'end_group_fireworks' : 'end_group_morning');
+        expect(r.first.has(mine), tag).toBe(true);
+        expect(r.shown.has(mine), tag).toBe(true);
+      } else expect(endGroupPlanned, tag).toEqual([]);
+    }
+  });
+
+  it('루트 전용 CG(game.ts preloadFrom 의 마지막 거름): end_group_* 두 장만, 실제 루트가 group 일 때만 남는다', () => {
+    const catalog = CG_ORDER.map((id) => ({ id, route: CGS[id].route }));
+    const only = routeOnlyCgUrls(catalog, (id) => url(id));
+    expect([...only.keys()].sort()).toEqual([...END_GROUP].sort());
+    expect(new Set(only.values())).toEqual(new Set(['group']));
+    const items = [...END_GROUP, url('group_rain'), url('kh_date'), url('rain_osana')].map((u) => ({ url: u, kind: 'cg' as const, at: 1 }));
+    for (const route of [null, 'osana', 'tenko', 'koharu'] as const) {
+      expect(dropRouteOnly(items, only, route).map((i) => i.url), String(route)).toEqual([url('group_rain'), url('kh_date'), url('rain_osana')]);
+    }
+    expect(dropRouteOnly(items, only, 'group')).toHaveLength(5);
+  });
+
+  it('여섯째 선택(e3f.ch2)이 떠 있을 때 세 사람이 동점이 될 수 있어도, 판정 전에는 네 사람 루트(h1) 장면을 따라가지 않는다', () => {
+    const st = newGameState(STORY);
+    let res: StepResult | null = settle(STORY, st);
+    const p = picks('cccc', 'abkab', LATE6, 'f');
+    while (res && !(res.step.t === 'choice' && res.step.id === 'e3f.ch2')) {
+      res = res.step.t === 'choice' ? choose(STORY, st, p[res.step.id]) : advance(STORY, st);
+    }
+    const idx = STORY.scenes[st.sceneId].steps.findIndex((s) => s.id === st.stepId);
+    const r = sceneImages(STORY, st.sceneId, st.stage, resolver, null, idx + 1, true, st);
+    expect(r.next).not.toContain('h1');
+    expect(r.urls.filter((u) => END_GROUP.has(u))).toEqual([]);
+    // k 를 고르면 5/5/5 → 판정 뒤(같은 판정 함수 routeFor)에는 h1 만 다음 장면
+    res = choose(STORY, st, 'k');
+    const after = nearbyImages(STORY, st.sceneId, st.stepId, st.stage, st, resolver).map((i) => i.url);
+    expect(after.filter((u) => END_GROUP.has(u))).toEqual([]);
+    const idx2 = STORY.scenes[st.sceneId].steps.findIndex((s) => s.id === st.stepId);
+    expect(sceneImages(STORY, st.sceneId, st.stage, resolver, null, idx2 + 1, false, st).next).toEqual(['h1']);
   });
 });
 

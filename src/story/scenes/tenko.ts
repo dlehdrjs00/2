@@ -8,24 +8,46 @@
  *  - t5 축제, 처음으로 찍히는 쪽이 된 {tenko} → t6 불꽃 전의 고백과 분명한 승낙, 둘이 함께 찍힌 첫 사진
  *  - t7 연인이 된 첫 귀갓길 → 엔딩
  *  - 결말 갈래(t4.fork, t4.140 뒤): f 축제 쪽 = 기존 t4.150~ → t5~t7 → 엔딩 tenko
- *                                  d 일상 쪽 = t4.d → td1 … → 엔딩 tenko_daily(뼈대, 작가 초안이 대체)
+ *                                  d 일상 쪽 = t4.d → td1(월 웅덩이·커튼) → td2(화·수·목) → td3(금 종업식, end_hina_walk) → 엔딩 tenko_daily
+ *    일상 쪽 장면은 scenes/tenko-daily.ts 에 두고 이 배열 끝에 펼쳐 붙인다.
+ *  - t1 첫머리 연결 줄(ep3.done = 7/13 처마 장면을 지난 새 흐름만, 구저장 흐름은 원문 그대로):
+ *    넷 판(kh.met)은 e3_rain4 끝에서 {osana:가} 회의로 먼저 일어섰으므로 고정 대사 t1.020~066 을 처마 앞, 회의 가기 직전으로 세운다.
+ *    셋 판(kh.met 아님)은 e3_rain3 이 셋 다 앉은 채 끝나므로 {tenko:가} 열어 둔 창문 때문에 셋이 교실로 올라온 것으로 잇는다.
  * 헤어: 체육 있는 날(2주 차 수·목 = t2·t3)은 포니테일, 축제(t5~t7)는 유카타+포니테일, 그 외 기본(긴 웨이브).
  *   체육은 매주 수·목(1주 차 수요일 c45_journal·목요일 c5·c6, 2주 차 수요일 t2·o3). 히나는 '체육 있는 날만 묶거든'(c5.090).
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, jump, label, me, mono, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { bg, bgm, card, cg, choice, chose, ending, flash, goto, hide, isFlag, jump, label, me, mono, not, opt, place, say, scene, sfx, show, when } from '../../engine/dsl';
+import { TENKO_DAILY_SCENES } from './tenko-daily';
 
 export const TENKO_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
   // t1 — {r1} 방과 후, 교실 → 신사 돌계단
   // ---------------------------------------------------------------------------
   scene({ id: 't1_cats', title: '기다리면 오는 것', route: 'tenko', part: 'main' }, [
+    // 새 흐름 넷 판(ep3.done·kh.met): e3_rain4 끝에서 {osana:가} 회의로 먼저 일어섰다(e3f.390~410). 교실 대신 처마 앞에서 잇는다
+    when({ all: [isFlag('ep3.done'), isFlag('kh.met')] }, 't1.ep3'),
     hide('all'),
     bg('classroom_day', 'black'),
     bgm('daily'),
     card('t1.010', '{r1}', '방과 후 · 교실'),
     show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
     show('tenko', { pos: 'right', expr: 'pout', outfit: 'uniform', hair: 'default' }),
+    // 새 흐름 셋 판(ep3.done): 처마에서 교실로 올라온 경위(e3t.020·310·320 창문, e3t.130 가방). 구저장 흐름은 t1.020/t1.030 부터 원문 그대로
+    when(not(isFlag('ep3.done')), 't1.e3j'),
+    mono('t1.e10', '비가 그치고 하나둘 일어서는데, {tenko:가} 교실 창문을 안 닫고 나왔다며 {osana:와} 내 소매를 끌었다.'),
+    mono('t1.e30', '다행히 젖은 건 창틀뿐이었다. 걸레를 짜는 사이, 운동장 쪽에서 매미가 다시 울기 시작했다.'),
+    goto('t1.e3j'),
+    label('t1.ep3'),
+    hide('all'),
+    bg('bg_after_rain', 'black'),
+    bgm('daily'),
+    place('{r1} 방과 후 · 별관 처마 밑'),
+    show('osana', { pos: 'left', expr: 'neutral', outfit: 'uniform', hair: 'default' }),
+    show('tenko', { pos: 'right', expr: 'pout', outfit: 'uniform', hair: 'default' }),
+    mono('t1.013', '{koharuFamily:는} 손수건 든 손을 흔들며 1학년 건물 쪽으로 먼저 뛰어갔다.'),
+    mono('t1.015', '회의 간다던 {osana:가} 가방을 메는 사이, {tenko:가} 치마를 털다 말고 나를 올려다봤다.'),
+    label('t1.e3j'),
     when(chose('c7.ch', 'b'), 't1.c7b'),
     say('t1.020', 'tenko', '주말에 동네를 돌았는데, 고양이들이 나만 보면 다 도망가더라.', 'pout'),
     goto('t1.c7j'),
@@ -41,6 +63,10 @@ export const TENKO_SCENES: Scene[] = [
     bg('shrine_steps'),
     place('{shrine} · 돌계단'),
     mono('t1.070', '언덕길 끝 골목을 꺾으면 이끼 낀 돌계단. 계단마다 고양이가 늘어져 있었다.'),
+    // 새 흐름: 방금 소나기가 지나갔는데 계단과 cats_tenko 그림은 말라 있다. 그 사이를 한 줄로 메운다
+    when(not(isFlag('ep3.done')), 't1.e3s'),
+    mono('t1.e40', '소나기가 지나간 지 한 시간. 볕 드는 칸부터 말라 있었고, 고양이들은 마른 칸만 골라 누워 있었다.'),
+    label('t1.e3s'),
     sfx('cat'),
     show('tenko', { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' }),
     when(chose('c4.ch', 'b'), 't1.c4b'),
@@ -178,10 +204,10 @@ export const TENKO_SCENES: Scene[] = [
     say('t4.120', 'tenko', '찍히면 떠날 때 아쉽다고 했잖아.', 'sad'),
     me('t4.130', '아쉬우면 아쉬워하면 돼. 그만큼 여기가 좋았다는 거니까.'),
     say('t4.140', 'tenko', '응, 약속. 축제 날, 여기서. 사진은 {me} 군이 찍어 줘.', 'smile'),
-    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로, d 는 일상 쪽(t4.d → td1)
-    choice('t4.fork', '(초안) 내려가기 전에…', [
-      opt('f', '(초안) 별표 쳐 둔 곳을 내일 같이 가자고 한다', { goto: 't4.150' }),
-      opt('d', '(초안) 다음엔 내가 먼저 길을 안내하겠다고 한다', { goto: 't4.d' }),
+    // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로(t4.150~ → t5~t7), d 는 일상 쪽(t4.d → td1~td3)
+    choice('t4.fork', '약속을 하나 더 한다면…', [
+      opt('f', '토요일, 남은 별표를 같이 지우자고 한다', { goto: 't4.150' }),
+      opt('d', '별표 말고, 다음엔 내가 고른 길을 걷자고 한다', { goto: 't4.d' }),
     ]),
     me('t4.150', '별표 쳐 둔 데, 아직 많이 남았지? 마침 내일은 토요일이고.'),
     me('t4.160', '{tenko}. 내일도 같이 갈래?'),
@@ -192,9 +218,17 @@ export const TENKO_SCENES: Scene[] = [
     mono('t4.200', '{tenko:는} 두 손으로 얼굴을 가렸지만 빨개진 귀는 다 보였다. 내려가는 길, 한 번도 앞서 뛰지 않았다.'),
     jump('t5_festival'),
 
-    // ---- 일상 쪽 결말 갈래(t4.fork d) ----
+    // ---- 일상 쪽 결말 갈래(t4.fork d): 별표 대신 '내가 고른 길'. 종업식 날까지 고르기로 한다 ----
     label('t4.d'),
-    mono('t4.d10', '(초안) 이번엔 내가 먼저 보여 주고 싶은 길이 있다고 말했다.'),
+    me('t4.d10', '별표 친 데는 전부 네가 고른 데잖아.'),
+    say('t4.d20', 'tenko', '응. 이사 오기 전부터 쳐 둔 거야. 왜?', 'neutral'),
+    me('t4.d30', '다음엔 내가 고른 길을 걷자. 1학기 끝나기 전에.'),
+    say('t4.d40', 'tenko', '{me} 군이 고른 길? 어딘데?', 'smile'),
+    me('t4.d50', '아직 몰라. 지금부터 고를 거야.'),
+    say('t4.d60', 'tenko', '에, 고르기도 전에 약속부터 하는 거야?', 'fluster'),
+    me('t4.d70', '먼저 해 두면, 네가 별표를 다 지우기 전에 내 차례가 오잖아.'),
+    say('t4.d80', 'tenko', '…그럼 종업식 날까지 별표는 쉴게. 대신 엄청 기대할 거야.', 'shy'),
+    mono('t4.d90', '내려가는 돌계단에서 {tenko:는} 몇 번이나 고개를 돌렸다. 무엇을 보는 건지, 그때는 아직 몰랐다.'),
     jump('td1'),
   ]),
 
@@ -306,18 +340,6 @@ export const TENKO_SCENES: Scene[] = [
     ending('t7.end', 'tenko'),
   ]),
 
-  // ---------------------------------------------------------------------------
-  // td1 — 일상 쪽 결말 「네가 먼저 보는 것」. {n2} 비 갠 낮 → end_hina_walk → 엔딩(뼈대)
-  // ---------------------------------------------------------------------------
-  scene({ id: 'td1', title: '네가 먼저 보는 것', route: 'tenko', part: 'epilogue' }, [
-    hide('all'),
-    bg('road_morning', 'black'),
-    bgm('heart'),
-    place('{n2} 방과 후 · 비 갠 동네 길'),
-    mono('td1.010', '(초안) 웅덩이에 학교가 비쳤다. {tenko:는} 한쪽만 짧은 커튼을 보고 우리 교실을 찾아냈다.'),
-    me('td1.020', '(초안) 다음 산책은 데이트로 하자.'),
-    cg('end_hina_walk'),
-    say('td1.030', 'tenko', '(초안) 그럼 다음엔 이쪽으로 갈래?'),
-    ending('td1.end', 'tenko_daily'),
-  ]),
+  // 일상 쪽 결말(t4.fork d) 「네가 먼저 보는 것」: td1~td3 — scenes/tenko-daily.ts
+  ...TENKO_DAILY_SCENES,
 ];

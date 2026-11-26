@@ -7,15 +7,21 @@
  *  - k4 핑계(안내판)를 빼고 방학 약속을 둘이 정한다(본편 끝, 아직 사귀지 않음)
  *  - k5 둘이 쓴 안내판 → k6 축제, 이름을 처음 부르고 고백 → 분명한 승낙 → 그 뒤에 첫 불꽃
  *  - k7 손을 잡은 귀갓길, 소우타가 먼저 "내일도 같이 갈래?" → k8 첫 데이트 → 엔딩
- * 결말 갈래(k4.fork, k4.200 뒤): f 축제 쪽 = k5~k8 → 엔딩 koharu
- *                               d 일상 쪽 = k4.d → kd1 … → 엔딩 koharu_daily(뼈대, 작가 초안이 대체)
- * 호칭: 소우타의 말·독백은 8월 8일(k6) 전까지 성({koharuFamily}), 그 뒤로 이름({koharu}).
- * 의상: k1~k4 교복, k5·k8 사복(연민트 블라우스·크림색 스커트), k6·k7 유카타. 헤어는 늘 기본(한쪽 가는 땋기 포함).
+ * 결말 갈래(k4.fork, k4.200 뒤, 점수·루트에 영향 없음):
+ *   f 축제 쪽 = k5~k8(8/4 문구점 → 8/8 축제 → 8/9 일요일) → 엔딩 koharu 「일요일은 둘이서」
+ *   d 일상 쪽 = k4.d(금요일 신발장 문자) → kd1~kd4(7/20~7/23 점심, 1학년 교실, 동전 마술·조수 자리) → 엔딩 koharu_daily 「옆자리는 비워 둘게요」
+ *   두 갈래가 함께 보는 씨앗: k3.220~230 문구점 계산대에서 굴리다 떨어뜨린 동전(일상 갈래 동전 마술의 시작)
+ * 호칭: 소우타의 말·독백은 각 갈래의 고백 장면 전까지 성({koharuFamily}), 그 뒤로 이름({koharu}).
+ *   이름은 고백 장면에서 허락을 구한 뒤 처음 부른다: 축제 갈래 k6.110 → k6.130(8/8), 일상 갈래 kd4.240 → kd4.260(7/23).
+ *   코하루가 '{me} 선배'라고 처음 부르는 것도 각 갈래의 대답 뒤다(k6.170 / kd4.280). 그 전에는 '선배'·'{meFamily} 선배'.
+ * 의상: k1~k4·kd1~kd4 교복, k5·k8 사복(연민트 블라우스·크림색 스커트), k6·k7 유카타. 헤어는 늘 기본(한쪽 가는 땋기 포함).
  * 표정: 원고 끝 '장면별 표정 큐' 표의 전환 지점에서만 바꾼다. CG 가 떠 있는 동안은 CG 가 표정을 대신한다.
  * 원고의 [연출]·CG 지시는 장면 동작으로만 옮기고 대사창에는 보이지 않는다.
  */
 import type { Scene } from '../../engine/types';
-import { bg, bgm, cg, choice, ending, flash, hide, jump, label, me, mono, opt, place, say, scene, sfx, show } from '../../engine/dsl';
+import { bg, bgm, cg, choice, ending, flash, goto, hide, isFlag, jump, label, me, mono, not, opt, place, say, sayAs, scene, sfx, show, when } from '../../engine/dsl';
+import { EP3_DONE } from './common';
+import { KOHARU_DAILY_SCENES } from './koharu-daily';
 
 export const KOHARU_SCENES: Scene[] = [
   // ---------------------------------------------------------------------------
@@ -26,10 +32,19 @@ export const KOHARU_SCENES: Scene[] = [
     bg('shoe_lockers', 'black'),
     bgm('daily'),
     place('{r1} 방과 후 · 학교 신발장'),
+    // 새 흐름(ep3.done)은 방금 넷이 처마(e3_rain4)에 있었다. 소우타 혼자 교실에 다녀온 뒤로 잇는다. 구저장 흐름은 원문 그대로
+    when(not(isFlag(EP3_DONE)), 'k1.open'),
+    mono('k1.005', '처마에서 넷이 겨우 일어난 뒤에야 교실 책상 속 휴대폰이 생각났다. 혼자 다녀오는 사이 신발장 앞은 한산해져 있었다.'),
+    label('k1.open'),
     mono('k1.010', '실내화를 넣고 고개를 들었더니 {koharuFamily:가} 막 내 앞을 지나쳤다. 부르기도 전에 두 걸음 뒷걸음질해 돌아왔다.'),
     sfx('footsteps'),
     show('koharu', { pos: 'center', expr: 'smile', outfit: 'uniform', hair: 'default' }),
+    when(isFlag(EP3_DONE), 'k1.ep3'),
     say('k1.020', 'koharu', '아, 선배 맞네요. 가방만 보여서 긴가민가했어요.'),
+    goto('k1.ask'),
+    label('k1.ep3'),
+    say('k1.025', 'koharu', '아, 선배 맞네요. 아까 처마 밑에 있던 가방이 여기 보이길래요.'),
+    label('k1.ask'),
     me('k1.030', '가방 주인은 왜 찾아?'),
     say('k1.040', 'koharu', '내일 화요일이잖아요. 자전거 점검이요.'),
     mono('k1.050', '{koharuFamily:가} 주머니 휴지를 손바닥에 올려놓았다. 토요일에 그걸 뽑고 한참 웃더니 아직도 하나도 안 썼다.'),
@@ -125,6 +140,9 @@ export const KOHARU_SCENES: Scene[] = [
     // 원고는 한 문단이지만 치환 후 98자로 검사 한도(88자)를 넘어 문장 경계에서 두 줄로 나눈다(글자는 그대로)
     mono('k3.200', '가게를 나서는데 {koharuFamily:가} 등 뒤에서 “선배! 근데 뭐 사러 왔어요?” 하고 불렀다.'),
     mono('k3.210', '빈손을 보고서야 수학 공책 생각이 났다. 손님이 다 그냥 간다는 말이 내 얘기도 될 뻔했다.'),
+    hide('koharu'),
+    mono('k3.220', '되돌아가 공책값을 내니, 거스름돈을 세던 {koharuFamily:가} 동전 하나를 손등 위로 굴려 보다 떨어뜨렸다.'),
+    mono('k3.230', '동전은 내 운동화 앞까지 굴러왔다. 주워 건네자 {koharuFamily:는} 아직 연습 중이라며 못 본 걸로 해 달라고 했다.'),
     jump('k4'),
   ]),
 
@@ -169,16 +187,22 @@ export const KOHARU_SCENES: Scene[] = [
     hide('koharu'),
     mono('k4.200', '방학이 되면 학교에 안 와도 된다는 것만 좋았는데, 올해는 8월 4일이 조금 빨리 왔으면 했다.'),
     // 결말 갈래 선택(점수·루트에 영향 없음). f 는 기존 축제 쪽 그대로(k5), d 는 일상 쪽(k4.d → kd1)
-    choice('k4.fork', '(초안) 방학 전 남은 한 주…', [
-      opt('f', '(초안) 8월 4일 문구점 약속을 기다린다', { goto: 'k4.f' }),
-      opt('d', '(초안) 다음 주 점심, 1학년 교실에 가 본다', { goto: 'k4.d' }),
+    choice('k4.fork', '8월 4일까지는 아직 두 주하고도 나흘.', [
+      opt('f', '8월 4일, 문구점 앞에서 만날 날을 기다린다', { goto: 'k4.f' }),
+      opt('d', '기다리지 않고, 월요일 점심을 같이 먹자고 한다', { goto: 'k4.d' }),
     ]),
     label('k4.f'),
     jump('k5'),
 
     // ---- 일상 쪽 결말 갈래(k4.fork d) ----
     label('k4.d'),
-    mono('k4.d10', '(초안) 8월까지 기다리기엔 한 주가 길었다.'),
+    mono('k4.d10', '그 사이에도 학교에 오는 날이 닷새나 남아 있었다. 신발장 문을 닫다 말고 휴대폰을 꺼냈다.'),
+    sfx('message'),
+    sayAs('k4.d20', 'me', '{me} · 문자', '월요일 점심 같이 먹을래? 내가 1학년 교실로 갈게.'),
+    sayAs('k4.d30', 'koharu', '{koharu} · 문자', '진짜요? 2학년 선배가 오면 우리 반 애들 다 쳐다볼 텐데.'),
+    sayAs('k4.d40', 'me', '{me} · 문자', '빵 들고 조용히 갈게.'),
+    sayAs('k4.d50', 'koharu', '{koharu} · 문자', '월요일은 제 요일이니까 제가 기다릴게요. 8월 4일도 그대로고요!'),
+    mono('k4.d60', '답장은 운동화 끈을 다 묶기도 전에 왔다. 8월 4일은 그대로 두고, 그 앞에 월요일이 하나 더 생겼다.'),
     jump('kd1'),
   ]),
 
@@ -391,19 +415,6 @@ export const KOHARU_SCENES: Scene[] = [
     ending('k8.end', 'koharu'),
   ]),
 
-  // ---------------------------------------------------------------------------
-  // kd1 — 일상 쪽 결말 「옆자리는 비워 둘게요」. {n1}~{n4} 점심 빈 교실 → end_koharu_coin → 엔딩(뼈대)
-  // ---------------------------------------------------------------------------
-  scene({ id: 'kd1', title: '옆자리는 비워 둘게요', route: 'koharu', part: 'epilogue' }, [
-    hide('all'),
-    bg('classroom_day', 'black'),
-    bgm('daily'),
-    place('{n1} 점심 · 빈 교실'),
-    mono('kd1.010', '(초안) 동전 마술이 실패할 때마다 떨어진 동전을 몰래 받아 줬다.'),
-    mono('kd1.020', '(초안) 다음 날부터 {koharuFamily}의 옆 의자는 늘 비어 있었다.'),
-    me('kd1.030', '(초안) 조수가 필요 없어졌는데도 그 자리를 비워 두는 이유를 물었다.'),
-    cg('end_koharu_coin'),
-    say('kd1.040', 'koharu', '(초안) 옆자리는 비워 둘게요.'),
-    ending('kd1.end', 'koharu_daily'),
-  ]),
+  // 일상 쪽 결말(k4.fork d): kd1~kd4 — scenes/koharu-daily.ts
+  ...KOHARU_DAILY_SCENES,
 ];

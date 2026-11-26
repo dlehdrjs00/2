@@ -510,6 +510,11 @@
   --name-1: var(--me-1);
   --name-2: var(--me-2);
 }
+/* 여럿이 한목소리(chorus, 이름표 '소우타 · 히나 · 코하루'): 네 사람 루트 색 */
+.textbox[data-who='chorus'] {
+  --name-1: var(--group-1);
+  --name-2: var(--group-2);
+}
 /* 안쪽 장식선 + 네 모서리 꺾쇠(하늘 선 + 분홍 마름모) */
 .textbox::before {
   content: '';
