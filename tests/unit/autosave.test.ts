@@ -292,7 +292,8 @@ describe('AutoSaveTracker 규칙', () => {
 
   it('실제 메모리 저장소 + 대본: 첫 자동 저장에 memoryOnly 한 번, 이후 회차 끝까지 알림 없음', () => {
     const p = new Play(new SaveManager(new MemoryStore(), STORY, checker));
-    p.run(400);
+    // run 은 엔딩에서 스스로 멈춘다. 여덟 엔딩 확장으로 첫 선택지만 고르는 회차가 450줄을 넘어 한도를 넉넉히 둔다
+    p.run(3000);
     expect(p.notices.map((n) => n.kind)).toEqual(['memoryOnly']);
     expect(p.tracker.status).toBe('none');
   });
