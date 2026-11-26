@@ -44,7 +44,7 @@
 | 7/13(월) 방과 후 | **e3_rain4** 소나기 뒤 처마 넷 (선택 ⑤⑥, group_rain) → **판정** | **e3_rain3** 처마 셋 (CG 없음) → 판정(옛 규칙) |
 | 7/13(월) 방과 후~7/17(금) | o1/t1/k1 또는 **h1**(히든) | o1/t1 |
 | 7/17(금) | 루트 본편 끝 → **결말 갈래 선택** | 같음 |
-| 축제 쪽 | 8/4·8/8·8/9(기존 그대로), 히든은 8/8 강변 | 같음 |
+| 축제 쪽 | 8/4·8/8·8/9(기존 그대로), 히든은 8/4 강변 자리 보기 → 8/8 강변 | 같음 |
 | 일상 쪽 | 7/20(월)~7/24(금, 종업식) 개별 루트 / 방학(7/25~) → 9/1(화) 개학 히든 | 같음 |
 
 - 7/13은 월요일이라 체육이 없습니다. 히나는 기본 헤어입니다(포니테일은 수·목). 이것은 group_frog·group_rain 그림과 맞습니다.
@@ -96,7 +96,7 @@ c7(종 → unlock false → 노을길) → e1_ice3 → c8_bakery → c9_puzzle �
 
 ### 3.5 결말 갈래 선택
 
-갈래 선택은 heroine·points·effects가 없는 옵션 2개로 만듭니다. 옵션 id는 `f`(축제)와 `d`(일상)입니다. 축제 쪽은 '조건이 거짓일 때의 기본 흐름'으로 둡니다. 그래야 선택 기록이 없는 기존 루트 저장이 기존 축제 결말로 갑니다.
+갈래 선택은 heroine·points·effects가 없는 옵션 2개로 만듭니다. 옵션 id는 `f`(축제)와 `d`(일상)입니다. 축제 쪽은 '조건이 거짓일 때의 기본 흐름'으로 둡니다. 그래야 갈래 위치를 이미 지난 기존 루트 저장(예: o5·k6)이 선택 기록 없이도 기존 축제 결말로 갑니다. 갈래 위치 앞의 기존 루트 저장(예: o2·t2·k3)은 진행하다 갈래 선택지를 만납니다.
 
 | 루트 | 선택 id | 위치 | f → | d → |
 |---|---|---|---|---|
@@ -126,9 +126,9 @@ c7(종 → unlock false → 노을길) → e1_ice3 → c8_bakery → c9_puzzle �
 | 빙수집 셋 | `e1_ice3` | episodes3.ts | `e1t.` | common / main |
 | 종이개구리 셋 | `e2_frog3` | episodes3.ts | `e2t.` | common / main |
 | 처마 셋 | `e3_rain3` | episodes3.ts | `e3t.` | common / main |
-| 아카네 일상 | `od1`, `od2`, … | osana.ts | `od1.` … | osana / epilogue |
-| 히나 일상 | `td1`, … | tenko.ts | `td1.` … | tenko / epilogue |
-| 코하루 일상 | `kd1`, … | koharu.ts | `kd1.` … | koharu / epilogue |
+| 아카네 일상 | `od1`, `od2`, … | osana-daily.ts(osana.ts 의 장면 배열에 들어감) | `od1.` … | osana / epilogue |
+| 히나 일상 | `td1`, … | tenko-daily.ts(tenko.ts 의 장면 배열에 들어감) | `td1.` … | tenko / epilogue |
+| 코하루 일상 | `kd1`, … | koharu-daily.ts(koharu.ts 의 장면 배열에 들어감) | `kd1.` … | koharu / epilogue |
 | 히든 본편 | `h1`, `h2`, … | group.ts | `h1.` … | group / main |
 | 히든 축제 | `hf1`, … | group.ts | `hf1.` … | group / epilogue |
 | 히든 일상 | `hd1`, … | group.ts | `hd1.` … | group / epilogue |
@@ -335,7 +335,7 @@ c7(종 → unlock false → 노을길) → e1_ice3 → c8_bakery → c9_puzzle �
   - 미발견 판에는 점수 선택을 넣지 않습니다(기존 c8·c9·c10의 선택만).
 - **스프라이트:**
   - 아카네 uniform/yukata(기본 헤어), 히나 uniform(기본/포니테일)·yukata(포니테일), 코하루 uniform/casual/yukata
-  - 셋을 한 화면에 세울 때는 아카네 left · 히나 center · 코하루 right(CG 배치와 같음)
+  - 셋을 한 화면에 세울 때는 아카네 left · 히나 center · 코하루 right(CG 배치와 같음). 예외: hf2 첫 불꽃 직전(hf2.340~)은 end_group_fireworks 구도에 맞춰 히나 left · 코하루 center · 아카네 right
   - 코하루 스프라이트는 손 인사 자세입니다. 동전·필통 동작은 CG나 지난 동작으로 씁니다.
 - **문자 메시지:** `sayAs(id, 화자, '{이름} · 문자', 본문)`로 쓰고 대화 시작에 `sfx('message')`를 둡니다.
 - **CG:** 장면 전환(bg)에서 자동으로 걷힙니다. 같은 장소의 배경만 보이는 컷에서 단체 CG로 넘어가면 장소가 이어져야 합니다.

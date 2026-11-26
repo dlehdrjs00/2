@@ -8,18 +8,19 @@
 | 분류 | 수량 | 상태 | 현재 연결된 것 | 위치 | 파일 | 용량 |
 |---|---|---|---|---|---|---|
 | 캐릭터 스프라이트 | 48장 (아카네 12 · 히나 18 · 코하루 18) | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/char/osana/` `public/assets/char/tenko/` `public/assets/char/koharu/` | 48개 | 15.44MB |
-| 이벤트 CG | 17장 + 썸네일 17장 (그중 관람 전 숨김 6장) | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/cg/`, `public/assets/cg/thumb/` | 34개 | 4.92MB |
+| 이벤트 CG | 26장 + 썸네일 26장 (그중 관람 전 숨김 12장) | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환(코하루 6장·여덟 엔딩 9장은 받은 WebP 그대로) | `public/assets/cg/`, `public/assets/cg/thumb/` | 52개 | 8.83MB |
 | 타이틀 키 비주얼 | 1장 + 썸네일 1장 | 🟢 최종 | 사용자가 준 최종 일러스트 → WebP 변환 | `public/assets/cg/kv.webp` | 2개 | 328KB |
-| 배경 | 21종 (대본 20 + 타이틀 대체 1) + 썸네일 21장 + 단색 1 | 🟢 최종 | 사용자가 준 상세 배경 WebP(이미지 생성 도구로 제작, 기록 `docs/BACKGROUND_PROMPTS.md`) | `public/assets/bg/`, `public/assets/bg/thumb/` | 42개 | 7.28MB |
+| 배경 | 23종 (대본 22 + 타이틀 대체 1) + 썸네일 23장 + 단색 1 | 🟢 최종 | 사용자가 준 상세 배경 WebP(이미지 생성 도구로 제작, 기록 `docs/BACKGROUND_PROMPTS.md`) | `public/assets/bg/`, `public/assets/bg/thumb/` | 46개 | 8.41MB |
 | 음악(BGM) | 6곡 | 🟡 임시 | 코드로 합성한 임시 음원(`scripts/gen-placeholder-audio.mjs`) | `public/assets/placeholder/audio/bgm_*.mp3` | 6개 | 2.41MB |
 | 효과음(SFX) | 10종 | 🟡 임시 | 코드로 합성한 임시 음원(`scripts/gen-placeholder-audio.mjs`) | `public/assets/placeholder/audio/sfx_*.mp3` | 10개 | 280KB |
 
 - 인물·CG·키 비주얼은 **사용자가 준 최종 일러스트**를 `scripts/import-art.py` 로 변환해 넣은 것이다(원본은 `art-inbox/`, 저장소에 넣지 않음).
 - 코하루(히든 히로인)의 스프라이트·이벤트 CG·배경 2장·썸네일은 **코하루 루트 인계 패키지의 WebP 를 그대로** 넣었다(다시 인코딩·리사이즈하지 않음, sha256 대조). 편집 원본을 고쳐 다시 넣을 때만 import-art 를 쓴다.
+- 여덟 엔딩 확장의 이벤트 CG 9장(`group_*`·`end_*`)·배경 2장(`bg_ice_shop`·`bg_after_rain`)과 썸네일은 **코덱스가 제작한 묶음의 WebP 를 그대로** 넣었다(다시 인코딩·리사이즈하지 않음, 묶음의 `ART_MANIFEST.json` sha256 대조). import-art 로 변환하지 않는다.
 - 배경은 **사용자가 준 상세 배경**(1920×1080 WebP)이다. 사양·썸네일·레터박스는 아래 [배경](#배경--최종) 절.
 - 음악·효과음은 아직 **개발용 임시 에셋**이다. 교체 사양은 아래 [음악](#음악bgm--임시-합성음) · [효과음](#효과음sfx--임시-합성음) 절.
 - 타이틀 화면 버전 표시 뒤에는 지금 「임시 음악」 안내가 붙는다. 해당 분류의 `placeholder` 가 모두 `false` 가 되면 자동으로 빠진다(`src/main.ts` placeholderNote).
-- 그림은 지금 위치에서 가까운 그림부터 미리 받는다(`src/ui/screens/preload.ts`, 동시에 3개, 데이터 절약 모드·느린 연결은 2개). 표준 렌더링은 그 뒤 게임 전체 그림도 백그라운드로 받고, **데이터 절약 모드와 Apple 터치 기기**(iPad·iPhone, `src/ui/render-profile.ts`)는 지금 장면과 다음 장면 그림만 받는다. 현재 그림 전체 26.74MB(썸네일 제외) — 교체할 때 용량 예산을 지킬 것.
+- 그림은 지금 위치에서 가까운 그림부터 미리 받는다(`src/ui/screens/preload.ts`, 동시에 3개, 데이터 절약 모드·느린 연결은 2개). 표준 렌더링은 그 뒤 게임 전체 그림도 백그라운드로 받고, **데이터 절약 모드와 Apple 터치 기기**(iPad·iPhone, `src/ui/render-profile.ts`)는 지금 장면과 다음 장면 그림만 받는다. 현재 그림 전체 31.37MB(썸네일 제외) — 교체할 때 용량 예산을 지킬 것.
 
 ## 교체 방법(공통)
 
@@ -29,7 +30,7 @@
      예: `classroom_day: { src: 'assets/bg/classroom_day.webp', placeholder: false, desc: '2학년 3반 교실(낮, 창가)' },`
    - 캐릭터: `SPRITE_SETS.<캐릭터>.dir` 과 `ext`(파일명 규칙 `${outfit}_${hair}_${expr}.${ext}` 유지). 그림 자체를 바꿀 때는 아래 [그림 교체 파이프라인](#그림-교체-파이프라인-scriptsimport-artpy)을 쓴다.
    - 이벤트 CG·키 비주얼: `src/story/cg.ts`(경로는 `assets/cg/{id}.webp`, 썸네일 `assets/cg/thumb/{id}.webp` 고정).
-   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 빠졌거나 원본보다 오래된 것만 새로 만들고(`--force` 는 전부), 인계 패키지가 원본과 함께 준 썸네일(`kh_*`)은 원본이 그대로인 동안 덮어쓰지 않는다. 매니페스트의 `thumb` 경로와 맞출 것.
+   - 배경 썸네일: `python3 scripts/bg-thumbs.py` 가 `public/assets/bg/*.webp` 에서 480×270 썸네일(`public/assets/bg/thumb/`)을 만든다. 빠졌거나 원본보다 오래된 것만 새로 만들고(`--force` 는 전부), 인계 패키지가 원본과 함께 준 썸네일(`kh_*`·`bg_ice_shop`·`bg_after_rain`)은 원본이 그대로인 동안 덮어쓰지 않는다. 매니페스트의 `thumb` 경로와 맞출 것.
 3. `npm run validate` — 매니페스트가 가리키는 파일(배경 썸네일 포함)이 없으면 오류로 알려 준다.
 4. `npm run docs` — 이 문서와 대본 문서를 다시 만든다.
 5. `npm run dev` 로 띄워 데스크톱·휴대폰 가로 화면에서 확인한다(주소 끝에 `?debug` 를 붙이면 콘솔에서 `window.__vn.info()` 로 상태 조회).
@@ -50,8 +51,8 @@
 
 | 항목 | 값 | 출처 |
 |---|---|---|
-| 인물 높이 `--char-height` | 무대 높이의 **116%** (폭은 비율대로 자동: 무대 폭의 약 43.5%) | play.css 73행 `.stage` |
-| 아래 여백 `--char-bottom` | **-22%** → 그림 아래 끝이 무대 아래 끝보다 무대 높이의 22% 아래 | play.css 72행 `.stage` |
+| 인물 높이 `--char-height` | 무대 높이의 **116%** (폭은 비율대로 자동: 무대 폭의 약 43.5%) | play.css 77행 `.stage` |
+| 아래 여백 `--char-bottom` | **-22%** → 그림 아래 끝이 무대 아래 끝보다 무대 높이의 22% 아래 | play.css 76행 `.stage` |
 | 그림 위끝 | 무대 위에서 6% (머리 꼭대기는 여백 5% 기준 약 11.8%) | 계산 |
 | 무대 밖으로 잘리는 부분 | 캔버스 아래쪽 19% (보이는 것은 위쪽 81%) | 계산 |
 | 가로 위치(그림 가운데) | 왼쪽 27% · 가운데 50% · 오른쪽 73% (`translateX(-50%)`) | play.css `.char.pos-*` |
@@ -140,7 +141,7 @@
 - 표시: 대본의 `cg(id)` 명령. 무대 가득(`background-size: cover`) — 인물·햇살·빛망울 **앞**, 대사창 **뒤**. 그림을 해독한 뒤 550ms 크로스페이드.
 - 걷힘: `cg(null)` 또는 **`bg` 명령(배경 전환)이 오면 자동으로 걷힌다**(`src/engine/runner.ts`). 저장·불러오기 때 떠 있던 CG 도 복원된다(`state.stage.cg`).
 - 한 번 본 CG 는 전역 기록(`src/engine/save.ts` GlobalRecord `cgs`, `markCg`)에 남아 타이틀의 추억 앨범에서 다시 볼 수 있다. 앨범 표시 순서는 아래 표 순서(`CG_ORDER`).
-- **🔒 관람 전 숨김**(`cg.ts` `hidden: true`, 6장: `kh_meet` `kh_draw` `kh_relay` `kh_confession` `kh_home` `kh_date`): 한 번이라도 본 뒤에만 앨범의 칸·제목·썸네일과 총 장수(`n / 전체`)에 들어간다. 보기 전에는 빈칸도 없고 타이틀 화면에서도 드러나지 않는다(히든 히로인을 미리 예고하지 않음). 루트가 `공통`인 숨김 CG 는 해금된 플레이의 공통 장면에서만 나온다.
+- **🔒 관람 전 숨김**(`cg.ts` `hidden: true`, 12장: `kh_meet` `kh_draw` `group_ice_four` `group_frog` `group_rain` `kh_relay` `kh_confession` `kh_home` `kh_date` `end_koharu_coin` `end_group_fireworks` `end_group_morning`): 한 번이라도 본 뒤에만 앨범의 칸·제목·썸네일과 총 장수(`n / 전체`)에 들어간다. 보기 전에는 빈칸도 없고 타이틀 화면에서도 드러나지 않는다(히든 히로인을 미리 예고하지 않음). 루트가 `공통`인 숨김 CG 는 해금된 플레이의 공통 장면에서만 나온다.
 - 대사창이 아래쪽을 덮으므로(위 표: 기본 28.4~41.9%) 얼굴·중요한 손짓은 화면 위쪽 약 58% 안에 두는 것이 좋다.
 
 | 순서 | id | 앨범 제목 | 루트 | 대본 위치(cg.ts desc) | 화면에 떠 있는 구간 | 파일 | 픽셀 | 크기 | 썸네일 |
@@ -151,17 +152,26 @@
 | 4 | `ramune_osana` | 토요일이거든 | 아카네 | 소꿉친구 루트 o4 — 노을 강변의 라무네 | `o4_promise` `o4.170`~`o4.180` 2문장 → CG 걷기 명령 | `ramune_osana.webp` ✅ | 1920×1080 | 260KB | ✅ 480×270 31KB |
 | 5 | `fireworks_osana` | 첫 불꽃 | 아카네 | 소꿉친구 루트 o6 — 고백 뒤 첫 불꽃 | `o6_confession` `o6.180`~`o6.200` 3문장 → 다음 장면 `o7_homeward` 의 배경 전환 | `fireworks_osana.webp` ✅ | 1920×1080 | 159KB | ✅ 480×270 19KB |
 | 6 | `homeward_osana` | 처음 바래다주는 길 | 아카네 | 소꿉친구 루트 o7 — 손잡고 걷는 귀갓길 | `o7_homeward` `o7.060`~`o7.110` 6문장 → CG 걷기 명령 | `homeward_osana.webp` ✅ | 1920×1080 | 205KB | ✅ 480×270 24KB |
-| 7 | `cats_tenko` | 기다리면 오는 것 | 히나 | 전학생 루트 t1 — 신사 돌계단의 다이후쿠 | `t1_cats` `t1.140`~`t1.170` 4문장 → CG 걷기 명령 | `cats_tenko.webp` ✅ | 1920×1080 | 351KB | ✅ 480×270 36KB |
-| 8 | `bench_tenko` | 그거, 내 대사인데 | 히나 | 전학생 루트 t4 — 노을 언덕 벤치 | `t4_invite` `t4.190`~`t4.200` 2문장 → 다음 장면 `t5_festival` 의 배경 전환 | `bench_tenko.webp` ✅ | 1920×1080 | 277KB | ✅ 480×270 30KB |
-| 9 | `selfie_tenko` | 이번엔 둘이 같이 | 히나 | 전학생 루트 t6 — 불꽃 아래 셀카 | `t6_confession` `t6.210` 1문장 → 다음 CG(`shutter_tenko`)로 교체 | `selfie_tenko.webp` ✅ | 1920×1080 | 233KB | ✅ 480×270 31KB |
-| 10 | `shutter_tenko` | 셔터가 눌린 순간 | 히나 | 전학생 루트 t6 — 사진에 담긴 순간 | `t6_confession` `t6.220` 1문장 → 다음 장면 `t7_homeward` 의 배경 전환 | `shutter_tenko.webp` ✅ | 1920×1080 | 217KB | ✅ 480×270 26KB |
-| 11 | `polaroid_tenko` | 첫 장에 넣을 사진 | 히나 | 전학생 루트 t7 — 현상된 즉석사진 | `t7_homeward` `t7.040`~`t7.060` 3문장 → CG 걷기 명령 | `polaroid_tenko.webp` ✅ | 1920×1080 | 177KB | ✅ 480×270 23KB |
-| 12 | `kh_meet` | 금요일의 모퉁이 🔒 관람 전 숨김 | 공통 | 공통 c7 금요일 하교(해금 시) — 복도 모퉁이에서 어깨가 부딪친 직후 | `c7_friday` `c7.m30`~`c7.m95` 8문장 → CG 걷기 명령 | `kh_meet.webp` ✅ | 1920×1080 | 291KB | ✅ 480×270 32KB |
-| 13 | `kh_draw` | 요일을 나눠 가진 자전거 🔒 관람 전 숨김 | 공통 | 공통 c8 토요일 상점가 추첨(해금 시) — 결과를 듣고 휴지 한 팩을 받는 순간 | `c8_raffle` `c8r.180`~`c8r.210` 4문장 → CG 걷기 명령 | `kh_draw.webp` ✅ | 1920×1080 | 387KB | ✅ 480×270 43KB |
-| 14 | `kh_relay` | 두 사람 글씨 🔒 관람 전 숨김 | 코하루 | 후배 루트 k5 — 문구점 앞, 두 사람의 손글씨 안내판 | `k5` `k5.110`~`k5.130` 3문장 → CG 걷기 명령 | `kh_relay.webp` ✅ | 1920×1080 | 343KB | ✅ 480×270 40KB |
-| 15 | `kh_confession` | 마지막 등롱 아래 🔒 관람 전 숨김 | 코하루 | 후배 루트 k6 — 고백에 대답하는 순간(첫 불꽃 전) | `k6` `k6.170`~`k6.180` 2문장 → CG 걷기 명령 | `kh_confession.webp` ✅ | 1920×1080 | 308KB | ✅ 480×270 36KB |
-| 16 | `kh_home` | 오른손 🔒 관람 전 숨김 | 코하루 | 후배 루트 k7 — 귀갓길에 손을 잡은 뒤 | `k7` `k7.100`~`k7.140` 5문장 → CG 걷기 명령 | `kh_home.webp` ✅ | 1920×1080 | 312KB | ✅ 480×270 38KB |
-| 17 | `kh_date` | 일요일은 둘이서 🔒 관람 전 숨김 | 코하루 | 후배 루트 k8 — 첫 데이트 장소(문구점)에 도착하며 | `k8` `k8.040`~`k8.050` 2문장 → CG 걷기 명령 | `kh_date.webp` ✅ | 1920×1080 | 435KB | ✅ 480×270 49KB |
+| 7 | `end_akane_walk` | 세 걸음 뒤에 | 아카네 | 소꿉친구 루트 일상 결말 — 복숭아 소다를 든 아카네가 데이트 신청을 알아듣고 하굣길에서 돌아보는 순간 | `od2` `od2.290`~`od2.370` 9문장 → CG 걷기 명령 | `end_akane_walk.webp` ✅ | 1920×1080 | 328KB | ✅ 480×270 37KB |
+| 8 | `cats_tenko` | 기다리면 오는 것 | 히나 | 전학생 루트 t1 — 신사 돌계단의 다이후쿠 | `t1_cats` `t1.140`~`t1.170` 4문장 → CG 걷기 명령 | `cats_tenko.webp` ✅ | 1920×1080 | 351KB | ✅ 480×270 36KB |
+| 9 | `bench_tenko` | 그거, 내 대사인데 | 히나 | 전학생 루트 t4 — 노을 언덕 벤치 | `t4_invite` `t4.190`~`t4.200` 2문장 → 다음 장면 `t5_festival` 의 배경 전환 | `bench_tenko.webp` ✅ | 1920×1080 | 277KB | ✅ 480×270 30KB |
+| 10 | `selfie_tenko` | 이번엔 둘이 같이 | 히나 | 전학생 루트 t6 — 불꽃 아래 셀카 | `t6_confession` `t6.210` 1문장 → 다음 CG(`shutter_tenko`)로 교체 | `selfie_tenko.webp` ✅ | 1920×1080 | 233KB | ✅ 480×270 31KB |
+| 11 | `shutter_tenko` | 셔터가 눌린 순간 | 히나 | 전학생 루트 t6 — 사진에 담긴 순간 | `t6_confession` `t6.220` 1문장 → 다음 장면 `t7_homeward` 의 배경 전환 | `shutter_tenko.webp` ✅ | 1920×1080 | 217KB | ✅ 480×270 26KB |
+| 12 | `polaroid_tenko` | 첫 장에 넣을 사진 | 히나 | 전학생 루트 t7 — 현상된 즉석사진 | `t7_homeward` `t7.040`~`t7.060` 3문장 → CG 걷기 명령 | `polaroid_tenko.webp` ✅ | 1920×1080 | 177KB | ✅ 480×270 23KB |
+| 13 | `end_hina_walk` | 이쪽으로 갈래? | 히나 | 전학생 루트 일상 결말 — 비 갠 낮 길, 분홍 수첩을 안은 히나가 다음에 함께 걸을 길을 가리키는 순간 | `td3` `td3.370`~`td3.400` 4문장 → CG 걷기 명령 | `end_hina_walk.webp` ✅ | 1920×1080 | 470KB | ✅ 480×270 43KB |
+| 14 | `kh_meet` | 금요일의 모퉁이 🔒 관람 전 숨김 | 공통 | 공통 c7 금요일 하교(해금 시) — 복도 모퉁이에서 어깨가 부딪친 직후 | `c7_friday` `c7.m30`~`c7.m95` 8문장 → CG 걷기 명령 | `kh_meet.webp` ✅ | 1920×1080 | 291KB | ✅ 480×270 32KB |
+| 15 | `kh_draw` | 요일을 나눠 가진 자전거 🔒 관람 전 숨김 | 공통 | 공통 c8 토요일 상점가 추첨(해금 시) — 결과를 듣고 휴지 한 팩을 받는 순간 | `c8_raffle` `c8r.180`~`c8r.210` 4문장 → CG 걷기 명령 | `kh_draw.webp` ✅ | 1920×1080 | 387KB | ✅ 480×270 43KB |
+| 16 | `group_ice_four` | 네 숟가락 🔒 관람 전 숨김 | 공통 | 공통 e1_ice4 토요일 빙수집(해금 시) — 히나가 딸기빙수를 들어 올리고 네 숟가락이 한 그릇에 모이는 순간 | `e1_ice4` `e1f.590`~`e1f.620` 4문장 → CG 걷기 명령 | `group_ice_four.webp` ✅ | 1920×1080 | 487KB | ✅ 480×270 42KB |
+| 17 | `group_ice_three` | 주문하기도 전에 | 공통 | 공통 e1_ice3 토요일 빙수집 — 히나가 메뉴의 딸기를 짚어 아카네 취향을 맞히는 순간 | `e1_ice3` `e1t.160`~`e1t.270` 12문장 → CG 걷기 명령 | `group_ice_three.webp` ✅ | 1920×1080 | 426KB | ✅ 480×270 39KB |
+| 18 | `group_frog` | 딱 한 판만 🔒 관람 전 숨김 | 공통 | 공통 e2_frog4 월요일 점심 종이개구리 대회(해금 시) — 개구리가 소우타가 든 도시락 뚜껑에 착지하고 아카네·코하루가 하이파이브 | `e2_frog4` `e2f.310`~`e2f.390` 9문장 → CG 걷기 명령 | `group_frog.webp` ✅ | 1920×1080 | 349KB | ✅ 480×270 35KB |
+| 19 | `group_rain` | 비는 벌써 그쳤는데 🔒 관람 전 숨김 | 공통 | 공통 e3_rain4 월요일 방과 후 처마(해금 시) — 비가 그치고 햇빛이 돌아왔는데 아무도 먼저 일어나지 않는 순간 | `e3_rain4` `e3f.330`~`e3f.380` 6문장 → CG 걷기 명령 | `group_rain.webp` ✅ | 1920×1080 | 400KB | ✅ 480×270 37KB |
+| 20 | `kh_relay` | 두 사람 글씨 🔒 관람 전 숨김 | 코하루 | 후배 루트 k5 — 문구점 앞, 두 사람의 손글씨 안내판 | `k5` `k5.110`~`k5.130` 3문장 → CG 걷기 명령 | `kh_relay.webp` ✅ | 1920×1080 | 343KB | ✅ 480×270 40KB |
+| 21 | `kh_confession` | 마지막 등롱 아래 🔒 관람 전 숨김 | 코하루 | 후배 루트 k6 — 고백에 대답하는 순간(첫 불꽃 전) | `k6` `k6.170`~`k6.180` 2문장 → CG 걷기 명령 | `kh_confession.webp` ✅ | 1920×1080 | 308KB | ✅ 480×270 36KB |
+| 22 | `kh_home` | 오른손 🔒 관람 전 숨김 | 코하루 | 후배 루트 k7 — 귀갓길에 손을 잡은 뒤 | `k7` `k7.100`~`k7.140` 5문장 → CG 걷기 명령 | `kh_home.webp` ✅ | 1920×1080 | 312KB | ✅ 480×270 38KB |
+| 23 | `kh_date` | 일요일은 둘이서 🔒 관람 전 숨김 | 코하루 | 후배 루트 k8 — 첫 데이트 장소(문구점)에 도착하며 | `k8` `k8.040`~`k8.050` 2문장 → CG 걷기 명령 | `kh_date.webp` ✅ | 1920×1080 | 435KB | ✅ 480×270 49KB |
+| 24 | `end_koharu_coin` | 네 옆의 빈 의자 🔒 관람 전 숨김 | 코하루 | 후배 루트 일상 결말 — 마술이 끝나고 동전 든 연보라 필통을 한 손에, 다른 손으로 의자를 당겨 주는 순간 | `kd4` `kd4.110`~`kd4.150` 5문장 → CG 걷기 명령 | `end_koharu_coin.webp` ✅ | 1920×1080 | 299KB | ✅ 480×270 30KB |
+| 25 | `end_group_fireworks` | 불꽃이 오르기 전에 🔒 관람 전 숨김 | 네 사람 | 네 사람 루트 축제 결말 — 세 사람의 대답이 모두 끝난 뒤 첫 불꽃 효과음에 맞춰(소우타의 눈으로 본 세 사람) | `hf2` `hf2.360`~`hf2.430` 8문장 → 다음 장면 `hf3` 의 배경 전환 | `end_group_fireworks.webp` ✅ | 1920×1080 | 419KB | ✅ 480×270 35KB |
+| 26 | `end_group_morning` | 내일도 넷이서 갈래? 🔒 관람 전 숨김 | 네 사람 | 네 사람 루트 일상 결말 — 개학 첫날 모퉁이에서 넷이 웃으며 등교하는 순간 | `hd4` `hd4.300`~`hd4.330` 4문장 → 엔딩 | `end_group_morning.webp` ✅ | 1920×1080 | 488KB | ✅ 480×270 42KB |
 
 ### 타이틀 키 비주얼
 
@@ -171,11 +181,16 @@
 
 ### 엔딩 폴라로이드(`ENDING_CG`)
 
-엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG.
+엔딩 화면 왼쪽 폴라로이드 안에 넣는 대표 CG(엔딩 id 기준, 엔딩 8개).
 
-- 아카네 엔딩 → `homeward_osana` 「처음 바래다주는 길」 (소꿉친구 루트 o7 — 손잡고 걷는 귀갓길)
-- 히나 엔딩 → `polaroid_tenko` 「첫 장에 넣을 사진」 (전학생 루트 t7 — 현상된 즉석사진)
-- 코하루 엔딩 → `kh_date` 「일요일은 둘이서」 (후배 루트 k8 — 첫 데이트 장소(문구점)에 도착하며) · 🔒 관람 전 숨김
+- 아카네 축제 쪽 엔딩 「내일도, 그다음 날도」 (`osana`) → `homeward_osana` 「처음 바래다주는 길」 (소꿉친구 루트 o7 — 손잡고 걷는 귀갓길)
+- 아카네 일상 쪽 엔딩 「내일은 데이트하자」 (`osana_daily`) → `end_akane_walk` 「세 걸음 뒤에」 (소꿉친구 루트 일상 결말 — 복숭아 소다를 든 아카네가 데이트 신청을 알아듣고 하굣길에서 돌아보는 순간)
+- 히나 축제 쪽 엔딩 「처음으로 함께 찍힌 사진」 (`tenko`) → `polaroid_tenko` 「첫 장에 넣을 사진」 (전학생 루트 t7 — 현상된 즉석사진)
+- 히나 일상 쪽 엔딩 「네가 먼저 보는 것」 (`tenko_daily`) → `end_hina_walk` 「이쪽으로 갈래?」 (전학생 루트 일상 결말 — 비 갠 낮 길, 분홍 수첩을 안은 히나가 다음에 함께 걸을 길을 가리키는 순간)
+- 코하루 축제 쪽 엔딩 「일요일은 둘이서」 (`koharu`) → `kh_date` 「일요일은 둘이서」 (후배 루트 k8 — 첫 데이트 장소(문구점)에 도착하며) · 🔒 관람 전 숨김
+- 코하루 일상 쪽 엔딩 「옆자리는 비워 둘게요」 (`koharu_daily`) → `end_koharu_coin` 「네 옆의 빈 의자」 (후배 루트 일상 결말 — 마술이 끝나고 동전 든 연보라 필통을 한 손에, 다른 손으로 의자를 당겨 주는 순간) · 🔒 관람 전 숨김
+- 네 사람 축제 쪽 엔딩 「불꽃이 오르기 전에」 (`group_festival`) → `end_group_fireworks` 「불꽃이 오르기 전에」 (네 사람 루트 축제 결말 — 세 사람의 대답이 모두 끝난 뒤 첫 불꽃 효과음에 맞춰(소우타의 눈으로 본 세 사람)) · 🔒 관람 전 숨김
+- 네 사람 일상 쪽 엔딩 「내일도 넷이서 갈래?」 (`group_daily`) → `end_group_morning` 「내일도 넷이서 갈래?」 (네 사람 루트 일상 결말 — 개학 첫날 모퉁이에서 넷이 웃으며 등교하는 순간) · 🔒 관람 전 숨김
 
 ## 배경 — 최종
 
@@ -189,9 +204,9 @@
 | 형식 | **WebP**(권장, 품질 80~85) 또는 JPEG. 투명 불필요 |
 | 해상도 | **1920×1080(16:9)** 권장. 무대가 늘 16:9 라 그대로면 잘리지 않는다. 비율이 다르면 가운데 기준으로 잘린다(`background-size: cover`) |
 | 용량 | 파일당 800KB 이하(표준 렌더링은 게임 전체 그림을 백그라운드로 미리 받으므로 휴대폰 데이터 고려) |
-| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(빠졌거나 오래된 것만 새로 만듦. 인계 패키지가 준 `kh_*` 썸네일은 원본이 그대로인 동안 덮어쓰지 않음. `--check` 는 쓰지 않고 빠짐·오래됨·크기만 알림) |
+| 썸네일 | 480×270 WebP(`public/assets/bg/thumb/`, 매니페스트 `thumb`). 저장 칸(한 쪽 6칸)·엔딩 폴라로이드의 미니 무대가 원본 대신 쓴다(칸마다 원본을 해독하지 않게). 원본을 바꾸면 `python3 scripts/bg-thumbs.py` 로 다시 만든다(빠졌거나 오래된 것만 새로 만듦. 인계 패키지가 준 `kh_*`·`bg_ice_shop`·`bg_after_rain` 썸네일은 원본이 그대로인 동안 덮어쓰지 않음. `--check` 는 쓰지 않고 빠짐·오래됨·크기만 알림) |
 | 구도 | 인물이 무대 폭 27%·50%·73% 자리에 서고, 아래쪽 약 28~42%는 대사창·탭이 반투명하게 덮는다. 사람·글자 없는 빈 장소 그림 |
-| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별 |
+| 톤 | 아래 표의 시간대(낮/노을/밤)에 맞춘다. `tone` 값이 UI 유리 색(밤 = 남색 유리)과 장소 표시 아이콘(해/달)을 고른다. 비 배경은 id 의 `_rain` 으로 판별하되, 매니페스트에 `weather` 가 있으면 그것이 먼저다(`bg_after_rain` 은 비가 그친 그림이라 해) |
 | 레터박스 | 무대 밖 여백은 표준 렌더링에서는 같은 배경을 흐려 채운다(`.backdrop`). Apple 터치 기기는 흐림 대신 톤별(낮·노을·밤) 그라데이션, 암전은 그 색(`src/ui/styles/performance.css`). 따로 만들 그림 없음 |
 | 화풍 | 캐릭터·CG 와 어울리는 밝은 애니메이션 배경 화풍(초여름, 맑은 하늘빛) |
 
@@ -218,6 +233,8 @@
 | `shrine_night` | 불꽃놀이가 보이는 신사 언덕(밤) | 밤 | ○ | `assets/bg/shrine_night.webp` | 🟢 최종 | 1920×1080 | 374KB | ✅ 480×270 37KB |
 | `kh_stationery` | 상점가 문구점 앞(민트색 차양, 유리 미닫이문, 나무 견본 테이블) | 낮 | ○ | `assets/bg/kh_stationery.webp` | 🟢 최종 | 1920×1080 | 444KB | ✅ 480×270 45KB |
 | `kh_lantern_lane` | 축제 거리 끝 마지막 등롱길(밤) | 밤 | ○ | `assets/bg/kh_lantern_lane.webp` | 🟢 최종 | 1920×1080 | 342KB | ✅ 480×270 33KB |
+| `bg_ice_shop` | 상점가 빙수집 가게 밖 야외 테이블(토요일 오후, 수국과 나뭇잎 그림자) | 낮 | ○ | `assets/bg/bg_ice_shop.webp` | 🟢 최종 | 1920×1080 | 507KB | ✅ 480×270 44KB |
+| `bg_after_rain` | 소나기가 그친 학교 처마 마루와 젖은 마당(방과 후, 햇빛이 돌아옴) | 낮·해(날씨 명시) | ○ | `assets/bg/bg_after_rain.webp` | 🟢 최종 | 1920×1080 | 568KB | ✅ 480×270 42KB |
 | `black` | 검은 화면(파일 없음) | - | ○ | 단색 #08070c | - |  |  | - |
 
 ## 음악(BGM) — 임시 합성음
@@ -280,8 +297,8 @@ art-inbox/bg/{id}.png                              예: art-inbox/bg/kh_statione
 - 확장자는 png·webp·jpg(jpeg). 같은 이름이 여럿이면 png > webp > jpg 순으로 하나만 쓴다.
 - 표정(expr): `neutral` `smile` `fluster` `shy` `pout` `sad`. 의상·헤어 조합은 `src/story/assets.ts` 의 `looks`.
 - 캐릭터: `osana` `tenko` `koharu`. 의상: `uniform` `yukata` `casual`.
-- CG id: `kv` `rain_osana` `rain_tenko` `door_osana` `ramune_osana` `fireworks_osana` `homeward_osana` `cats_tenko` `bench_tenko` `selfie_tenko` `shutter_tenko` `polaroid_tenko` `kh_meet` `kh_draw` `kh_relay` `kh_confession` `kh_home` `kh_date` (`kv` = 타이틀 키 비주얼).
-- 배경 id: `title` `road_morning` `road_evening` `road_rain` `road_night` `classroom_day` `classroom_evening` `hallway` `shoe_lockers` `shoe_lockers_rain` `courtyard` `shotengai` `riverbank_evening` `station_morning` `apartment_door` `shrine_steps` `festival_street` `riverbank_night` `shrine_night` `kh_stationery` `kh_lantern_lane`. 새 배경은 `src/engine/types.ts` `BgId` 와 `src/story/assets.ts` `BACKGROUNDS`(desc·tone·thumb)에 먼저 등록한다.
+- CG id: `kv` `rain_osana` `rain_tenko` `door_osana` `ramune_osana` `fireworks_osana` `homeward_osana` `cats_tenko` `bench_tenko` `selfie_tenko` `shutter_tenko` `polaroid_tenko` `kh_meet` `kh_draw` `kh_relay` `kh_confession` `kh_home` `kh_date` `group_ice_four` `group_ice_three` `group_frog` `group_rain` `end_akane_walk` `end_hina_walk` `end_koharu_coin` `end_group_fireworks` `end_group_morning` (`kv` = 타이틀 키 비주얼).
+- 배경 id: `title` `road_morning` `road_evening` `road_rain` `road_night` `classroom_day` `classroom_evening` `hallway` `shoe_lockers` `shoe_lockers_rain` `courtyard` `shotengai` `riverbank_evening` `station_morning` `apartment_door` `shrine_steps` `festival_street` `riverbank_night` `shrine_night` `kh_stationery` `kh_lantern_lane` `bg_ice_shop` `bg_after_rain`. 새 배경은 `src/engine/types.ts` `BgId` 와 `src/story/assets.ts` `BACKGROUNDS`(desc·tone·thumb)에 먼저 등록한다.
 - 예전 안내대로 `art-inbox/{osana,tenko,koharu}/` 에 넣어도, `char/` 폴더가 없으면 그 폴더를 대신 읽는다(알림 표시).
 - 원본은 신뢰하지 않는 데이터로 다룬다: PNG/WebP/JPEG 로만 열고, 심볼릭 링크는 읽지 않으며, 5천만 화소를 넘는 이미지는 거부한다.
 
@@ -340,6 +357,7 @@ npm run validate && npm run docs                   # 연결 확인, 문서 갱�
 |---|---|---|---|
 | 캐릭터 스프라이트·이벤트 CG·키 비주얼 | 사용자 제공 최종 일러스트 | 사용자 제공(이 게임에 사용) | 제작 프롬프트 `docs/ART_PROMPTS.md`, 변환 `scripts/import-art.py` |
 | 코하루 스프라이트 18·이벤트 CG 6·배경 2(`kh_*`)·썸네일 8 | 사용자가 준 코하루 루트 인계 패키지(2026-11-25). 스프라이트는 1024×1536 생성 후 확대, CG·배경은 생성 후 1920×1080 리샘플(패키지 README). 생성 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건은 기록에 없어 **확인 필요** | 받은 WebP 그대로(sha256 대조), 그림 지침은 패키지의 `docs/ART_PROMPTS_KOHARU.md`, 배경 기록 `docs/BACKGROUND_PROMPTS.md` |
+| 여덟 엔딩 이벤트 CG 9(`group_*`·`end_*`)·배경 2(`bg_ice_shop`·`bg_after_rain`)·썸네일 11 | 사용자가 준 코덱스 제작 묶음(2026-11-26, `ART_MANIFEST.json`). 생성 원본 1672×941 을 1920×1080 으로(`end_akane_walk`·`end_hina_walk` 는 원본 1920×1080). 생성 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건은 기록에 없어 **확인 필요** | 받은 WebP 그대로(`ART_MANIFEST.json` sha256 대조, import-art 로 다시 인코딩하지 않음), 배경 썸네일은 `scripts/bg-thumbs.py` PROVIDED 에 sha 쌍 등록 |
 | 배경 | 사용자가 준 묶음(이미지 생성 도구로 제작, 2026-11-24). 도구명·버전은 받은 기록에 없음 | 사용자 제공(이 게임에 사용). 생성 서비스의 이용 조건(상업 이용·웹 배포 허용)은 기록에 없어 **확인 필요** | 제작 프롬프트 `docs/BACKGROUND_PROMPTS.md`(앞 3장은 요약만 남음), 썸네일 `scripts/bg-thumbs.py` |
 | 음악·효과음(임시) | 이 저장소의 `scripts/gen-placeholder-audio.mjs` 가 합성 | 외부 음원·샘플 없음 | 최종 교체 대상 |
 | 글꼴 | `@fontsource/gowun-batang`, `@fontsource/gowun-dodum`, `@fontsource/jua`, `pretendard` (npm) | SIL Open Font License 1.1 | `package.json` dependencies |
