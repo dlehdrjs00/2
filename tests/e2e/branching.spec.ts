@@ -247,7 +247,7 @@ for (const c of CASES) {
       await pick(page, c.picks[n]);
     }
     // 마지막 공통 선택의 반응과 처마 장면(e3_rain4 / e3_rain3)을 지나 루트가 확정된다
-    const { lastCommon, first } = await advanceToRoute(page);
+    const { lastCommon, first } = await advanceToRoute(page, onSay);
     expect(lastCommon, '루트 결정 직전 대사').toBe(c.met ? LAST_COMMON_LINE.met : LAST_COMMON_LINE.unmet);
     if (!c.met) {
       // 미발견: c9 뒤 종이개구리 셋 판(e2_frog3) → c10, c10 뒤 처마 셋 판(e3_rain3)

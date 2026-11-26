@@ -379,7 +379,7 @@ test.describe('구판 저장(스키마 2) 불러오기', () => {
     // 노을길 → 빙수집 셋 판(e1_ice3) → 빵집
     const ice3 = seen.findIndex((s) => s.startsWith('e1t.'));
     expect(ice3, '빙수집 셋 판').toBeGreaterThan(seen.indexOf('c7.j40'));
-    expect(seen.indexOf('c8.010')).toBeGreaterThan(ice3);
+    expect(seen.findIndex((s) => s.startsWith('c8.'))).toBeGreaterThan(ice3);
     expect(await visibleChoiceIds(page)).toEqual(['a', 'b', 'c']);
     await expect.poll(async () => (await readAutoState(page))?.stepId).toBe('c8.ch');
     expect((await readAutoState(page))!.flags['kh.met']).toBe(false);

@@ -174,8 +174,15 @@ test('타이틀: 엔딩 배지(처음 ??? 4개, 여덟 엔딩을 다 보면 8개
   const sizes = [[667, 375], [740, 320], [844, 390], [932, 430], [1024, 768], [1280, 720]] as const;
   const check = async (n: number, names: string[]) => {
     await expect(page.locator('.title-foot .badge')).toHaveCount(n);
-    // 화면 글자를 별만 남겨 접어도 읽기 이름(글자 내용)은 그대로
-    expect(await page.locator('.title-foot .badge').allTextContents()).toEqual(names);
+    // 화면 글자를 별만 남겨 접어도 읽기 이름(aria-hidden 을 뺀 글자 내용)은 그대로
+    const spoken = await page.locator('.title-foot .badge').evaluateAll((els) =>
+      els.map((e) => {
+        const walk = (n: Node): string =>
+          n.nodeType === Node.TEXT_NODE ? n.textContent ?? '' : (n as Element).getAttribute?.('aria-hidden') === 'true' ? '' : [...n.childNodes].map(walk).join('');
+        return walk(e);
+      }),
+    );
+    expect(spoken).toEqual(names);
     for (const [w, h] of sizes) {
       await relayoutTo(page, w, h);
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));

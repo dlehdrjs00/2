@@ -537,6 +537,7 @@ test('5. 구판 저장(스키마 2): 공통 중간은 새 가중치로 판정, c
   expect(rb.info.step).toBe('c8.ch');
   expect(rb.steps.filter((s) => /^c7\.m|^c8r\.|^e1f\./.test(s)), '복도·추첨·넷 판 장면').toEqual([]);
   expect(rb.steps).toEqual(expect.arrayContaining(['c7.j20', 'c7.j30', 'c7.j40', 'e1t.010', ...sceneLines('c8_bakery').slice(0, 2)]));
+  expect(rb.steps.indexOf('c7.j40'), '노을길 뒤 빙수집 셋 판').toBeGreaterThanOrEqual(0);
   expect(rb.steps.indexOf('c7.j40'), '노을길 뒤 빙수집 셋 판').toBeLessThan(rb.steps.indexOf('e1t.010'));
   expect(rb.steps.indexOf('e1t.010'), '빙수집 셋 판 뒤 빵집').toBeLessThan(rb.steps.indexOf(sceneLines('c8_bakery')[0]));
   expect(rb.info.bg).toBe('shotengai');
@@ -825,9 +826,10 @@ test('9. 구저장(897ae1f 스키마 3): c8·c9·c10 위치에서 이으면 옛 
   // 루트 첫 장면(k1)·축제 후일담 첫 장면(o5)은 읽지 않은 줄로 두어 건너뛰기가 거기서 멈추게 한다
   const read = lineIds((sc) => sc === 'k1' || sc === 'o5_festival');
   await watchSteps(page);
-  // 옛 전역 기록(897ae1f 가 세 엔딩·CG 17장을 기록한 ashita.global·.ext 원문. v2 키는 없음)에 건너뛰기용 읽음 기록만 더한다
+  // 옛 전역 기록(897ae1f 가 세 엔딩·CG 17장을 기록한 ashita.global·.ext 원문. v2 키는 없음)에 건너뛰기용 읽음 기록만 더한다.
+  // 옛 읽음 기록의 k1.010 은 빼 둔다(건너뛰기가 k1 첫 줄에서 멈추게)
   await freshBoot(page, {
-    read: [...new Set([...oldGlobal.read, ...read])],
+    read: [...new Set([...oldGlobal.read.filter((id) => !id.startsWith('k1.')), ...read])],
     endings: oldGlobal.endings,
     cgs: oldGlobal.cgs,
     raw: { 'ashita.global.ext': JSON.stringify(fx.global['ashita.global.ext']) },

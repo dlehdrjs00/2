@@ -36,7 +36,7 @@ export default defineConfig({
     // 다른 스펙은 CDP(Chromium 전용) 입력이나 데스크톱·휴대폰 전용 검사가 많아 넣지 않았다(CDP 검사는 WebKit 에서 건너뜀)
     {
       name: 'ipad-webkit',
-      testMatch: /(?:routes|saveload|rendering|autosave|koharu|window-opacity)\.spec\.ts/,
+      testMatch: /(?:routes|saveload|rendering|autosave|koharu|window-opacity|eight-endings)\.spec\.ts/,
       use: { ...devices['iPad (gen 7) landscape'], browserName: 'webkit' },
     },
   ],

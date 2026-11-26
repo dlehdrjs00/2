@@ -163,6 +163,8 @@ export async function line(page: Page): Promise<KInfo> {
   }
   for (let t = 0; t < 40; t++) {
     await tapStage(page);
+    // 다시 누르기 전 기다림: 부하가 큰 병렬 실행에서 첫 탭 처리가 늦을 때 두 번째 탭까지 처리돼 한 줄을 건너뛰지 않게 넉넉히 둔다
+    // (짧은 입력 잠금에 흡수된 탭만 다시 누르게 된다)
     const moved = await page
       .waitForFunction(
         (s) => {
@@ -170,7 +172,7 @@ export async function line(page: Page): Promise<KInfo> {
           return i.step !== s || i.mode !== 'play';
         },
         before.step,
-        { timeout: t < 4 ? 350 : 1200, polling: 25 },
+        { timeout: t < 2 ? 900 : 1500, polling: 25 },
       )
       .then(
         () => true,

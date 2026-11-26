@@ -215,13 +215,14 @@ export async function playToEnding(page: Page, picks: string[], onSay?: (i: Info
 }
 
 /** 루트가 정해질 때까지(마지막 공통 선택 뒤 독백을 지나 decideRoute 가 실행될 때까지) 진행. 루트가 없던 마지막 대사를 돌려준다 */
-export async function advanceToRoute(page: Page): Promise<{ lastCommon: string | null; first: Info }> {
+export async function advanceToRoute(page: Page, onSay?: (i: Info) => Promise<void>): Promise<{ lastCommon: string | null; first: Info }> {
   let lastCommon: string | null = null;
   // 미발견 흐름은 마지막 선택(c10.ch) 뒤 반응·처마 셋 판(e3_rain3)을 지나 판정한다(약 90줄)
   for (let g = 0; g < 200; g++) {
     const i = await info(page);
     if (i.route !== null) return { lastCommon, first: i };
     if (i.frame === 'choice') throw new Error(`루트가 정해지기 전에 선택지가 또 나옴: ${i.step}`);
+    if (onSay && i.frame === 'say') await onSay(i);
     lastCommon = i.step;
     await advanceOne(page);
   }
