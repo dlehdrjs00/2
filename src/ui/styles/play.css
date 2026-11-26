@@ -885,7 +885,10 @@
 .vn[data-tone='night'] .qbar button:not([data-q='log'])::before {
   background: rgba(170, 205, 255, 0.28);
 }
-/* 이벤트 CG 중: 대사창과 같이 옅게(아랫변 색 = 대사창 윗변 색이라 탭 이음새가 그대로 이어진다). 글자는 번짐으로 읽히게 */
+/* 이벤트 CG 중: 대사창과 같이 옅게. 글자는 번짐으로 읽히게.
+ * 탭의 --cg-a 는 탭 불투명도(--qbar-alpha = max(설정, 0.82))로 계산한다. 그래서 설정이 82% 이상이면 아랫변 색 = 대사창 윗변 색이라
+ * 이음새가 그대로 이어지고, 그보다 낮으면(기본 70% 포함) 탭이 대사창보다 진하다(기본 70%: 탭 .525 / 대사창 윗변 .38,
+ * Apple 터치 .624 / .482) */
 .vn > .stage[data-cg] ~ .qbar {
   background: linear-gradient(180deg, rgba(255, 255, 255, calc(var(--cg-a) * 0.94)), rgba(255, 255, 255, var(--cg-a)));
   -webkit-backdrop-filter: blur(3px) saturate(1.1);

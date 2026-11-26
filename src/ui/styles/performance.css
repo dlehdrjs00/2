@@ -86,7 +86,8 @@
   display: none;
 }
 
-/* 대사창·빠른 메뉴: 흐림 없이 읽히게 불투명도 보강(설정의 대사창 불투명도는 그대로 따른다) */
+/* 대사창·빠른 메뉴: 흐림 없이 읽히게 불투명도 보강. 대사창은 설정의 대사창 불투명도(--win-alpha)를,
+ * 탭은 탭 불투명도(--qbar-alpha = max(설정, 0.82), play.css .qbar 가 자기 --win-alpha 로 받음)를 그대로 따른다 */
 .vn[data-render='apple-touch'] > .textbox {
   background: linear-gradient(
     180deg,
